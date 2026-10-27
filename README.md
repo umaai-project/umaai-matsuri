@@ -14,10 +14,11 @@
 ## 当前状态
 
 - **S1 建仓完成**：五 crate 改名、依赖路径、引擎静态数据、CI 与文档骨架已落地。
-- **S0 机制核对进行中**：核心循环、回合坐标、结算门槛与数据表已登记在
-  [`docs/plan/intake.md`](docs/plan/intake.md)；代码仍是 S1 占位，未按猜测实现剧本机制。
-- 剧本资产中的 `sample_resource` / `training_basic_value` / `sample_order` 均为 `STUB`，
-  见 [`docs/plan/stubs.md`](docs/plan/stubs.md)。
+- **S0 数值解码完成**：`single_mode_15_*` 11 张表、`single_mode_training_effect`（scenario 15）与
+  官方效果文案已对齐，结论在 [`docs/plan/intake.md`](docs/plan/intake.md) / [`docs/mechanism.md`](docs/mechanism.md)；
+  仅剩 gauge 归属、合宿延长细节 / Lv+1 结算点、延长段支援卡事件、友人分身、同名双人头、事件触发回合待真机。
+- **S2 数据层待启动**：解码结果待落成 `scenario_matsuri.json` 与 `data.rs`；资产中的
+  `sample_resource` / `sample_order` 仍为 `STUB`，见 [`docs/plan/stubs.md`](docs/plan/stubs.md)。
 
 ## 结构
 
