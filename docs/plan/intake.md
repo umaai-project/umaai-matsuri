@@ -14,8 +14,9 @@
 | 剧本数据表（master.mdb） | 日程、演出 / 传授 / 融合 / 结算等表名与数值 | `master.mdb` sqlite（`single_mode_15_*`） | 高（静态数据） | ☑ 已解码 |
 | 剧本训练表（master.mdb） | 普通训练 / 演目稽古基础值 | `single_mode_training_effect`（`scenario_id = 15`，56 行） | 高（静态数据） | ☑ 已提取 |
 | 文案表（master.mdb） | 演目 / 教え名称、逐级效果描述、事件标题 | `text_data` category 55 / 119 / 181 / 462 / 463 / 458 / 461 / 466 / 499 等 | 高（静态数据） | ☑ 已提取 |
-| 真机协议（Festa 家族） | `festa_data_set` 9 键、act / advice / check point 状态 | `single_mode_festa/exec_command`、`check_event`（msgpack） | 高（初析，插件未实装） | ◐ turn 2 样本（原始 `current_turn = 3`，按 1 基解读） |
-| 真机运行时 | 剧本挂载类、ObscuredInt 解码、act 数组 | `WorkSingleModeScenarioFesta` 只读内存链 | 高（初析，插件未实装） | ◐ 已定位 |
+| 真机协议（Festa 家族） | `festa_data_set` 9 键、act / advice / check point 状态 | `single_mode_festa/exec_command`、`check_event`（msgpack） | 高（完整报文解码，无截断） | ☑ turn 2 / turn 15 / turn 77 三个时点（原始 3 / 16 / 78） |
+| 真机运行时 | 剧本挂载类、ObscuredInt 解码、act 数组 | `WorkSingleModeScenarioFesta` 只读内存链 | 高（两次链路复测） | ☑ 已定位（2026-10-26 / 2026-10-29） |
+| 归档仓 `uma-scenario15-archive`（2026-10-29 用户提供） | 剧本 15 的 MDB CSV、运行时链路实录、`check_event` 完整 msgpack 解码、结算 turn 78 快照、只读探针协议 | 用户提供 `uma-scenario15-archive-main.zip`；读 `catalog/mdb-export/` 与 `plugin/snapshots/` | 高（真机实测）/ 中（插件修复文档） | ☑ 已核对（见 §3.14 / §5.1） |
 | 机制包 v1（`駿大祭机制包_v1.zip`，2026-10-27） | 速查文档 + `single_mode_15_*` 全量 JSON + 技能 / 卡库数据 + 参考实现（报文解析 / 评分 / 技能购买） | 用户提供 zip；读 `駿大祭机制速查.md`、`数据/scenario_matsuri.json`、`参考实现/*.py` | 中高（数据表实测 + 报文反推；社区 / Wiki 文案另标） | ◐ 已整理（§7） |
 | 真机回合帧 / 终局帧 | 每回合状态、候选动作、事件、结算 | `.portable` 帧通道 / 分析器输出 | 最高（行为事实） | ☐ 未接入正式通道 |
 | 旧仓实现 | 同剧本旧实现 | 无（本剧本为新剧本） | — | 不适用 |
@@ -317,6 +318,105 @@
 - 事件窗口与 `advice_recommend` 的 6 个点（1 基 3/12/24/36/48/60）一致。
 - 10 月前半的进化技能事件与具体回合号待故事脚本 / 正式帧复核。
 
+### 3.14 运行时实测补充（2026-10-29 归档）
+
+> 来源：`uma-scenario15-archive`（见 §1）。只收与剧本机制 / 存疑项有关的内容；
+> 插件 `/summary` 字段错误、技能列表拼接、因子抽选与继承、APK 反编译等与剧本机制无关，未纳入。
+> 时点换算：归档的 `current_turn` 为 1 基，本文括号内保留原始值。
+
+#### 3.14.1 运行时容器与 act 字段
+
+- 剧本 15 **没有自己的运行时类**；`/scenario` 与内存链两次复测均为 `WorkSingleModeScenarioFesta`
+  且 `WorkSingleModeScenarioFestaDataSet` 非空（9 字段）；同局 `WorkSingleModeScenarioRamen` 为空。
+- 数组长度与表对得上：`ActInfoArray = 5`、`AdviceInfoArray = 5`、`CommandGainActGaugeArray = 4`。
+- `act_info_array` 元素 7 字段（内存与协议一致）：
+  `act_type / act_gauge / need_act_gauge / act_training_state / advice_id / level / friend_outing_gain_act_level`。
+  **`act_type` 是主键，元素里没有 `command_id`**；`command_id` 由 `single_mode_15_act_info` 映射
+  （1→5101 … 5→5105）。
+- `friend_outing_gain_act_level` 在 turn 2 / turn 77 两次快照中均为 0，语义未确认
+  （候选：本次出行可获得的演目 Lv 增量）。
+
+#### 3.14.2 act 状态实测
+
+| 时点 | `need_act_gauge` | `level` | `act_gauge` | `act_training_state` | `advice_id` |
+|---|---|---|---|---|---|
+| turn 2（原始 3） | 5 | 1 / 1 / 1 / 1 / 1 | 0 / 1 / 0 / 1 / 0 | 0 | 101 / 301 / 401 / 201 / 501 |
+| turn 77（原始 78） | 5 | 10 / 9 / 9 / 9 / 9 | 0 / 2 / 1 / 2 / 1 | 2 | 801 / 1001 / 601 / 901 / 701 |
+
+- `need_act_gauge = 5` 恒定 → gauge 上限 5 再确认。
+- `level` 实测到 10，且 `festa_info.max_act_level = 10`（本局为 SSR 吾妻）→ 与 memo「SSR 上限 10」一致；
+  **R / 不带 6 仍无真机样本**。
+- 终局 gauge 停在 0/2/1/2/1 而 level 已 9–10 → **level 是累计结果、gauge 是当前轮进度**，两者不同步；
+  不能把 `level` 当 `gauge` 累计值。
+- `act_training_state` 局内 0、结算 2；语义未确认，暂不用于判定「可否稽古」。
+- 结算档案 `scenario_data_array = [{type 15001, value 46}]`，与五演目终局 `level` 之和
+  `10 + 9 + 9 + 9 + 9 = 46` 相等 → 疑似「演目 Lv 合计」存档；`type 15001` 编码与用途待确认。
+
+#### 3.14.3 教え → 転成 映射（运行时首次）
+
+终局 `advice_id → fusion_advice_id`：
+
+| 新教え | 材料（`fusion_advice_id` 指向） |
+|---|---|
+| 601 特化 | 101 絆 |
+| 701 研鑽 | 301 ヒント |
+| 801 協力 | 501 体力 |
+| 901 不屈 | 201 得意率 |
+| 1001 両道 | 401 助力 |
+
+- 初回（turn 2）5 个 `fusion_advice_id` 全 0 → **未転成时为空**；终局 5 组固定。
+- 映射**不是 `advice − 500` 常数**（701→301、901→201、1001→401 不规则），按表存。
+- 结合 `single_mode_15_advice.fusion_type`：`1` = 101–501 作材料，`2` = 601–1001 为新教え；
+  即「新教え → 材料」的固定组合，不可改。
+
+#### 3.14.4 gauge / Lv 的事件入账与溢出
+
+- `festa_data_set.not_up_parameter_info` 3 字段（语义按字段名，未逐项复测）：
+  `is_overflow_act_gauge_event_gain`（事件给的 gauge 撞上限）、
+  `is_overflow_act_level_event_gain`（事件给的演目 Lv 撞上限）、
+  `not_level_up_act_type_array`（本次未升 Lv 的演目列表）。
+  → 推断**事件可直接给 gauge / 演目 Lv，且受上限拦截**；具体哪些事件给多少仍未测。
+- `command_gain_act_gauge_array` 4 项，`command_type = 3 / 4 / 7 / 8`（Rest / Outing 那组通用命令），
+  每项内含按 act 的 `PredictGainActGaugeArray`。结算页该数组长度仍在但 predict 全空
+  → **只能在局内读**。这是验证「休息 / 外出 / 非目标比赛 +1 加哪条」的直接观测点。
+
+#### 3.14.5 合宿 / 训练 Lv 观测点
+
+- `festa_info.summer_camp_remain_turn_num`：turn 2 = 0，turn 15（原始 16）= 1，turn 77 = 0。
+  按「含当前回合」计数，turn 15 仍在 Junior 合宿窗口（原始 13–16）内 → **该局没有顺延样本**；
+  但该字段可逐回合读取，是验证「合宿延长」最直接的观测量。
+- `festa_info.act_training_step`：turn 2 / 15 = 1，turn 77 = 2。语义未确认；
+  若它表示稽古档位，可能解释 memo「稽古基础值随时期变化」与静态表 `command_level = 演目 Lv` 的冲突
+  （存疑 #21）。
+- 终局 `training_level_info_array`：101→5、102→4、103→3、105→3、106→3（5101–5105 恒 1）。
+  两套 level 语义不同，不能互替；支持「通常训练 Lv 会随育成上升」（存疑 #25），但上升节奏仍未测。
+
+#### 3.14.6 進捗発表会结果
+
+- 终局 `check_point_result_array` 3/3 全为 `result_type 2`（大成功），对应 schedule 1/2/3
+  （原始 turn 24/48/68）→ 三档门槛全部达标。
+- 発表会前该数组为空 → 局内无法预读结果。
+- 本局三次都是大成功，**没有「成功（`result_type 1`）」样本**，成功档一次性奖励仍无实测。
+
+#### 3.14.7 Senior +1 与人头（旁证）
+
+- `evaluation_info_array` 元素为 `{target_id, chara_id, act_type, …}`：turn 2（原始 3）= **25 项**，
+  turn 77 = **30 项**。5 演目 × 5 人 = 25、× 6 人 = 30，与 memo「Senior 各演目 +1 人」数量吻合，
+  是该机制的**第一个运行时旁证**；仍需逐元素核对 `chara_id`（是否重复 / 是否含吾妻）。
+- 同一数组可作「同名双人头」「友人分身」的判据：看终局 `chara_id` 是否有重复；
+  本轮只记录条数，未逐条导出。
+- **不用 `is_enable` 判定演目稽古可用性**：协议 `command_info_array` 在 turn 15（原始 16）给
+  5101–5105 全 1，turn 77 全 0；运行时类 `ObscuredSingleModeFestaCommandInfo` **没有 IsEnable 字段**。
+  可用性以 `act_gauge` / `act_training_state` 为准，`is_enable` 只作参考。
+
+#### 3.14.8 属性上限
+
+- 运行时 `default_max_*` 恒 1200；`max_*` 是**本局动态上限**：
+  turn 2 = 2216 / 1850 / 1848 / 1732 / 1800；turn 77 = 2227 / 1851 / 1870 / 1743 / 1806；
+  结算 `upper_limit_* = 2500`。
+- master `single_mode_scenario.max_*`（1000 / 650 / 600 / 500 / 600）**不等于运行时上限**；
+  该字段语义仍未定（见 §5 存疑 #13 的剩余部分）。
+
 ## 4. 数据表清单
 
 > 来自 `master.mdb`：`single_mode_15_*` 共 11 张，另有 `single_mode_training_effect` 的 `scenario_id = 15` 行。
@@ -335,6 +435,13 @@
 | `single_mode_15_outing_effect` | `id, support_card_id, story_step, add_level` | 10 | 已解码 | 卡 30323 / 10149，5 段各 +1 |
 | `single_mode_15_schedule` | `id, turn_num, need_act_num, need_act_level` | 3 | 已解码 | turn 23 / 47 / 67（原始 24 / 48 / 68）；Lv 3/5/6 |
 | `single_mode_training_effect` | `id, command_id, sub_id, result_state, target_type, effect_value, scenario_id` | 56（15） | 已提取 | 普通训练 + 演目稽古基础值 |
+
+- **2026-10-29 归档 CSV 与本仓解码逐表一致**：`act_info`（5 行，仅 `act_type, command_id`）、
+  `act_member`（5 行）、`advice`（10 行）、`advice_effect`（153 行）、`advice_recommend`（6 行，1 基）、
+  `fusion_effect`（9 行）、`check_point_effect`（20 行）、`finals_act_effect`（4 行）、
+  `outing_effect`（10 行）、`schedule`（3 行）、`act_effect`（66 行）无新增表 / 无字段变化；
+  `single_mode_scenario_15.json` 的 `hint_rate 0` / `support_num 5` / `upper_limit_* 2500`
+  与 §3.8 口径一致，`max_*`（1000 / 650 / 600 / 500 / 600）仍与运行时上限不同（§3.14.8）。
 
 **机制包 v1 附带数据（外部，未入仓）**
 
@@ -387,21 +494,59 @@
 | 24 | Senior 每演目 +1 担当 | memo：Senior 各演目再 +1 人；链接角色按固定演目判定 | — | 人头 / gauge | memo 已答 / 待真机 |
 | 25 | 通常训练 Lv 上升 | memo 调查项：「4 回で上昇」 | 其它 | 训练值 | 待真机 |
 
+### 5.1 2026-10-29 归档后的存疑项状态
+
+> 判定分四档：**已解决**（可写结论）/ **有观测点**（机制未定，但已有字段可直接采样）/
+> **有新线索**（只有旁证，不能当结论）/ **未解决**（本轮无新增）。证据细节见 §3.14。
+
+| # | 存疑项 | 状态 | 证据 / 下一步 |
+|---|---|---|---|
+| 1 | 友情 +2 的范围（彩圈） | 未解决 | `command_gain_act_gauge_array` 只覆盖 3/4/7/8 命令；训练侧的逐 act 入账仍不可读 |
+| 2 | 休息 / 非目标比赛 +1 的分配 | 有观测点 | `PredictGainActGaugeArray` 局内可读（结算释放）；按 4 类命令 × 5 act 采样即可验 |
+| 3 | 合宿延长 | 有观测点 | `summer_camp_remain_turn_num` 逐回合可读；本轮 turn 15（原始 16）= 1 属基础窗口，无顺延样本 |
+| 4 | 友人补位分身 | 未解决 | `evaluation_info_array` 的 `chara_id` 重复性可查；本轮未逐条导出 |
+| 5 | 同名双人头 | 未解决 | 同上：终局 30 条 `chara_id` 是否重复 |
+| 6 | `check_point_effect 204` | 未解决 | 本局 3 次大成功，但未记录 buff 生效后的实际值 |
+| 7 | `act_effect 201` 的 `v1 = 30` | 未解决 | 无新增 |
+| 9 | 演目 Lv 上限（R / 不带 6） | 部分 | 本局 SSR 实测 `level = 10` 且 `max_act_level = 10`；R / 不带仍无样本 |
+| 10 | 事件触发回合 | 未变 | 未取到事件列表；memo 时间轴仍是主口径 |
+| 12 | 延长段支援卡连续事件 | 有观测点 | `check_event` 响应含 `unchecked_event_array`，可按合宿回合采样事件 id |
+| 13 | 合宿 Lv+1 结算点 | 有观测点 | 合宿前后逐回合读 act `level` 做差分即可定位结算点 |
+| 17 | 発表会「成功」档一次性奖励 | 未解决 | 本局 3/3 大成功，无 `result_type 1` 样本 |
+| 19 | 合宿 2.59× 的用途 | 未变 | 无新增 |
+| 21 | 演目稽古基础值口径 | 有新线索 | `act_training_step` 从 1 → 2（可能对应时期档位）；需逐回合稽古数值 + 世代对照 |
+| 22 | 训练公式下段 | 未解决 | 归档只有通用训练公式（引擎已实现口径），无剧本专属下段 |
+| 23 | 目标赛事奖励 | 未解决 | 无新增 |
+| 24 | Senior 每演目 +1 担当 | 有新线索 | `evaluation_info_array` 25 → 30（5×5 → 5×6）与 memo 数量吻合；需逐元素核对 |
+| 25 | 通常训练 Lv 上升 | 有新线索 | 终局 `101→5 / 102→4 / 103→3 / 105→3 / 106→3`；「4 回で上昇」节奏未测 |
+
+**归档带来的新存疑（原表未列）**
+
+| # | 事项 | 现状 | 影响 |
+|---|---|---|---|
+| 26 | `festa_info.act_training_step` 语义 | 局内 1 / 终局 2；候选：稽古档位或可稽古次数 | 可能与存疑 #21 同一根源 |
+| 27 | `act_training_state` 语义 | 局内 0 / 结算 2；候选：0 未开始 / 1 进行 / 2 结束 | S8 动作可用性判定 |
+| 28 | `friend_outing_gain_act_level` 语义 | 两次快照均为 0；候选：本次出行可获演目 Lv 增量 | 出行 +1 的落点 |
+| 29 | `is_enable` 不可作稽古可用性判据 | 协议 turn 15 全 1、turn 77 全 0；运行时类无 IsEnable 字段 | 负向口径，避免误读 |
+
 ## 6. S0 核对结论
 
 - **数值层已收口**：演目效果、教え / 転成、進捗発表会 / 本番 buff 表、训练与演目稽古基础值、出行、
   窗口回合均已从 `master.mdb` + 官方文案 + memo 解码；`training_basic_value` 不再是占位。
 - **机制层剩余待真机**：gauge 的「彩圈范围」、友人补位分身、同名双人头、延长段支援卡事件、
   合宿 Lv+1 结算点、演目稽古基础值随时期 / 训练 Lv 的口径、成功档一次性奖励、训练公式下段。
-- **协议 / 运行时初析可用**：Festa `festa_data_set` 9 键、act 数组、`NeedActGauge`、`MaxActLevel` 已实测；
-  可作为 S2/S8 的字段设计依据，但需正式帧通道复核。
+- **协议 / 运行时已实测（2026-10-29 归档复核）**：Festa `festa_data_set` 9 键、act 7 字段数组、
+  `NeedActGauge = 5`、`MaxActLevel = 10`、check point 结果、`command_gain_act_gauge_array`、
+  `not_up_parameter_info` 均由完整报文（14.8–18.0 KB，无截断）+ 内存链两端印证；
+  可作为 S2/S8 的字段设计依据。细节与仍缺的字段见 §3.14。
 - **机制包 v1 + memo（2026-10-27）**：`check_point_effect` 确认为**永久 buff 表**
   （`202` 友情 / `4` 得意 / `2` 灵感；`204` 比赛待真机）；一次性奖励（全能力 / PT / 粉丝等）另计。
   属性上限以 2200 一组为准。
 - **结论**：可进入 **S2 数据层**（按本文件 §3 / §4 建 schema 与导入）；机制相关代码等剩余项收口后再落。
-- 用户确认日期：2026-10-26（建仓与代号）；机制包 v1 / memo 整理日期：2026-10-27。
+- 用户确认日期：2026-10-26（建仓与代号）；机制包 v1 / memo 整理日期：2026-10-27；
+  归档核对日期：2026-10-29（§3.14 / §5.1）。
 
-## 7. 资料核对结论（2026-10-27）
+## 7. 资料核对结论（2026-10-27，2026-10-29 归档复核）
 
 **已确认**
 
@@ -417,6 +562,20 @@
 - 评分公式与三点锚；技能价格折扣公式；报文字段位置与人头标记规则。
 - 合宿产出约 2.59×（964 份报文；整体产出比，非纯稽古倍率）。
 
+**2026-10-29 归档新增（已确认）**
+
+- 剧本 15 复用 `WorkSingleModeScenarioFesta` 容器（`/scenario` + 内存链两次复测，Ramen 容器为空；
+  15 自身没有运行时类）。
+- `act_info_array` 的 7 字段与主键：`act_type` 为主键、无 `command_id`；`need_act_gauge = 5` 恒定；
+  `level` 实测到 10，`max_act_level = 10`。
+- **level 与 gauge 不同步**：终局 level 9–10、gauge 仍 0/2/1/2/1。
+- 教え → 材料固定映射：601→101、701→301、801→501、901→201、1001→401；未転成时 `fusion_advice_id = 0`。
+- 事件可直接加 gauge / 演目 Lv 并受上限拦截（`not_up_parameter_info` 3 字段）。
+- `command_gain_act_gauge_array` = 4 项（命令类型 3/4/7/8），含按 act 的预测入账；结算页释放。
+- 発表会三档终局全 `result_type 2`（大成功）——样本只有大成功档。
+- Senior 人头数量旁证：`evaluation_info_array` 25 → 30（5 演目 × 5 → × 6）。
+- 运行时 `default_max_* = 1200`、`max_*` 随育成变化；master `single_mode_scenario.max_*` ≠ 运行时上限。
+
 **存疑 / 待确认**
 
 - `check_point_effect 204` = レースボーナス（memo，30 / 100）。
@@ -429,3 +588,13 @@
 - `condition_type 1/2/3`、`act_effect 201 v1=30`、助力支撑 `20 → 47`。
 - 吾妻无凸效果 / R 连续事件。
 - memo 的训练公式、事件时间轴、进化技能、吾妻事件数值、比赛奖励：来源可信度「中」，待真机复核。
+
+**2026-10-29 归档新增（存疑）**
+
+- `festa_info.act_training_step` 语义（局内 1 / 终局 2），可能与稽古基础值口径同源。
+- `act_training_state` 语义（局内 0 / 结算 2）。
+- `friend_outing_gain_act_level` 语义（观测恒 0）。
+- `is_enable` 不能作为演目稽古可用性判据（协议 1 → 0 变化，运行时类无该字段）。
+- 発表会成功档（`result_type 1`）没有任何实测样本；success / 大成功的一次性奖励差异仍空白。
+- 合宿延长、彩圈 +2 范围、友人分身、同名双人头、合宿 Lv+1 结算点、成功档奖励：均**未解决**，
+  但已拿到可直接采样的字段（见 §5.1）。
