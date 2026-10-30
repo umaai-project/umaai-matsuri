@@ -14,9 +14,11 @@
 ## 当前状态
 
 - **S1 建仓完成**：五 crate 改名、依赖路径、引擎静态数据、CI 与文档骨架已落地。
-- **S0 数值解码完成**：`single_mode_15_*` 11 张表、`single_mode_training_effect`（scenario 15）与
-  官方效果文案已对齐，结论在 [`docs/plan/intake.md`](docs/plan/intake.md) / [`docs/mechanism.md`](docs/mechanism.md)；
-  仅剩 gauge 归属、合宿延长细节 / Lv+1 结算点、延长段支援卡事件、友人分身、同名双人头、事件触发回合待真机。
+- **S0 机制与用语文档基本收口（2026-10-31）**：`single_mode_15_*` 11 张表与 `single_mode_training_effect`
+  已解码；彩圈 +2、gauge 归属、合宿延长 / Lv+1、U18 延长回合、U33 合宿外出、友人分身、稽古基础值、
+  **训练值两层口径**、目标赛 +4、`check_point_effect 204`、10 月前半 turn 66、排练失败仍 Lv+1 均已定为口径。
+  剩余项：U02 Senior 第三档暂定、U19 延长段支援卡事件、同名双人头、成功档数值、NPC 不在率、
+  追加稽古发生率 / 上下档等，见 [`docs/plan/stubs.md`](docs/plan/stubs.md)。
 - **S2 数据层待启动**：解码结果待落成 `scenario_matsuri.json` 与 `data.rs`；资产中的
   `sample_resource` / `sample_order` 仍为 `STUB`，见 [`docs/plan/stubs.md`](docs/plan/stubs.md)。
 
