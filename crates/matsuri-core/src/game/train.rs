@@ -17,7 +17,7 @@ use umaai_core::{Data, Ill};
 use umasim::game::{FriendOutState, Game, Person, PersonType};
 
 use super::person::PersonOrigin;
-use super::{MatsuriGame, TrainingPreview};
+use super::{Action, MatsuriGame, ResourcePreview, TrainingPreview};
 
 /// 上层训练数值（剧本来源增量；体力 / 干劲改动也在这里汇总）
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -56,6 +56,56 @@ impl MatsuriGame {
             failure_rate,
             keiko,
         })
+    }
+
+    /// 动作的剧本资源预览：演目槽 / 演目 Lv 差值（正 = 增加，负 = 排练成功清槽）
+    ///
+    /// 在局面克隆上按「成功」口径模拟资源侧（不耗随机流、不改原局面）：普通训练按参与担当入槽；
+    /// 稽古成功清槽 + Lv+1（合宿中不升不清）；比赛 / 休息 / 出行按三则入槽；友人出行额外最低演目
+    /// Lv+1。返回与当前局面的差值。
+    pub fn preview_action_resources(&self, action: &Action) -> ResourcePreview {
+        let mut probe = self.clone();
+        match action {
+            Action::Train(train) => probe.gain_training_gauge(usize::from(*train)),
+            Action::ActTrain(act) => {
+                let train = probe
+                    .data
+                    .acts
+                    .get(usize::from(*act))
+                    .map_or(usize::from(*act), |row| row.train);
+                let act = probe.act_of_train(train);
+                // 稽古成功：非合宿 → Lv+1、槽清零；合宿中不升不清
+                if !probe.plan.camp_train(probe.forced_rest) {
+                    probe.add_act_level(act, 1);
+                    probe.acts.gauge[act] = 0;
+                }
+            }
+            Action::Race => {
+                let gain = if probe.plan.race {
+                    probe.data.rules.act_gauge_gain.target_race
+                } else {
+                    probe.data.rules.act_gauge_gain.other
+                };
+                probe.gain_lowest_act_gauge(gain);
+            }
+            Action::Rest | Action::NormalOuting => {
+                probe.gain_lowest_act_gauge(probe.data.rules.act_gauge_gain.other);
+            }
+            Action::FriendOuting => {
+                // 与 do_friend_outing 同口径：当前段最低演目 Lv+1 + 槽 +1
+                if let Some(add_level) = probe.friend_outing_add_level() {
+                    probe.add_lowest_act_level(add_level);
+                }
+                probe.gain_lowest_act_gauge(probe.data.rules.act_gauge_gain.other);
+            }
+            Action::Clinic => {}
+        }
+        let mut preview = ResourcePreview::default();
+        for act in 0..5 {
+            preview.gauge_delta[act] = probe.acts.gauge[act] - self.acts.gauge[act];
+            preview.level_delta[act] = probe.acts.level[act] - self.acts.level[act];
+        }
+        preview
     }
 
     /// 普通训练结算
@@ -666,6 +716,57 @@ mod tests {
             [2, 1, 1, 0, 0],
             "参与担当各给自己担当演目 +1；闪彩担当 +2"
         );
+    }
+
+    /// 动作资源预览：与实结算一致、不改原局面；排练预览清槽 + Lv+1
+    #[test]
+    fn preview_action_resources_matches_actual() {
+        let mut game = crate::testing::sample_game();
+        game.turn = crate::SCENARIO_START_TURN;
+        game.acts.gauge = [0; 5];
+        let shining = make_shining(&mut game, 0);
+        let other = person_of_act(&game, 1);
+        game.base.distribution = vec![
+            vec![shining as i32, other as i32],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ];
+        let preview = game.preview_action_resources(&Action::Train(0));
+        assert_eq!(game.acts.gauge, [0; 5], "预览不得改原局面");
+        let mut actual = game.clone();
+        actual.gain_training_gauge(0);
+        for act in 0..5 {
+            assert_eq!(
+                preview.gauge_delta[act],
+                actual.acts.gauge[act] - game.acts.gauge[act],
+                "预览槽增量应与实结算一致（act {act}）"
+            );
+        }
+        // 排练：成功预览 = 该演目槽清零 + Lv+1；合宿中不升不清
+        let mut normal = crate::testing::sample_game();
+        normal.turn = 20;
+        normal.acts.gauge[2] = normal.act_gauge_max();
+        let preview = normal.preview_action_resources(&Action::ActTrain(2));
+        assert_eq!(
+            preview.gauge_delta[2],
+            -normal.act_gauge_max(),
+            "排练成功清槽"
+        );
+        assert_eq!(preview.level_delta[2], 1, "排练成功 Lv+1");
+        // 合宿中排练不升 Lv、不清槽
+        let mut camp = crate::testing::sample_game();
+        camp.turn = 20;
+        camp.plan.camp_zone = true;
+        camp.plan.camp_year = Some(0);
+        camp.acts.gauge[0] = camp.act_gauge_max();
+        let camp_preview = camp.preview_action_resources(&Action::ActTrain(0));
+        assert_eq!(camp_preview.level_delta, [0; 5], "合宿中排练不升 Lv");
+        assert_eq!(camp_preview.gauge_delta, [0; 5], "合宿中排练不清槽");
+        // 休息：三则 +1
+        let rest = normal.preview_action_resources(&Action::Rest);
+        assert_eq!(rest.gauge_delta.iter().sum::<i32>(), 1, "休息按三则入槽 +1");
     }
 
     #[test]

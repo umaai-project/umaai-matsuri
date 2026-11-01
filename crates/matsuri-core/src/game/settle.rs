@@ -88,8 +88,9 @@ impl MatsuriGame {
     /// 教诲窗口：首次授予 / 融合 / 调整（默认只做机械操作，不做策略择优；S7 接管）
     fn settle_advice_window(&mut self, window: usize) -> Result<()> {
         match window {
-            // turn 2：首次获得 5 个基础教诲
-            0 => self.acquire_advice(),
+            // turn 2 的首次授予在 Begin 阶段完成（NPC / 友人加入后立即；见 stage.rs），
+            // End 的窗口 0 不再重复授予。
+            0 => {}
             // turn 23：第 2 年融合（2 组）+ 槽位重排（默认保持）
             2 => {
                 let pairs = self.config.fusion.year2.clone();
@@ -221,11 +222,20 @@ mod tests {
         assert_eq!(game.acts.level, [2, 3, 4, 5, 6], "合宿结束全演目 Lv+1");
     }
 
+    /// turn 2 的首次授予在 Begin 阶段完成，End 的窗口 0 不再授予
     #[test]
-    fn advice_windows_acquire_then_fuse() {
+    fn advice_window_zero_does_not_acquire_at_end() {
         let mut game = crate::testing::sample_game();
         game.plan.advice_window = Some(0);
         game.settle_turn_end().expect("结算失败");
+        assert!(!game.advice.acquired, "T2 首次授予在 Begin，End 不再授予");
+    }
+
+    #[test]
+    fn advice_fusion_after_begin_acquire() {
+        let mut game = crate::testing::sample_game();
+        // T2 Begin 已完成首次授予（此处直接构造授予后的局面）
+        game.acquire_advice();
         assert!(game.advice.acquired);
         assert_eq!(game.advice.slots, [101, 201, 301, 401, 501]);
         assert_eq!(game.advice.fused, [0; 5]);

@@ -110,6 +110,15 @@ pub struct TrainingPreview {
     pub keiko: bool,
 }
 
+/// 动作的剧本资源预览（演目槽 / 演目 Lv 差值；正 = 增加，负 = 排练成功清槽）
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ResourcePreview {
+    /// 各演目槽增量（索引 = 演目 / 训练位下标）
+    pub gauge_delta: Array5,
+    /// 各演目 Lv 增量
+    pub level_delta: Array5,
+}
+
 /// 剧本资源快照（给前端的纯数据 View）
 ///
 /// 形态 A 五条纪律（见引擎仓 `docs/scenario/contracts.md`）：**单一取数口** / 只放引擎不知道的字段 /

@@ -31,6 +31,9 @@ const AXIS_NAMES: [&str; 5] = ["速", "耐", "力", "根", "智"];
 /// 演目名（官方中文 text_data_dict 462:1–5；缺静态数据时兜底）
 const ACT_NAMES: [&str; 5] = ["流镝马", "神旗争夺战", "纳舞", "大曳神舆", "飞悬"];
 
+/// 演目短名（2 字；表格 / 动作 / 槽后缀等紧凑位置用）
+const ACT_SHORT_NAMES: [&str; 5] = ["流镝", "神旗", "纳舞", "大曳", "飞悬"];
+
 /// 教诲短名兜底（官方中文 463 组去掉「教诲」后缀；缺静态数据时用）
 const ADVICE_FALLBACK: [(i32, &str); 10] = [
     (101, "牵绊"),
@@ -53,6 +56,8 @@ const ANSI_WHITE: &str = "37";
 const ANSI_BRIGHT_GREEN: &str = "92";
 /// ANSI 前景色：支援卡 / 资源数值
 const ANSI_BRIGHT_CYAN: &str = "96";
+/// ANSI 前景色：事件名
+const ANSI_BRIGHT_BLUE: &str = "94";
 /// ANSI 前景色：Hint 叹号 / 提醒
 const ANSI_BRIGHT_YELLOW: &str = "93";
 /// ANSI 前景色：NPC / 无数据
@@ -91,6 +96,15 @@ fn text_name(group: &str, key: &str) -> Option<String> {
 fn act_name(act: usize) -> String {
     text_name("462", &(act + 1).to_string())
         .unwrap_or_else(|| ACT_NAMES.get(act).copied().unwrap_or("演目").to_string())
+}
+
+/// 演目短名（2 字；紧凑位置用）
+fn act_short(act: usize) -> String {
+    ACT_SHORT_NAMES
+        .get(act)
+        .copied()
+        .unwrap_or("演目")
+        .to_string()
 }
 
 /// 教诲兜底短名（官方文本缺失时使用）
@@ -344,6 +358,96 @@ fn stage_name(stage: u64) -> &'static str {
     }
 }
 
+/// 交互终端（stdin / stdout 都是 TTY）
+fn interactive() -> bool {
+    io::stdin().is_terminal() && io::stdout().is_terminal()
+}
+
+/// 动作的资源侧后缀（演目槽增减 / 排练清槽）；无资源变化时为空
+fn gauge_suffix(game: &MatsuriGame, action: &Action, color: bool) -> String {
+    let preview = game.preview_action_resources(action);
+    let mut parts: Vec<String> = Vec::new();
+    for act in 0..5 {
+        let delta = preview.gauge_delta[act];
+        if delta > 0 {
+            parts.push(paint(
+                &format!("{}{:+}", act_short(act), delta),
+                Some(ANSI_BRIGHT_GREEN),
+                color,
+            ));
+        } else if delta < 0 {
+            parts.push(paint(
+                &format!("{}清空", act_short(act)),
+                Some(ANSI_BRIGHT_YELLOW),
+                color,
+            ));
+        }
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("  槽 {}", parts.join(" "))
+    }
+}
+
+/// 开局育成配置（育成马娘 / 卡组 / 继承配置）；manual 档跑局前由宿主打印一次
+pub fn newgame_config(game: &MatsuriGame) -> String {
+    let color = term::use_color(false);
+    let uma = game.uma();
+    let uma_name = uma
+        .get_data()
+        .map_or_else(|_| format!("#{}", uma.uma_id), |row| row.name.clone());
+    let deck: Vec<String> = game
+        .deck()
+        .iter()
+        .map(|card| {
+            let rarity = match card.data.rarity {
+                3 => "SSR",
+                2 => "SR",
+                _ => "R",
+            };
+            format!("{}◆{}({rarity})", card.data.card_name, card.rank)
+        })
+        .collect();
+    let inherit = &game.base.inherit;
+    let blue: Vec<String> = (0..5)
+        .map(|axis| format!("{}{}", AXIS_NAMES[axis], inherit.blue_count[axis]))
+        .collect();
+    let extra: Vec<String> = (0..5)
+        .map(|axis| format!("{}{}", AXIS_NAMES[axis], inherit.extra_count[axis]))
+        .chain(std::iter::once(format!("PT{}", inherit.extra_count[5])))
+        .collect();
+    let initial = inherit.inherit_newgame();
+    let initial_text: Vec<String> = (0..5)
+        .map(|axis| format!("{}{:+}", AXIS_NAMES[axis], initial[axis]))
+        .collect();
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "════════════════════════════════════════════════════════════════"
+    );
+    let _ = writeln!(
+        out,
+        "{}",
+        paint("【育成配置】", Some(ANSI_BRIGHT_CYAN), color)
+    );
+    let _ = writeln!(
+        out,
+        "  育成马娘：{}（#{}）",
+        paint(&uma_name, Some(ANSI_BRIGHT_CYAN), color),
+        uma.uma_id
+    );
+    let _ = writeln!(out, "  卡组（{} 张）：{}", deck.len(), deck.join("  "));
+    let _ = writeln!(
+        out,
+        "  继承：蓝因子 {} ｜ 剧本因子 {}",
+        blue.join(" "),
+        extra.join(" ")
+    );
+    let _ = writeln!(out, "        开局继承：{}", initial_text.join(" "));
+    out
+}
+
 /// 局面数值快照（算「上一步后变化」）
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Snapshot {
@@ -352,6 +456,7 @@ struct Snapshot {
     pt: i32,
     vital: i32,
     motivation: i32,
+    act_level: [i32; 5],
 }
 
 impl Snapshot {
@@ -363,6 +468,7 @@ impl Snapshot {
             pt: uma.skill_pt,
             vital: uma.vital,
             motivation: uma.motivation,
+            act_level: game.view().act_level,
         }
     }
 }
@@ -373,6 +479,10 @@ pub struct ManualTrainer {
     last: Cell<Option<Snapshot>>,
     /// 已回显到的事件序号
     last_event_seq: Cell<u64>,
+    /// 上一个动作面板所在的教诲窗口回合计（下一次面板列分配结果）
+    last_advice_window: Cell<Option<i32>>,
+    /// 上次面板的教诲分配状态 (slots, fused)；用于检测首次授予 / 転成
+    last_advice: Cell<Option<([i32; 5], [i32; 5])>>,
 }
 
 impl ManualTrainer {
@@ -381,6 +491,8 @@ impl ManualTrainer {
         Self {
             last: Cell::new(None),
             last_event_seq: Cell::new(0),
+            last_advice_window: Cell::new(None),
+            last_advice: Cell::new(None),
         }
     }
 
@@ -540,6 +652,25 @@ impl ManualTrainer {
                 axes.join(" ")
             }
         );
+        // 演目等级变化（排练成功 / 友人出行 / 合宿结算等）
+        let levels: Vec<String> = (0..5)
+            .filter(|act| now.act_level[*act] != last.act_level[*act])
+            .map(|act| {
+                paint(
+                    &format!(
+                        "{} {}→{}",
+                        act_short(act),
+                        last.act_level[act],
+                        now.act_level[act]
+                    ),
+                    delta_tone(now.act_level[act] - last.act_level[act]),
+                    color,
+                )
+            })
+            .collect();
+        if !levels.is_empty() {
+            let _ = writeln!(out, "【演目Lv】{}", levels.join(" "));
+        }
     }
 
     /// 五维 / 体力 / 状态
@@ -626,6 +757,68 @@ impl ManualTrainer {
         }
     }
 
+    /// 教诲结果：首次授予 / 転成 / 改派窗口后的下一次面板列出分配结果（其后紧跟剧本资源刷新）
+    fn write_advice_window(&self, game: &MatsuriGame, out: &mut String, color: bool) {
+        let view = game.view();
+        let state = (view.advice_slots, view.advice_fused);
+        let prev_state = self.last_advice.get();
+        let prev_window = self.last_advice_window.get();
+        let settled = prev_window.is_some_and(|turn| game.turn() == turn + 1);
+        let changed = prev_state.is_some_and(|prev| prev != state);
+        // 变化优先归到上一个窗口；T2 的首次授予发生在 Begin（无上窗口）→ 归到本回合
+        let window = if changed {
+            if settled {
+                prev_window
+            } else {
+                Some(game.turn())
+            }
+        } else if settled {
+            prev_window
+        } else {
+            None
+        };
+        if let Some(turn) = window {
+            let kind = match turn {
+                2 => "首次传授",
+                23 | 47 => "転成",
+                _ => "改派·保持",
+            };
+            let parts: Vec<String> = (0..5)
+                .map(|act| {
+                    let label = act_name(act);
+                    let base = view.advice_slots[act];
+                    if base == 0 {
+                        return format!("{label}=—");
+                    }
+                    let mut cell = format!(
+                        "{label}={} {}",
+                        base,
+                        paint(&advice_name(base), Some(ANSI_BRIGHT_CYAN), color)
+                    );
+                    let fused = view.advice_fused[act];
+                    if fused != 0 {
+                        cell.push_str(&format!(
+                            "→{} {}",
+                            fused,
+                            paint(&advice_name(fused), Some(ANSI_BRIGHT_GREEN), color)
+                        ));
+                    }
+                    cell
+                })
+                .collect();
+            let _ = writeln!(
+                out,
+                "【教诲分配】T{turn} 窗口（{kind}）结果：{}",
+                parts.join(" ｜ ")
+            );
+        }
+        self.last_advice.set(Some(state));
+        // 本回合是窗口 → 记下来，下一次面板列结果；本回合已列过结果则不重复记
+        let store_window = game.view().advice_window && window.is_none();
+        self.last_advice_window
+            .set(store_window.then_some(game.turn()));
+    }
+
     /// 剧本资源：演目表（槽 / Lv / 教诲→転成 / 担当人物）+ 発表会·永久 buff·资源状态
     fn write_resources(&self, game: &MatsuriGame, out: &mut String, color: bool) {
         let view = game.view();
@@ -644,7 +837,7 @@ impl ManualTrainer {
             let train = game.data.acts.get(act).map_or(act, |act| act.train);
             let name = format!(
                 "{}({})",
-                act_name(act),
+                act_short(act),
                 AXIS_NAMES.get(train).copied().unwrap_or("?")
             );
             let slot = gauge_text(view.act_gauge[act], rules.act_gauge_max, color);
@@ -747,7 +940,7 @@ impl ManualTrainer {
                 let act = act_of_train(game, train);
                 if practice[act] {
                     paint(
-                        &format!("{} Lv{}", act_name(act), view.act_level[act]),
+                        &format!("{} Lv{}", act_short(act), view.act_level[act]),
                         Some(ANSI_BRIGHT_YELLOW),
                         color,
                     )
@@ -812,8 +1005,6 @@ impl ManualTrainer {
                 game.camp.counted,
                 total,
             );
-        } else {
-            let _ = writeln!(out, "【合宿】非合宿回合");
         }
         let out_used = game.friend.out_used.iter().filter(|used| **used).count();
         let next_step = game
@@ -919,14 +1110,14 @@ impl ManualTrainer {
                 "{}训练",
                 AXIS_NAMES.get(usize::from(*train)).copied().unwrap_or("?")
             ),
-            Action::ActTrain(act) => format!("{}稽古", act_name(usize::from(*act))),
+            Action::ActTrain(act) => format!("{}稽古", act_short(usize::from(*act))),
             other => other.to_string(),
         }
     }
 
-    /// 单个动作的说明（训练带成功收益预览与失败率；失败率非 0 亮黄）
+    /// 单个动作的说明（训练带成功收益预览与失败率；末尾附剧本资源增量）
     fn describe_action(&self, game: &MatsuriGame, action: &Action, color: bool) -> String {
-        match action {
+        let body = match action {
             Action::Train(train) => {
                 let train = usize::from(*train);
                 match game.preview_training(train, false) {
@@ -994,7 +1185,8 @@ impl ManualTrainer {
                 format!("友人出行第 {step} 段{name}（最低演目槽 Lv+1 + 段事件）")
             }
             Action::Clinic => "治病（体力 +20；清空生病位与不擅长训练）".to_string(),
-        }
+        };
+        format!("{body}{}", gauge_suffix(game, action, color))
     }
 
     /// 打印局面面板 + 动作候选
@@ -1018,6 +1210,7 @@ impl ManualTrainer {
         self.write_new_events(game, &mut out);
         self.write_delta(game, &mut out, color);
         self.write_uma(game, &mut out, color);
+        self.write_advice_window(game, &mut out, color);
         self.write_resources(game, &mut out, color);
         self.write_training(game, &mut out, color);
         self.write_context(game, &mut out, color);
@@ -1038,7 +1231,7 @@ impl ManualTrainer {
 
     /// 选择动作：交互终端用 Inquire 列表；非 TTY（测试 / 管道）退回编号输入
     fn choose_action(&self, actions: &[Action]) -> Result<usize> {
-        if !(io::stdin().is_terminal() && io::stdout().is_terminal()) {
+        if !interactive() {
             return Self::read_index("> 选择动作编号: ", actions.len());
         }
         let options: Vec<String> = actions
@@ -1052,58 +1245,90 @@ impl ManualTrainer {
         Ok(answer.index)
     }
 
-    /// 打印事件选项组（每组 = 一个可选分支，组内是该分支的可能结果）
-    fn show_choices(event: Option<&EventData>, choices: &[Vec<EventChoice>]) -> String {
-        let mut out = String::new();
+    /// 事件选项头（事件名用亮蓝色突出）
+    fn choice_header(event: Option<&EventData>) -> String {
+        let color = term::use_color(false);
         match event {
-            Some(event) => {
-                let _ = writeln!(
-                    out,
-                    "──────── 事件 #{} {}  [{}] ────────",
-                    event.id,
-                    event.name,
-                    if event.player_select {
-                        "需选择"
-                    } else {
-                        "自动"
-                    }
-                );
-            }
-            None => out.push_str("──────── 事件选项 ────────\n"),
+            Some(event) => format!(
+                "──────── 事件 #{} {}  [{}] ────────",
+                event.id,
+                paint(&event.name, Some(ANSI_BRIGHT_BLUE), color),
+                if event.player_select {
+                    "需选择"
+                } else {
+                    "自动"
+                }
+            ),
+            None => "──────── 事件选项 ────────".to_string(),
         }
-        for (idx, group) in choices.iter().enumerate() {
-            let _ = write!(out, "  [{idx}]");
-            if group.is_empty() {
-                out.push_str(" （空组）");
-            }
-            for choice in group {
-                let _ = write!(
-                    out,
-                    "  {}%",
-                    if choice.prob == 0 { 100 } else { choice.prob }
-                );
+    }
+
+    /// 单组选项的标签（组内各结果为一行，按当前口径拼成一行）
+    fn choice_group_label(group: &[EventChoice]) -> String {
+        if group.is_empty() {
+            return "（空组）".to_string();
+        }
+        let mut out = String::new();
+        for choice in group {
+            let _ = write!(
+                out,
+                "  {}%{}",
+                if choice.prob == 0 { 100 } else { choice.prob },
                 if choice.result != 0 {
-                    let _ = write!(out, "[{}]", choice_result_name(choice.result));
+                    format!("[{}]", choice_result_name(choice.result))
+                } else {
+                    String::new()
                 }
-                let value = choice.value.to_string();
-                if !value.is_empty() {
-                    let _ = write!(out, " {value}");
-                }
-                if let Some(extra) = &choice.extra_status {
-                    let _ = write!(out, " 额外[{extra}]");
-                }
-                if let Some(flags) = &choice.add_flags
-                    && !flags.to_string().is_empty()
-                {
-                    let _ = write!(out, " 状态+[{}]", flags);
-                }
-                if let Some(flags) = &choice.remove_flags
-                    && !flags.to_string().is_empty()
-                {
-                    let _ = write!(out, " 状态-[{}]", flags);
-                }
+            );
+            let value = choice.value.to_string();
+            if !value.is_empty() {
+                let _ = write!(out, " {value}");
             }
-            out.push('\n');
+            if let Some(extra) = &choice.extra_status {
+                let _ = write!(out, " 额外[{extra}]");
+            }
+            if let Some(flags) = &choice.add_flags
+                && !flags.to_string().is_empty()
+            {
+                let _ = write!(out, " 状态+[{}]", flags);
+            }
+            if let Some(flags) = &choice.remove_flags
+                && !flags.to_string().is_empty()
+            {
+                let _ = write!(out, " 状态-[{}]", flags);
+            }
+        }
+        out.trim_start().to_string()
+    }
+
+    /// 事件选项：交互终端用 Inquire 列表；非 TTY（测试 / 管道）退回编号输入
+    fn choose_choice(
+        event: Option<&EventData>,
+        choices: &[Vec<EventChoice>],
+        prompt: &str,
+    ) -> Result<usize> {
+        if !interactive() {
+            println!("{}", Self::show_choices(event, choices));
+            return Self::read_index(prompt, choices.len());
+        }
+        println!("{}", Self::choice_header(event));
+        let options: Vec<String> = choices
+            .iter()
+            .enumerate()
+            .map(|(index, group)| format!("[{index}] {}", Self::choice_group_label(group)))
+            .collect();
+        let answer = Select::new("选择事件选项（↑/↓ 移动 · Enter 确认 · Esc 退出）", options)
+            .raw_prompt()
+            .map_err(|err| anyhow!("手动选择被中止: {err}"))?;
+        Ok(answer.index)
+    }
+
+    /// 打印事件选项组（非交互终端 / 测试用）
+    fn show_choices(event: Option<&EventData>, choices: &[Vec<EventChoice>]) -> String {
+        let mut out = Self::choice_header(event);
+        out.push('\n');
+        for (idx, group) in choices.iter().enumerate() {
+            let _ = writeln!(out, "  [{idx}]  {}", Self::choice_group_label(group));
         }
         out
     }
@@ -1132,8 +1357,7 @@ impl Trainer<MatsuriGame> for ManualTrainer {
         choices: &[Vec<EventChoice>],
         _rng: &mut StdRng,
     ) -> Result<usize> {
-        println!("{}", Self::show_choices(None, choices));
-        Self::read_index("> 选择事件选项编号: ", choices.len())
+        Self::choose_choice(None, choices, "> 选择事件选项编号: ")
     }
 
     fn select_event_choice(
@@ -1143,8 +1367,7 @@ impl Trainer<MatsuriGame> for ManualTrainer {
         choices: &[Vec<EventChoice>],
         _rng: &mut StdRng,
     ) -> Result<usize> {
-        println!("{}", Self::show_choices(Some(event), choices));
-        Self::read_index("> 选择事件选项编号: ", choices.len())
+        Self::choose_choice(Some(event), choices, "> 选择事件选项编号: ")
     }
 }
 

@@ -139,12 +139,8 @@ impl MatsuriGame {
             .card_id
             .ok_or_else(|| anyhow!("未带友人卡，不能友人出行"))?;
         let add_level = self
-            .data
-            .outing
-            .iter()
-            .find(|row| row.card_id == card_id && row.story_step == step as i32 + 1)
-            .ok_or_else(|| anyhow!("出行资产缺行：card_id={card_id}, story_step={}", step + 1))?
-            .add_level;
+            .outing_add_level(card_id, step)
+            .ok_or_else(|| anyhow!("出行资产缺行：card_id={card_id}, story_step={}", step + 1))?;
         self.base.friend.out_used[step] = true;
         self.add_lowest_act_level(add_level);
         self.gain_lowest_act_gauge(self.data.rules.act_gauge_gain.other);
@@ -158,5 +154,21 @@ impl MatsuriGame {
             .ok_or_else(|| anyhow!("友人出行段事件缺行: friend_events[{key}]"))?;
         self.unresolved_events.push(event);
         Ok(())
+    }
+
+    /// 当前友人出行段的最低演目 Lv 增加量（无友人 / 5 段用完 / 资产缺行 → `None`）
+    pub(crate) fn friend_outing_add_level(&self) -> Option<i32> {
+        let step = self.base.friend.out_used.iter().position(|used| !used)?;
+        let card_id = self.base.friend.card_id?;
+        self.outing_add_level(card_id, step)
+    }
+
+    /// 指定友人卡与段位的最低演目 Lv 增加量（`outing` 资产查表）
+    fn outing_add_level(&self, card_id: u32, step: usize) -> Option<i32> {
+        self.data
+            .outing
+            .iter()
+            .find(|row| row.card_id == card_id && row.story_step == step as i32 + 1)
+            .map(|row| row.add_level)
     }
 }

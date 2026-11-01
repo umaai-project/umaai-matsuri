@@ -1472,10 +1472,16 @@ fn gauge_gains_from_training_participants() -> Result<()> {
 fn s5_mechanism_chain_over_full_run() -> Result<()> {
     let repo = Repo::load()?;
     let obs = sweep(repo.game(repo.cfg.sim.uma)?, |turn, game| {
-        if turn == 3 {
+        if turn == 1 {
+            assert!(
+                game.view().advice_slots.iter().all(|slot| *slot == 0),
+                "T2 之前不应获得教诲"
+            );
+        }
+        if turn == 2 {
             assert!(
                 game.view().advice_slots.iter().all(|slot| *slot != 0),
-                "turn 2 结束已获得教诲"
+                "T2 Begin（NPC / 友人加入后）立即授予 5 个基础教诲，效果对 T2 训练生效"
             );
         }
         if turn == 24 {

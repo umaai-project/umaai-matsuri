@@ -134,15 +134,20 @@ impl MatsuriPerson {
         matches!(self.origin, PersonOrigin::Card | PersonOrigin::Friend)
     }
 
-    /// 人头短名（终端展示用；编成外神驹显示角色名）
+    /// 人头短名（终端展示用；编成外神驹显示 `[NPC]` + 角色名前两字）
     #[must_use]
     pub fn short_name(&self) -> String {
         match self.origin {
             PersonOrigin::Guest => {
                 let name = Data::get()
-                    .map(|data| data.get_chara_name(self.base.chara_id).to_string())
+                    .map(|data| {
+                        data.get_chara_name(self.base.chara_id)
+                            .chars()
+                            .take(2)
+                            .collect::<String>()
+                    })
                     .unwrap_or_default();
-                format!("[嘉宾]{name}")
+                format!("[NPC]{name}")
             }
             _ => self.base.short_name(),
         }

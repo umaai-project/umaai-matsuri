@@ -81,6 +81,8 @@ fn run() -> Result<()> {
             runner.run_game(game, &RandomTrainer, None)?;
         }
         "manual" => {
+            // 跑局前打印一次育成配置（育成马娘 / 卡组 / 继承配置）
+            print!("{}", manual::newgame_config(&game));
             runner.run_game(game, &manual::ManualTrainer::new(), None)?;
         }
         other => {

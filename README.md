@@ -72,22 +72,26 @@
   与继承特殊结算。四档绿（**95 内联 + 15 L2 + 27 机制 = 137 测例**）；整局冒烟（样例训练员）
   **44946 分 / UC6、PT 7496、390 阶段**（S6 事件收益接入后的预期位移；S9 前不建基线）。
   策略训练员 / 搜索（S7/M2）、技能灵感与粉丝不建模（TBD）留后续。
-- **S8 手动核对面板（2026-11-01，先行落地；S8 其余待做）**：`manual` 档从「摘要 + 编号输入」升级为
-  机制核对面板——每次动作决策前打印回合结构 / 五维（含引擎上限）/ 体力干劲 / 状态 / **剧本资源表**
-  （演目槽 · Lv · 教诲→転成 · 担当人物；発表会结果与永久 buff / 助力支撑 / 追加稽古着色）/ **彩色训练
-  明细表**（每训练一列，列头 = 训练名 Lv，排练时列头 = 演目名 Lv；格内列出该位置全部人物：短名、未满 100
-  的羁绊、Hint 亮黄叹号；人物按类型着色：友人绿 / 彩圈卡亮绿 / 普通支援卡白 / NPC 灰）/ 合宿计数 /
-  友人链（状态·出行段·下一段事件）/ 目标赛与自选赛窗口 / 动作候选（训练成功收益预览 + 失败率，
-  **Inquire 交互选择，非 TTY 退回编号输入**）；事件选择打印选项组分支（概率 / 结果档 / 到账数值 /
-  ExtraStatus / 状态增删）；每次提示附「自上次以来新结算事件」（含事件 id / 名称 / 选项 / 实际到账）与
-  「上一步后数值变化」；状态行仅显示已有状态。颜色与表格复用 `umaai-cli` 呈现原语（非 TTY /
-  `NO_COLOR` 自动退化纯文本）。核心侧新增 `EventRecord` 事件记录（容量 32，
-  `MatsuriView.recent_events` 同步）与 `preview_training`（克隆局面算预览，不改动原局面）；
+- **S8 手动核对面板（2026-11-01，先行落地 + 四轮显示调整；S8 其余待做）**：`manual` 档从「摘要 + 编号输入」
+  升级为机制核对面板——**开局打印育成配置**（育成马娘 / 卡组含突破与稀有度 / 继承：蓝因子 + 剧本因子 +
+  开局继承）；每次动作决策前打印回合结构 / 五维（含引擎上限）/ 体力干劲 / 状态 / **剧本资源表**（演目
+  2 字短名 · 槽 x/y · Lv · 教诲→転成 · 担当人物；発表会结果与永久 buff / 助力支撑 / 追加稽古着色）/
+  **彩色训练明细表**（每训练一列，列头 = 训练名 Lv，排练时列头 = 演目名 Lv；格内列出该位置全部人物：
+  短名、未满 100 的羁绊、Hint 亮黄叹号；人物按类型着色：友人绿 / 彩圈卡亮绿 / 普通支援卡白 / NPC 灰）/
+  合宿（仅合宿回合显示计数）/ 友人链（状态·出行段·下一段事件）/ 目标赛与自选赛窗口 / 动作候选（训练成功
+  收益预览 + 失败率 + **演目槽增量**，**Inquire 交互选择，非 TTY 退回编号输入**）；事件选择用 **Inquire**，
+  事件名亮蓝色，选项组列概率 / 结果档 / 到账数值 / ExtraStatus / 状态增删；每次提示附「自上次以来新结算
+  事件」（含 id / 名称 / 选项 / 实际到账）、「上一步后数值变化」（含 **演目 Lv 上升**行）与**教诲分配结果**
+  （首次传授 / 転成 / 改派·保持；结果行后紧跟刷新后的剧本资源表）；状态行仅显示已有状态。颜色与表格复用
+  `umaai-cli` 呈现原语（非 TTY / `NO_COLOR` 自动退化纯文本）。核心侧新增 `EventRecord` 事件记录（容量 32，
+  `MatsuriView.recent_events` 同步）、`preview_training` 与 `preview_action_resources` / `ResourcePreview`
+  （克隆局面只读预览，不耗随机流、不改局面）；`[嘉宾]` 统一改 `[NPC]` 且用角色名前两字。
   **剧本机制自 turn 2 起：0–1 回合无担当分配，训练 / 休息 / 出行 / 事件不获取演目槽**
-  （`MatsuriGame::scenario_started` 闸门），面板在 0–1 回合标「未分配 / 机制自 T2 开始」。
-  手动档引擎 `PrintFrontend` 切 `Quiet`，面板为唯一信息源；新增 CLI 冒烟（管道输入跑满整局 + 非 TTY
-  无 ANSI 断言）。四档绿（**98 内联 + 15 L2 + 27 机制 + 5 CLI 内联 + 1 CLI 冒烟 = 146 测例**）；
-  样例训练员冒烟 **40853 分 / UC、PT 6978**（T2 闸门后早期槽位移；S9 前不建基线）。
+  （`MatsuriGame::scenario_started` 闸门），面板在 0–1 回合标「未分配 / 机制自 T2 开始」；**教诲首次授予
+  以 turn 2 Begin（NPC / 友人加入后立即）为准，效果从 T2 的分布 / 训练起生效**（End 的窗口 0 不再重复授予）。
+  手动档引擎 `PrintFrontend` 切 `Quiet`，面板为唯一信息源；CLI 冒烟（管道输入跑满整局 + 非 TTY 无 ANSI +
+  教诲 / 资源 / 短名 / 无合宿误报断言）。四档绿（**100 内联 + 15 L2 + 27 机制 + 5 CLI 内联 + 1 CLI 冒烟
+  = 148 测例**）；样例训练员冒烟 **40899 分 / UC、PT 6982**（T2 闸门 + T2 教诲生效后的位移；S9 前不建基线）。
   S7 训练员 / S8 其余（View 字段补全 / 在线外壳 / 选择器）仍待做。
 
 ## 结构
@@ -95,7 +99,7 @@
 | crate / 文件 | 职责 |
 |---|---|
 | `crates/matsuri-core/src/lib.rs` | 模块声明 + 对外重导出 + `MAX_TURN` |
-| `crates/matsuri-core/src/game/mod.rs` | 局面 `MatsuriGame` + `ActLedger` / `AdviceLedger` 账本 + 演目 gauge / Lv / 发布日期 buff 派生 + 事件记录 `EventRecord` / 训练预览 `TrainingPreview` + `MatsuriView` + `build_game`（含友人卡门禁） |
+| `crates/matsuri-core/src/game/mod.rs` | 局面 `MatsuriGame` + `ActLedger` / `AdviceLedger` 账本 + 演目 gauge / Lv / 发布日期 buff 派生 + 事件记录 `EventRecord` / 训练预览 `TrainingPreview` / 动作资源预览 `ResourcePreview` + `MatsuriView` + `build_game`（含友人卡门禁） |
 | `crates/matsuri-core/src/game/stage.rs` | 阶段机 `Stage`（含 `StageId` 投影）+ 回合结构 `TurnPlan` + 合宿进度 `CampState` |
 | `crates/matsuri-core/src/game/person.rs` | 剧本人头 `MatsuriPerson` + 来源 `PersonOrigin`（与引擎 `PersonType` 分工见文档） |
 | `crates/matsuri-core/src/game/roster.rs` | 建局人头名单 + 担当分配（link 钉位 / 外派链 / NPC 余额） |
@@ -111,7 +115,7 @@
 | `crates/matsuri-core/src/config.rs` | 剧本配置段（融合 / 転成预设 + 覆盖层） |
 | `crates/matsuri-core/src/trainer.rs` | 样例训练员 `MatsuriTrainer` |
 | `crates/matsuri-cli/src/main.rs` | 终端前端：bin `matsuri`（跑局；`matsuri` / `random` / `manual` 训练员选择） |
-| `crates/matsuri-cli/src/manual.rs` | 手动核对面板（S8）：彩色训练明细表（人物着色 / Hint 叹号 / 羁绊）+ 剧本资源与教诲（advice）分配表 + 合宿·友人链·赛程 + Inquire 动作选择 / 事件选项 |
+| `crates/matsuri-cli/src/manual.rs` | 手动核对面板（S8）：育成配置 + 彩色训练明细表（人物着色 / Hint 叹号 / 羁绊）+ 剧本资源与教诲分配结果 + 合宿（仅合宿回合）·友人链·赛程 + 动作槽增量预览 + Inquire 动作 / 事件选择 |
 | `crates/matsuri-sim` | 模拟器与基线裁判（骨架） |
 | `crates/matsuri-ai` | 在线决策核心（骨架） |
 | `crates/matsuri-tools` | 外围工具（骨架） |

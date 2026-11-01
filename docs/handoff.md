@@ -1,18 +1,19 @@
 # 交接提示词
 
 > 用法：上下文过长时，新窗口只读本文件 + 下列关键文件即可续接；只写「代码 / git 状态里恢复不了」的信息。
-> **当前状态：S6 事件管线 + S8 手动核对面板（先行 + 两轮显示调整 + 剧本机制 T2 闸门）已实现并提交**
-> （2026-11-01 提交；**未 push**）。
+> **当前状态：S6 事件管线 + S8 手动核对面板（先行 + 四轮显示调整 + 剧本机制 T2 闸门 + 教诲 T2 Begin 生效）
+> 已实现并提交**（2026-11-01 提交；**未 push**）。
 > 下一步 **S7 训练员 / 搜索**（S8 其余：View 字段补全 / 在线外壳 / 选择器）。
 > 新窗口可直接按 §四 开工，不用再等确认；完成后向用户汇报 diff，**不自动 commit / push**。
 
 ## 一、git / 环境现状
 
-- **本仓（umaai-matsuri）**：S8 面板显示升级 + 剧本机制 T2 闸门已提交（2026-11-01，
-  `feat(core,cli): S8 面板显示升级 + 剧本机制 T2 闸门（Inquire 动作选择）`）；
-  此前一个提交 = `8f4687e feat(core,cli,data): S6 事件管线 + S8 手动核对面板（先行）`
-  （再前 = `00079f3 feat(core,cli,data): S4 动作与结算 + S5 机制闭环`，S3 = `9995329`）。
-- 依赖：`matsuri-cli` 新增 `inquire = 0.9.4`（仅终端动作选择；非 TTY 退回编号输入）。
+- **本仓（umaai-matsuri）**：S8 面板显示细化 + 教诲 T2 Begin 生效已提交（2026-11-01，
+  `feat(core,cli): S8 面板显示细化 + 教诲 T2 开始授予（对 T2 训练生效）`）；
+  此前提交链 = `ce6789b feat(core,cli): S8 面板显示升级 + 剧本机制 T2 闸门（Inquire 动作选择）` →
+  `8f4687e feat(core,cli,data): S6 事件管线 + S8 手动核对面板（先行）` →
+  `00079f3 feat(core,cli,data): S4 动作与结算 + S5 机制闭环`（S3 = `9995329`）。
+- 依赖：`matsuri-cli` 新增 `inquire = 0.9.4`（终端动作 / 事件选项选择；非 TTY 退回编号输入）。
 - **引擎仓 `../umaai_next`**：`HEAD = a8859e0`，**未改**（S6 未碰引擎，`git diff` 为空）。
 - 数据：外部 `../../UmaAI/master.mdb`（md5 `ef481f95…`，不入仓）。**S6 脚本 / 数据均未新增 mdb 表**；
   事件数据来自 `master.mdb` 的 `single_mode_story_data`（id / 标题 / 卡归属）+ memo 数值，已入仓。
@@ -67,19 +68,28 @@
   `MatsuriView.recent_events` 同步）+ `TrainingPreview` + `MatsuriGame::preview_training`（克隆局面、
   临时切稽古上下文；不改原局面、不耗随机流）。`traits.rs::apply_event` 结算后写记录。
 - `main.rs`：manual 档 `PrintFrontend` 切 `Verbosity::Quiet`（面板唯一信息源）。
-- **显示升级（同日两轮）**：颜色 / 表格复用 `umaai-cli` 呈现原语（`Grid` / `term` 三重门禁：非 TTY /
+- **显示升级（同日四轮）**：颜色 / 表格复用 `umaai-cli` 呈现原语（`Grid` / `term` 三重门禁：非 TTY /
   `NO_COLOR` 退化纯文本）；教诲 / 演目名读 `data/text_data_dict.json` 462 / 463 官方中文（缺数据兜底）；
-  **动作选择改 Inquire 列表**（非 TTY 退回编号输入）；**演目槽改数字 x/y**；训练表 **普通支援卡白色**、
-  彩圈卡亮绿、友人绿、NPC 灰；**状态行仅显示已有状态**（疲劳回复等缺席项不显示）；0–1 回合标
-  「剧本机制自 T2 开始 / 担当未分配」。
+  **动作 / 事件选项改 Inquire 列表**（非 TTY 退回编号输入；事件名亮蓝色）；**演目槽改数字 x/y**；训练表
+  **普通支援卡白色**、彩圈卡亮绿、友人绿、NPC 灰，`[嘉宾]` 统一改 `[NPC]` + 角色名前两字；**状态行仅显示
+  已有状态**（疲劳回复等缺席项不显示）；0–1 回合标「剧本机制自 T2 开始 / 担当未分配」；**开局打印育成配置**
+  （马娘 / 卡组 / 继承）；动作预览附 **演目槽增量**（核心 `preview_action_resources` / `ResourcePreview`，
+  克隆局面只读、不耗随机流）；「变化」下增 **演目 Lv 上升**行；演目名在紧凑位置改 **2 字短名**（流镝 /
+  神旗 / 纳舞 / 大曳 / 飞悬）；**教诲窗口后列分配结果**（首次传授 / 転成 / 改派·保持）并紧跟刷新后的剧本
+  资源表；非合宿回合不再显示合宿状态。
 - **剧本机制自 turn 2 起**（2026-11-01 用户核对）：0–1 回合没有担当分配，训练 / 休息 / 出行 / 事件均不
   获取演目槽；`MatsuriGame::scenario_started`（turn ≥ `SCENARIO_START_TURN` = 2）在 `gain_act_gauge` /
   `gain_lowest_act_gauge` 入口拦截；担当分配数据仍为建局一次性算定。
-- 测试：**98 核心内联**（+`scenario_resources_start_at_turn2` 等）+ 15 L2 + 27 机制 +
+- **教诲首次授予以 turn 2 Begin 为准**（2026-11-01 核对后修正）：「NPC / 友人 T2 开始加入后立即分配」——
+  在 `stage.rs` Begin（事件链之后、分布 / 训练之前）调 `acquire_advice`，**效果从 T2 分布 / 训练起生效**；
+  `settle.rs` 的 End 窗口 0 改为空操作（其余窗口 11 / 23 / 35 / 47 / 59 仍在 End 剧本结算后处理）。
+- 测试：**100 核心内联**（+`scenario_resources_start_at_turn2` / `preview_action_resources_matches_actual` /
+  `advice_window_zero_does_not_acquire_at_end` 等）+ 15 L2 + 27 机制（T2 Begin 已授予 / T1 前为零）+
   **5 CLI 内联**（`manual.rs` 呈现件：上色开关 / 宽度补齐 / 槽数字 / 教诲兜底名 / 增减量色调）+
-  **1 CLI 冒烟**（`matsuri-cli/tests/manual_smoke.rs`：管道输入全 0 跑满整局、面板关键块、T2 闸门标记、
-  非 TTY 无 ANSI）= 146 测例。
-- 数值位移：样例训练员冒烟 **44946 → 40853 分 / UC、PT 7496 → 6978**（T2 闸门后早期槽位移；S9 前不建基线）。
+  **1 CLI 冒烟**（`matsuri-cli/tests/manual_smoke.rs`：管道输入全 0 跑满整局、面板关键块、T2 闸门 /
+  育成配置 / 教诲分配 / 短名 / [NPC] 标记、无非合宿误报、非 TTY 无 ANSI）= 148 测例。
+- 数值位移：样例训练员冒烟 **44946 → 40853 → 40899 分 / UC、PT 7496 → 6978 → 6982**（T2 闸门后早期槽位移
+  + 教诲 T2 Begin 生效；S9 前不建基线）。
 - **S8 其余未做**：View 字段补全（当前只补了 `recent_events`）、在线外壳（`matsuri-ai`）、训练员选择器完整化。
 
 ## 三、当前代码现状（S7 起点）
@@ -87,6 +97,8 @@
 - 阶段机不变：`Begin → Distribute → Train → AfterTrain → End`（`StageId` 0/3/1/4/2 只增不改）。
 - 剧本机制自 turn 2 起：`MatsuriGame::scenario_started`（`SCENARIO_START_TURN = 2`）；0–1 回合无担当分配、
   不获取演目槽（入槽函数入口拦截），担当数据仍建局一次性算定。
+- 教诲首次授予在 turn 2 `Begin`（NPC / 友人加入后立即；`stage.rs`）：5 个基础教诲 + 机械默认分配，效果对
+  T2 分布 / 训练生效；End 的窗口 0 不再授予（S7 的分配策略替换点仍是窗口 11/23/35/47/59）。
 - 事件链全部在 `game/event.rs` + `traits.rs::apply_event`；**事件决策点**（trainer 选选项）已有：
   追加稽古上/下、友人出行解锁上/下、外出第 3 段上/下、大胃王、抽签 / 新年 / 通用事件等。
   当前样例训练员 `MatsuriTrainer::select_choice` 恒返回 0（上档 / 首项）——**S7 需做事件选项策略**。
@@ -94,8 +106,9 @@
   `data/events.json` 为剧本自持事件根（好友人链 + 大胃王）。
 - 可复用接口：`assignment_candidates` / `apply_assignment`（教诲 120 排列）、`view()` 全量快照、
   `kensan_act()` / `roll_kensan`、`card_event_candidates()` 等。
-- 手动核对面板（S8 先行 + 显示升级）可用：`manual` 档（彩色训练明细表 / 剧本资源与教诲分配）；
-  事件记录 `MatsuriView.recent_events`、训练预览 `preview_training` 已进入核心 API。
+- 手动核对面板（S8 先行 + 四轮显示升级）可用：`manual` 档（育成配置 / 彩色训练明细表 / 剧本资源与教诲
+  分配结果 / 动作槽增量）；事件记录 `MatsuriView.recent_events`、训练预览 `preview_training`、动作资源预览
+  `preview_action_resources` / `ResourcePreview` 已进入核心 API。
 - **尚未接线**：教诲分配策略 / top-K（S7）；`FlatSearchGame` 适配（M2）；基线（S9）；
   马娘特殊事件记录（引擎改造后迁移 T65）；事件⑤（TBD）；技能系统 / 粉丝不建模。
 
@@ -120,8 +133,9 @@
 
 ## 五、S7+ 备忘与未决
 
-- **数值位移**：S5 → S6 冒烟 34368 → 44946（事件收益）；**T2 闸门后 40853 / UC、PT 6978**。S7 换训练员 / 策略后必须重录并在
-  `glossary.md` / `tests_overview.md` 记影响面；S9 一基线一 JSON。
+- **数值位移**：S5 → S6 冒烟 34368 → 44946（事件收益）；**T2 闸门 40853 / PT 6978 → 教诲 T2 Begin 生效后
+  40899 / UC、PT 6982**。S7 换训练员 / 策略后必须重录并在 `glossary.md` / `tests_overview.md` 记影响面；
+  S9 一基线一 JSON。
 - **待真机复核**（`stubs.md` 已登记）：变胖解除概率 20%、
   事件⑤（SSR 技能事件，未接）、事件抑制基线层（引擎 `no_event_turns`）、友人事件槽位映射、
   memo 友人事件值为「基础值」的推断、400015105 数值、通用事件数值（引擎基础局近似值）、

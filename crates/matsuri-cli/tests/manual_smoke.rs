@@ -32,13 +32,19 @@ fn manual_mode_runs_full_game_with_scripted_input() {
         "手动档应跑完整局；stderr:\n{stderr}"
     );
     for marker in [
+        "【育成配置】",
+        "卡组",
+        "继承",
         "【事件】",
         "【数值】",
+        "【教诲分配】",
         "【剧本资源】",
+        "流镝(速)",
         "剧本机制自 T2",
         "未分配",
         "【训练】",
         "教诲 → 転成",
+        "[NPC]",
         "【动作】",
         "【目标赛】",
         "评分",
@@ -49,6 +55,12 @@ fn manual_mode_runs_full_game_with_scripted_input() {
             stdout.len()
         );
     }
+    // 非合宿回合不再输出合宿状态行（只在合宿区显示）
+    assert!(
+        !stdout.contains("非合宿回合"),
+        "非合宿回合不应再输出合宿状态（stdout 长度 {}）",
+        stdout.len()
+    );
     // 管道（非 TTY）输出应自动关色：颜色只在实际终端生效
     assert!(
         !stdout.contains('\x1b'),

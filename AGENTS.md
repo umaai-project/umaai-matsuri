@@ -53,7 +53,7 @@
 | `crates/matsuri-sim` | 离线模拟：跑一局 / 批量跑局 / 基线裁判 / 测卡；只出 lib |
 | `crates/matsuri-ai` | 在线决策：帧段解析 / Session 接线 / 决策循环；只出 lib |
 | `crates/matsuri-cli` | 终端入口：bin `matsuri`（切 `matsuri` / `random` / `manual`） |
-| `crates/matsuri-cli/src/manual.rs` | 手动核对面板（人工核对机制）：彩色训练明细表 + 剧本资源/教诲（advice）分配 + Inquire 动作选择 / 事件选项 |
+| `crates/matsuri-cli/src/manual.rs` | 手动核对面板（人工核对机制）：育成配置 + 彩色训练明细表 + 剧本资源 / 教诲分配结果 + 动作槽增量预览 + Inquire 动作 / 事件选择 |
 | `crates/matsuri-tools` | 外围工具：测卡 / 复盘；单 bin 多子命令 |
 
 - **契约 trait impl 不可拆文件**：一个 trait 的 `impl` 必须整体落在同一文件。

@@ -261,6 +261,11 @@ impl MatsuriGame {
                 for event in &events {
                     self.run_event(event, trainer, decision, &mut streams.event)?;
                 }
+                // turn 2：NPC / 友人加入（本回合起可用）后立即授予 5 个基础教诲；
+                // 教诲效果须从本回合的分布 / 训练起生效（memo §4）。
+                if self.base.turn == crate::SCENARIO_START_TURN {
+                    self.acquire_advice();
+                }
                 // 研鑽「追加の稽古」：回合开始用策略流预掷（掷中后未点对应训练则作废）
                 self.roll_kensan(strategy);
             }
