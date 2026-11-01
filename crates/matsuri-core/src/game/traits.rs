@@ -5,10 +5,10 @@
 use anyhow::{Result, anyhow};
 use rand::Rng;
 use rand::rngs::StdRng;
-use umaai_core::gamedata::EventData;
+use umaai_core::gamedata::{ActionValue, EventData};
 use umasim::game::{
-    Game, Person, PersonType, StageId, SupportCard, Trainer, TrainingBasicTable,
-    TrainingValueSource, Uma,
+    CardTrainingEffect, Game, Person, PersonType, StageId, SupportCard, Trainer,
+    TrainingBasicTable, TrainingValueSource, Uma,
 };
 use umasim::search::FlatSearchGame;
 use umasim::trainer::RandomTrainer;
@@ -57,9 +57,15 @@ impl Person for MatsuriPerson {
 }
 
 impl TrainingValueSource for MatsuriGame {
-    /// 剧本资产里的普通训练表（`training.normal`：5 训练 × 等级行）
+    /// 普通训练返回资产 `training.normal`；**演目稽古结算期间**返回稽古表
+    /// （`training.keiko` 逐训练位一行，等级按表行数夹取到 1 档）
     fn training_basic_table(&self) -> &TrainingBasicTable {
-        &self.data.training.normal
+        if self.keiko_settling {
+            // 稽古档按时期切：turn 23 発表会「演目排练强化」后为 Classic 及以后档
+            self.keiko_basic_table()
+        } else {
+            &self.data.training.normal
+        }
     }
 }
 
@@ -120,20 +126,73 @@ impl Game for MatsuriGame {
     }
 
     fn list_actions(&self) -> Result<Vec<Self::Action>> {
-        // S1：五个训练 + 休息；后续实现在这里列自己的动作（比赛 / 出行 / 剧本机制）
-        let mut actions: Vec<Action> = (0..5u8).map(Action::Train).collect();
+        // 强制比赛回合（目标赛 / URA 决赛）：只能比赛
+        if self.plan.race && !self.forced_rest {
+            return Ok(vec![Action::Race]);
+        }
+        // 强制休息回合（马娘特殊事件占掉目标赛）：实际动作是休息
+        if self.forced_rest {
+            return Ok(vec![Action::Rest]);
+        }
+        // 合宿排练回合：5 个稽古（全部训练变稽古）+ 休息 + 第 1 年出行 + 可自选比赛
+        if self.plan.camp_train(self.forced_rest) {
+            let mut actions: Vec<Action> = (0..5u8).map(Action::ActTrain).collect();
+            actions.push(Action::Rest);
+            if self.outing_allowed() {
+                actions.push(Action::NormalOuting);
+                if self.base.can_friend_outing() {
+                    actions.push(Action::FriendOuting);
+                }
+            }
+            if self.base.can_self_race() {
+                actions.push(Action::Race);
+            }
+            if !self.uma().flags.ill.is_empty() {
+                actions.push(Action::Clinic);
+            }
+            return Ok(actions);
+        }
+        // 日常 / URA 收尾回合：槽满的演目对应训练位变演目稽古
+        let gauge_max = self.data.rules.act_gauge_max;
+        let mut actions: Vec<Action> = (0..5u8)
+            .map(|train| {
+                let act = self.act_of_train(train as usize);
+                if self.acts.gauge[act] >= gauge_max {
+                    Action::ActTrain(act as u8)
+                } else {
+                    Action::Train(train)
+                }
+            })
+            .collect();
         actions.push(Action::Rest);
+        actions.push(Action::NormalOuting);
+        if self.base.can_friend_outing() {
+            actions.push(Action::FriendOuting);
+        }
+        if self.base.can_self_race() {
+            actions.push(Action::Race);
+        }
+        if !self.uma().flags.ill.is_empty() {
+            actions.push(Action::Clinic);
+        }
         Ok(actions)
     }
 
     fn generate_events(&self, _rng: &mut impl Rng) -> Vec<EventData> {
-        // S1 占位：后续实现在这里生成回合事件（固定回合 / 概率 / 剧本条件）
+        // S6 事件管线：固定回合 / 概率事件 / 伝受 / 合宿抑制表在这里生成（S5 只结算动作 / 训练后事件）
         Vec::new()
     }
 
     fn apply_event(&mut self, event: &EventData, choice: usize, rng: &mut impl Rng) -> Result<()> {
-        // 引擎底座负责通用事件结算；剧本自己的特殊事件在这里补分支
-        let _ = self.base.apply_event(event, choice, rng);
+        // 引擎底座负责通用事件结算；剧本补「事件羁绊归属」（红点 / 点击 / 出行等事件带羁绊值）
+        let result = self.base.apply_event(event, choice, rng);
+        if let Some(result) = result
+            && result.value.friendship != 0
+            && let Some(person_index) = self.base.event_person_target(event, &self.persons)
+        {
+            self.base
+                .add_friendship(&mut self.persons, person_index, result.value.friendship);
+        }
         Ok(())
     }
 
@@ -180,9 +239,40 @@ impl Game for MatsuriGame {
         self.base.absent_rate_drop
     }
 
-    fn deyilv(&mut self, _person_index: i32) -> f32 {
-        // S1 占位：后续实现按自己的卡组效果算「人头得意率」
-        1.0
+    /// 人头「不在」权重：卡 50 / 友人 100 / 理事长·记者 200（引擎基础局口径）；
+    /// **编成外神驹按剧本口径 50（约 9.1%，STUB U29）**——排练锁位时不判不在。
+    fn absent_weight(&self, person_index: usize) -> i32 {
+        let drop = self.absent_rate_drop();
+        match self.persons[person_index].person_type() {
+            PersonType::Card => 50 - drop,
+            PersonType::Yayoi | PersonType::Reporter => 200,
+            PersonType::ScenarioCard | PersonType::OtherFriend | PersonType::TeamCard => 100 - drop,
+            PersonType::Npc => 50,
+        }
+    }
+
+    /// 人头得意率：卡面效果 + 剧本加成（発表会 deyilv / 该卡担当演目的教え得意率 / 転成）
+    fn deyilv(&mut self, person_index: i32) -> f32 {
+        if person_index < 0 {
+            return 0.0;
+        }
+        let index = person_index as usize;
+        // 卡片人头占 persons 前缀、与 deck 同序；前缀之外（神驹 / 理事长 / 记者）没有得意率
+        if index >= self.base.deck.len() {
+            return 0.0;
+        }
+        let card_deyilv = self.base.deck[index].calc_training_effect(self, 0).deyilv;
+        card_deyilv + self.scenario_deyilv(index) as f32
+    }
+
+    /// 重新分配所有人头（S5 剧本口径：亮起锁担当 / NPC 不在率 / 吾妻补位 / 分身）
+    fn distribute_all(&mut self, rng: &mut impl Rng) -> Result<()> {
+        self.distribute_round(rng)
+    }
+
+    /// 灵感分配（S5 剧本口径：基础公式 + 卡面加成 + 剧本加成；排练 5 种卡全灵感图标）
+    fn distribute_hint(&mut self, rng: &mut impl Rng) -> Result<()> {
+        self.distribute_hints(rng)
     }
 
     fn has_group_buff(&self) -> bool {
@@ -192,7 +282,75 @@ impl Game for MatsuriGame {
     fn train_level(&self, train: usize) -> usize {
         let up_count = self.data.rules.train_level_up_count.max(1) as usize;
         let max_level = self.max_normal_train_level();
-        (self.base.train_level_count[train] as usize / up_count + 1).clamp(1, max_level)
+        let bonus = self.train_level_bonus[train].max(0) as usize;
+        (self.base.train_level_count[train] as usize / up_count + 1 + bonus).clamp(1, max_level)
+    }
+
+    /// 训练值 = 下层（引擎默认公式）+ 上层（剧本来源：发布会 / 教え / 演目 Lv / 稽古 +10）
+    fn calc_training_value(&self, buffs: &CardTrainingEffect, train: usize) -> Result<ActionValue> {
+        let mut value = self.default_calc_training_value(buffs, train)?;
+        let keiko = self.keiko_settling;
+        let upper = self.training_upper(train, &value, keiko);
+        for status in 0..5 {
+            value.status_pt[status] += upper.status[status];
+            if keiko {
+                value.status_pt[status] += upper.keiko_flat;
+            }
+        }
+        value.status_pt[5] += upper.skill_pt;
+        value.vital = upper.vital;
+        value.motivation += upper.motivation;
+        Ok(value)
+    }
+
+    /// 训练失败率：引擎基础局公式（口径同 §5.6）+ 剧本失败率下降（不屈 / 本番演出 -100%）
+    fn calc_training_failure_rate(&self, buffs: &CardTrainingEffect, train: usize) -> Result<f32> {
+        let data = umaai_core::Data::get()?;
+        let thresholds = &data.consts.training_vital_threshold;
+        let row = thresholds.get(train).ok_or_else(|| {
+            anyhow!(
+                "训练类型错误: {train}（阈值表内训练数 {}）",
+                thresholds.len()
+            )
+        })?;
+        if row.is_empty() {
+            return Err(anyhow!("训练 {train} 的失败率阈值表为空"));
+        }
+        let level = self.train_level(train).clamp(1, row.len()) - 1;
+        let x0 = row[level];
+        let vital = self.uma().vital as f32;
+        let bias = if self.uma().flags.good_trainer {
+            -2.0
+        } else if self.uma().flags.bad_trainer {
+            2.0
+        } else {
+            0.0
+        };
+        let base = if vital < x0 {
+            (100.0 - vital) * (x0 - vital) / 40.0
+        } else {
+            0.0
+        }
+        .clamp(0.0, 99.0);
+        let scenario_drop = self.scenario_fail_rate_drop(train);
+        let card_factor = (100.0 - buffs.fail_rate_drop) / 100.0;
+        let scenario_factor = (100.0 - scenario_drop as f32) / 100.0;
+        let f = if scenario_drop >= 100 {
+            0.0
+        } else {
+            base * card_factor * scenario_factor + bias
+        };
+        Ok(f.clamp(0.0, 100.0))
+    }
+
+    /// 终局结算（育成终了奖励；技能灵感 / 粉丝不建模）
+    fn on_simulation_end<T: Trainer<Self>>(
+        &mut self,
+        _trainer: &T,
+        _rng: &mut StdRng,
+    ) -> Result<()> {
+        self.apply_career_end_reward();
+        Ok(())
     }
 
     fn uma(&self) -> &Uma {

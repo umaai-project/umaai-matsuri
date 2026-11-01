@@ -6,7 +6,7 @@
 //! 里的动作（S4 落）；発表会 / 本番 / 合宿 +1 与教诲分配 / 调整都是 `End` 阶段的自动结算 /
 //! 决策（S5 落，其中教诲在剧本结算之后处理）。
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use rand::rngs::StdRng;
 use umaai_core::rng::{StrategyRng, StreamTag, derive_seed};
 use umasim::game::base::RuleStreams;
@@ -250,30 +250,42 @@ impl MatsuriGame {
                 // 目标赛回合仍按赛程分类（`plan.race`），马娘特殊事件可把本回合实际动作改为休息；
                 // 事件链落地前先读剧本自持记录，S6 / 引擎「马娘特殊事件记录」后改为事件管线设置。
                 self.forced_rest = is_forced_rest_turn(self.base.uma.chara_id(), self.base.turn);
+                // 研鑽「追加の稽古」：回合开始用策略流预掷（掷中后未点对应训练则作废）
+                self.roll_kensan(strategy);
                 // TODO(S6): 回合开始事件链（固定回合 / 概率事件 / 合宿抑制表），需要 `streams.event`。
                 let _ = &mut streams.event;
             }
             Stage::Distribute => {
-                // TODO(S5): 人头分配（亮起演目锁担当 / NPC 不在率 / 分身 / 吾妻补位），
-                // 需要 `streams.turn_fixed`；比赛回合不分人头。
-                let _ = &mut streams.turn_fixed;
+                // 真实人头分布（亮起锁担当 / NPC 不在率 / 吾妻补位 / 分身）+ 灵感图标
+                self.distribute_all(&mut streams.turn_fixed)?;
+                self.distribute_hint(&mut streams.turn_fixed)?;
             }
             Stage::Train => {
                 let actions = self.list_actions()?;
                 let selection = trainer.select_action(self, &actions, decision)?;
+                let action = actions.get(selection).ok_or_else(|| {
+                    anyhow!(
+                        "训练员返回的动作下标越界: {selection}（候选 {} 个）",
+                        actions.len()
+                    )
+                })?;
                 // 动作结算走**策略流**：与决策抽签分开，改决策流消耗不会位移结算随机
-                self.apply_action(&actions[selection], strategy)?;
+                self.apply_action(action, strategy)?;
             }
             Stage::AfterTrain => {
-                // TODO(S4/S5/S6): 训练后处理（羁绊 / 红点 / 失败事件 / 追加稽古）。
+                // 本回合动作与训练后处理挂出的事件统一在这里结算：
+                // 比赛奖励 / 出行 / 红点 / 友人点击 / 加练 / 失败事件等。
+                let after_events = std::mem::take(&mut self.unresolved_events);
+                for event in &after_events {
+                    self.run_event(event, trainer, decision, &mut streams.event)?;
+                }
             }
             Stage::End => {
                 // 合宿计数：比赛 / 强制休息回合不计入，计满窗口长度后本次合宿结束。
                 let counted = self.plan.camp_zone && !self.plan.race && !self.forced_rest;
                 self.camp.end_turn(counted, &self.data.camp.windows);
-                // TODO(S5): 回合结算——発表会 / 本番（`plan.check_point`）、合宿结束全演目 Lv+1
-                // （`plan.camp_level_up`）；随后处理教诲分配 / 调整（`plan.advice_window`，含 turn
-                // 23/47 的転成），全部在剧本结算之后。
+                // 剧本结算：発表会 / 本番 → 合宿结束全演目 Lv+1 → 教诲窗口（含 turn 23/47 転成）
+                self.settle_turn_end()?;
             }
         }
         Ok(())

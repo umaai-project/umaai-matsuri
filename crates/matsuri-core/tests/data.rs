@@ -77,6 +77,12 @@ fn training_table() -> Result<()> {
     assert_eq!(junior[0], [16, 0, 3, 0, 0, 9, -25], "Junior 流鏑馬");
     assert_eq!(junior[3], [3, 0, 2, 15, 0, 10, -25], "Junior 大曳神輿");
     assert_eq!(junior[4], [3, 0, 0, 0, 12, 8, 5], "Junior 飛駆");
+    let classic = &data.training.keiko.classic;
+    assert_eq!(classic[0], [21, 0, 3, 0, 0, 10, -25], "Classic 流鏑馬");
+    assert_eq!(classic[1], [0, 20, 0, 8, 0, 12, -25], "Classic 神旗争奪戦");
+    assert_eq!(classic[2], [0, 8, 20, 0, 0, 12, -25], "Classic 納舞");
+    assert_eq!(classic[3], [3, 0, 2, 23, 0, 12, -25], "Classic 大曳神輿");
+    assert_eq!(classic[4], [4, 0, 0, 0, 14, 9, 5], "Classic 飛駆");
     Ok(())
 }
 
@@ -295,6 +301,34 @@ fn engine_events_race_rewards() -> Result<()> {
     Ok(())
 }
 
+/// S5 规则常量：上层上限 / 助力支撑 / 研鑽追加稽古
+#[test]
+fn rules_s5() -> Result<()> {
+    let data = MatsuriData::load(data_dir())?;
+    let rules = &data.rules;
+    assert_eq!(rules.training_upper_cap, 100);
+    assert_eq!(
+        (rules.assist_support.count, rules.assist_support.effect),
+        (3, 5)
+    );
+    let kensan = &rules.kensan;
+    assert_eq!(
+        (
+            kensan.upper_status,
+            kensan.upper_skill_pt,
+            kensan.upper_vital,
+            kensan.upper_president_friendship,
+            kensan.upper_gauge,
+            kensan.upper_prob,
+            kensan.lower_status,
+            kensan.lower_vital,
+        ),
+        (20, 20, -5, 5, 1, 50, 5, 5)
+    );
+    println!("S5 规则常量：上层上限 100 / 助力支撑 3×5% / 追加稽古上下档");
+    Ok(())
+}
+
 /// 本番演出 4 行
 #[test]
 fn finals_act() -> Result<()> {
@@ -308,6 +342,41 @@ fn finals_act() -> Result<()> {
         ),
         (30, 1, 100, 1)
     );
+    Ok(())
+}
+
+/// 仓内 `data/events.json`：吾妻出行 5 段事件（`memo` 中可信度，S6 换真实卡面事件）
+///
+/// 数值来源 [`../../docs/plan/intake.md`](../../docs/plan/intake.md) §3.12：第 3 段是上 / 下双选项，
+/// 单选项各段 = 体力 / 属性 / 技能点 / 羁绊；未确认项按 memo 下界 / 首档登记（见 `stubs.md`）。
+#[test]
+fn engine_events_matsuri_outing() -> Result<()> {
+    use umaai_core::Data;
+
+    let data = Data::init(data_dir())?;
+    let expect: [(u32, [i32; 6], i32); 5] = [
+        (8201, [10, 0, 0, 10, 0, 10], 33),
+        (8202, [0, 0, 0, 0, 10, 10], 30),
+        (8203, [0, 10, 0, 10, 10, 20], 0),
+        (8204, [0, 5, 5, 0, 0, 5], 35),
+        (8205, [0, 0, 0, 10, 10, 20], 35),
+    ];
+    for (step, (id, status, vital)) in expect.iter().enumerate() {
+        let event = data.system_event(&format!("matsuri_outing_{}", step + 1))?;
+        assert_eq!(event.id, *id);
+        // 第 3 段双选项取「下」档核对属性（上档为纯体力回复，见下方断言）
+        let value = if step == 2 {
+            assert!(event.player_select, "第 3 段应有上下档选择");
+            assert_eq!(event.choices[0][0].value.vital, 50, "第 3 段上档 +50 体");
+            &event.choices[1][0].value
+        } else {
+            &event.choices[0][0].value
+        };
+        assert_eq!(value.status_pt, *status, "outing {} 段属性", step + 1);
+        assert_eq!(value.vital, *vital, "outing {} 段体力", step + 1);
+        assert_eq!(value.friendship, 5, "outing {} 段羁绊", step + 1);
+    }
+    println!("吾妻出行 5 段事件：数值与 memo 2026-10-27 一致");
     Ok(())
 }
 

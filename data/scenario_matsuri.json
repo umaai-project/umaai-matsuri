@@ -83,6 +83,13 @@
         [0, 6, 14, 0, 0, 10, -25],
         [3, 0, 2, 15, 0, 10, -25],
         [3, 0, 0, 0, 12, 8, 5]
+      ],
+      "classic": [
+        [21, 0, 3, 0, 0, 10, -25],
+        [0, 20, 0, 8, 0, 12, -25],
+        [0, 8, 20, 0, 0, 12, -25],
+        [3, 0, 2, 23, 0, 12, -25],
+        [4, 0, 0, 0, 14, 9, 5]
       ]
     }
   },
@@ -1014,6 +1021,21 @@
       "absent": 0,
       "lesson": 3,
       "charm": 2
+    },
+    "training_upper_cap": 100,
+    "assist_support": {
+      "count": 3,
+      "effect": 5
+    },
+    "kensan": {
+      "upper_status": 20,
+      "upper_skill_pt": 20,
+      "upper_vital": -5,
+      "upper_president_friendship": 5,
+      "upper_gauge": 1,
+      "upper_prob": 50,
+      "lower_status": 5,
+      "lower_vital": 5
     }
   }
 }

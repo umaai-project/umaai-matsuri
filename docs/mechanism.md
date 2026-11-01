@@ -70,8 +70,10 @@
 | 机制点 | 数据字段 | 阶段 / 动作 | 结算函数 | 测试 | 文档 |
 |---|---|---|---|---|---|
 | 回合结构 / 阶段链 | `MAX_TURN`、剧本资产 `schedule` / `camp` / `advice_windows` | `game/stage.rs` `TurnPlan` / `Stage` | `derive_plan` / `Stage::next` | `stage.rs` 单测 + `tests/mechanics.rs` | §1 |
-| 合宿窗口 / 延长 / 结束 +1 | 剧本资产 `camp` | `game/stage.rs` `CampState` | `begin_turn` / `end_turn`（+1 由 S5 结算） | `stage.rs` 单测 + `tests/mechanics.rs` | §1 |
+| 合宿窗口 / 延长 / 结束 +1 | 剧本资产 `camp` | `game/stage.rs` `CampState` | `begin_turn` / `end_turn` + `game/settle.rs` `settle_turn_end`（S5 落地全演目 +1） | `stage.rs` / `settle.rs` 单测 + `tests/mechanics.rs` | §1 |
 | 马娘特殊事件（强制休息） | 临时记录表（引擎「马娘特殊事件记录」改造前） | `game/stage.rs` `forced_rest` | `derive_plan` / `is_forced_rest_turn` | `tests/mechanics.rs` | §1 |
+| 动作集（按回合类型） | `TurnPlan` / `ActLedger.gauge` / `rules.act_gauge_max` | `Train` | `Game::list_actions`（`game/traits.rs`） | `tests/mechanics.rs` `action_set_by_turn_type` | §1 / §6 |
+| 回合后事件排空 | `BaseGame.unresolved_events` | `AfterTrain` | `stage_body`（`game/stage.rs`；S5 训练后事件改剧本口径） | `tests/mechanics.rs` `unresolved_events_drained_each_turn` | §1 / §3.4 |
 
 ## 2. 资源与账本
 
@@ -85,6 +87,9 @@
   （2026-11-01 修正，`shuntaisai_memo` 口径）。
 - 可延期：亮起后不必立即执行、不会过期；多个演目同时亮起可任选其一，其他不消失。
   **所有亮起位置都会锁人**（见 §2.1）。
+- **S5 已实现（2026-11-01）**：`game/mod.rs` `gain_lowest_act_gauge`（三则 + 满槽跳过）/ `gain_act_gauge`；
+  训练入槽 `train.rs` `gain_training_gauge`；目标赛 / 休息 / 出行入槽在 `action.rs`；稽古成功
+  `settle_training` 里 `add_act_level` + 槽清零（合宿不升不清）——gauge 入账 / 消费闭环已落。
 - 跨回合状态存局面字段，不存阶段枚举。
 - Senior 期各演目再 **+1 名担当**（memo；待真机）。
 - 剧本链接角色（固定演目担当）按**固定演目**判定 gauge / 教え / 稽古登场，不按支援卡类型。
@@ -127,7 +132,8 @@
 
 | 机制点 | 数据字段 | 阶段 / 动作 | 结算函数 | 测试 | 文档 |
 |---|---|---|---|---|---|
-| gauge / Lv 账本 | 剧本资产 `acts` / `rules` / `schedule` | `game/mod.rs` `ActLedger`（S3 建账本，入账 / 消费 S5） | `<待建>` | `<机制测试>` | §2 |
+| gauge / Lv 账本 | 剧本资产 `acts` / `rules` / `schedule` | `game/mod.rs` `ActLedger`（S3 建账本，S5 入账 / 消费） | `gain_lowest_act_gauge` / `gain_act_gauge` / `gain_training_gauge`（训练）/ `do_race` / `do_rest` / 出行 / 稽古成功（S5 落） | `game/mod.rs` 内联 + `tests/mechanics.rs` 3 例 | §2.3 |
+| 每回合分布 | `distribution` / `absent_weight` / `deyilv` | `game/distribute.rs`（S5 新建） | `distribute_round` / `place_locked` / `place_friend_filler` / `place_splits` / `distribute_hints` | `distribute.rs` 内联 5 例 + `tests/mechanics.rs` | §2.1 |
 | 人头名单 / 担当分配 | 剧本资产 `acts`、编成卡组 | `game/person.rs` / `game/roster.rs`（S4 前置已落） | `MatsuriPerson` / `init_roster` / `assign_card_acts` / `balance_guest_act` | `roster.rs` 内联 4 例 + `tests/mechanics.rs` | §2.1 |
 | 建局门禁 | `limits.support_num`、`outing` | `game/mod.rs` `validate_friend` / `game/roster.rs` `validate_deck` | — | `tests/mechanics.rs` | §2.1 / §3.4 |
 
@@ -210,7 +216,8 @@
 - **副属性**：`floor(下段 × (1 + 友情合计) × (1 + 训练效果合计 + 副获得量合计)) - 下段`；
   **副获得量与训练效果同层加算**（不是再乘一层；`memo` 2026-10-31）。
 - SP：`floor(下段 × (1 + 友情合计) × (1 + 训练效果合计 + SP训练效果)) - 下段`。
-- **演目稽古：主 / 副基础各 +10**（全 Lv 共通，作为下段附加项）。
+- **演目稽古：全五维基础各 +10**（act_lv `all_status_bonus`，Lv1–10 恒 10）——**2026-11-01 拍板：
+  加在上层乘区之后（flat，不受乘区 / 上昇量上限影响）**；未使用维也 +10。
 - 下段 = 通常通り：普通训练取该训练位 / 该训练 Lv 的基础值；稽古取当期档（§3.2）。
 - 友情合计（仅友情训练）：駿大祭 buff、協力教え、稽古的演目 Lv 效果、得意率転成（稽古）。
 - 训练效果合计：助力（非友情时）、助力支撑、両道（稽古）、不屈（稽古）。
@@ -222,6 +229,11 @@
   卡面 / 通用项（友情、训练效果、人数、干劲、成长率等）都在下层。**剧本加成相关的数值全部体现在上层**：
   演目 Lv 效果、教え、発表会 buff、稽古 +10 等按上面的“友情合计 / 训练效果合计 / 获得量合计”叠加，
   **不重复计入下层已有项**。每个剧本 buff 的乘区归属按规则表落实现；两层结构已定，具体数值细节仍可复核。
+- **上层实现（S5）**：`game/train.rs` `training_upper` 用剧本侧合计按上式算主 / 副 / SP 增量，
+  再按**上昇量上限**封顶；**上限 = 规则 100 + 特化教え `status_limit`（按参与担当聚合）+
+  稽古且 5 种卡时该演目 Lv9/10 的 `status_limit`；SP 上限同法并叠加 `sp_limit`**（2026-11-01 拍板；
+  属性基础上限 2200 组是否同步上抬未确认，见 `stubs.md`）。
+  体力：稽古按体力教え / 転成 `keiko_vital_cost_drop` 百分比降耗；URA 训练再 +30 体 / +1 干劲（本番演出）。
 - **取整（2026-10-30）**：所有乘算收益（比赛加成、剧本倍率等）统一 **floor**，不用 round；
   目标赛 SP `72 × 1.3 = 93.6 → 93` 已按此口径。
 - **演目稽古基础值按时期两档**（Junior / Classic 及以后；见 §3.2 注）；**无 Senior 第三档**
@@ -247,6 +259,9 @@
 | 10 | ✓ | 15% | 170% | ✓ | ✓ | +120 | +25 |
 
 - 「5 种卡」= `condition_type = 1`、`condition_value = 5`（编成支援卡类型 ≥5）。
+- **S5 实现（2026-11-01）**：稽古时 `training_upper` 取该演目 Lv 行——全基础 +10（flat）、友情%
+  进友情合计、SP 练习% 进 SP 训练效果、`status_limit`/`sp_limit` 进上层上限；`all_hint` 时
+  排练灵感全部发动；`hint_event` + 5 种卡时编成卡（除友人 / 团体）全亮灵感图标。
 - 原始编码：`105 → 全基础 +10`、`202 → 友情%`、`201 → SP 练习%`（`v1=30` 恒定隐藏值）、
   `106 → Hint 事件`、`107 → 全 Hint 发动`、`109 → SP 上限`、`206 → 基础上限`。
 - `effect_type` 在 scenario 15 **全局同义**：`4` = 得意率、`202` = 友情加成、`2` = 灵感发生率、
@@ -267,6 +282,12 @@
   转成的「灵感 +1」= Hint Lv+1；**Lv4+ 全灵感发动不含嘉宾**；
   研鑽发生率**1 回合 1 次共通掷骰、`p = r(绑定演目Lv)`、不按担当人数加算**（`memo` 2026-10-31，推翻旧口径），
   掷中则所有该演目担当参与的成功训练都触发，仅成功时结算。
+- **S5 实现口径（2026-11-01）**：`game/advice.rs` `advice_slot_effect` 按「新教诲效果（绑定演目 Lv）+
+  被消耗基础教诲的固定転成升级效果」聚合；`participant_advice` 遍历训练位占位按参与担当人数叠加
+  （絆 +3 取 max 平摊）；助力支撑 = 3 次内训练效果 +5%（`rules.assist_support`，再次获得重置）；
+  研鑽追加稽古在 `Begin` 用策略流预掷、训练成功且绑定演目担当参与时按 50/50 上 / 下档结算
+  （上档：直前训练属性 +20 / SP +20 / 最低演目槽 +1 / 理事长羁绊 +5 / 体力 -5 / 简化解一个 debuff；
+  下档：属性 +5 / 体力 +5）。教诲 5 槽永远满、效果随改派即时换级。
 - 逐级数值见 [`plan/intake.md`](plan/intake.md) §3.4；下表只记口径：
 
 | 教え | 作用 | 关键口径 |
@@ -288,15 +309,22 @@
 - 「追加の稽古」：occurrence rate 由研鑽教え给出（**1 回合 1 次共通掷骰、不按人数加算**）；
   上档属性 +20、技能Pt +20、**最低演目 gauge +1**、理事长羁绊 +5、体力 -5、随机解一个 debuff；
   下档属性 +5、体力 +5；上/下概率待测（U40）。
-- 羁绊 / 红点 / 训练后处理：暂按引擎默认档，剧本覆写点待 S4/S5 确认。
+- 羁绊 / 红点 / 训练后处理（S5 已改剧本口径，`game/train.rs` `after_train`）：羁绊基础值取资产
+  `rules.friendship_gain`（友人 +4 / 普通卡 +7 / 理事长·记者 +5；絆教え参与时全编组卡再 +3 平摊；
+  愛嬌由 `add_friendship` 统一 +2 一次）；编成外神驹只计人头、不给羁绊；灵感事件走剧本公式
+  （基础 7.5% × (1 + (卡面 + 发布会 + 教え)/100)，排练 + 5 种卡时编成卡全亮图标、演目 Lv≥4 全灵感发动、
+  転成 301 给稽古灵感 Lv+1）；加练 / 理事长·记者点击保留引擎基础局事件；**友人点击事件不推**
+  （真实吾妻事件留 S6）。
+- 失败率（S5）：引擎基础局公式 + 剧本失败率下降（不屈按参与担当阈值 / 本番演出 -100%，合计 ≥100 → 0）。
 
 **实现落点**
 
 | 机制点 | 数据字段 | 阶段 / 动作 | 结算函数 | 测试 | 文档 |
 |---|---|---|---|---|---|
-| 训练基础值 | `training.normal`（S2 已落地，5×5） | `Train` | `do_train` | `data.rs` 单测 + `tests/data.rs` | §3.1 |
-| 演目稽古 | 剧本资产 `acts` / `training.keiko.junior`（Classic 档暂时下架） | `ActTrain` | `<待建>` | `<机制测试>` | §3.2 |
-| 教え加成 | 剧本资产 `advices` | `Train` | `<待建>` | `<机制测试>` | §3.3 |
+| 训练基础值 | `training.normal`（S2 已落地，5×5） | `Train` | `do_train` / `settle_training`（下层引擎公式 + 上层剧本乘区 + 失败判定，S5） | `train.rs` 内联 11 例 + `tests/mechanics.rs` | §3.1 |
+| 演目稽古 | `training.keiko.junior` / `training.keiko.classic`（turn 24 起切 Classic） | `ActTrain` | `do_act_train`（稽古表分派 + 下层 + 上层 + 成功 Lv+1 / 清槽；合宿不升不清） | `mod.rs` / `train.rs` 内联 + `tests/mechanics.rs` | §3.1 / §3.2 |
+| 训练后处理 | `rules.friendship_gain` / 剧本灵感公式 | `Train` / `ActTrain` 成功后 | `after_train`（S5 剧本口径） | `distribute.rs` / `train.rs` 内联 | §3.4 |
+| 教え加成 | 剧本资产 `advices` / `fusion` | `Train` / `ActTrain` | `advice_slot_effect` / `participant_advice` / `training_upper`（S5） | `advice.rs` 内联 7 例 + `train.rs` 内联 | §3.3 |
 
 ## 4. 比赛与赛程
 
@@ -315,6 +343,10 @@
 - **口径边界（2026-11-01）**：以上是**基础值**表，只建模基础值；**有馬記念等特殊比赛自带额外数值，
   不属于本表、不建模**。memo 的「有馬 全ステ 21 / SP 200」观察可能用于验证**第三年底目标赛的
   剧本加成（レスボ）**，登记为验证点（真机复核）。
+- **比赛加成合并口径（2026-11-01 拍板）**：支援卡「赛后」`uma.race_bonus` 与発表会 / 本番 `check_point_effect 204`
+  **同表加算**成一个百分比：`scale = (100 + uma.race_bonus + check_points.race_bonus) / 100`（floor 在引擎）。
+  引擎 `push_race_event` 文档的「剧本可在此基础上再倍乘自己的机制系数」用于温泉 `career_race_multiplier`
+  这类**独立倍率**，不适用于同类 レスボ；S4 阶段 204 恒 0（`check_points` 未结算），S5 发布会生效后按本口径计。
 - 属性上限：**2200 / 1850 / 1800 / 1700 / 1800**（official + memo 一致），上限突破后 2500。
   机制包 Wiki 的 2150 / 1800 / 1700 / 1700 / 1800 与因子上浮 +950 / +600 / +500 / +500 / +600
   属另一层口径，**不采用为主口径**。❓`single_mode_scenario.max_*` 与运行时 `max_stats` 的关系。
@@ -323,7 +355,9 @@
 
 | 机制点 | 数据字段 | 阶段 / 动作 | 结算函数 | 测试 | 文档 |
 |---|---|---|---|---|---|
-| 合宿延长 | 剧本资产 `camp` | 回合边界 | `<待建>` | `<机制测试>` | §4 |
+| 合宿延长 | 剧本资产 `camp` | 回合边界 | `CampState`（S3） | `<机制测试>` | §4 |
+| 比赛结算（目标 / URA / 自选） | `data/events.json` + `check_points[].race_bonus` | `Race` | `do_race` / `BaseGame::push_race_event`；`scenario_race_bonus`（S4；**204 与卡面赛后同表加算**，见 §4 口径注） | `tests/mechanics.rs` `target_race_reward_applied` / `self_race_reward_applied` / `forced_rest_turn_does_not_race` | §4 |
+| 休息 / 出行 / 治病 | 引擎 `consts.rest_probs` / `is_xiahesu`；`outing` 资产 + `matsuri_outing_1..5` 事件 | `Rest` / `NormalOuting` / `FriendOuting` / `Clinic` | `do_rest` / `do_normal_outing` / `do_friend_outing` / `do_clinic`（S4） | `rest_normal_and_camp_versions` / `outing_actions` | §1 / §6 |
 
 ## 5. 事件
 
@@ -363,9 +397,13 @@
     理事长羁绊 +15、马娘们作为演目担当参加、授 協力 / 不屈 / 両道；
   - t68（本祭）：体力 +30、干劲 +1、全能力 +15、技能Pt +400、粉丝 +45000、
     「ハヤテ一文字」Hint Lv+2、「機先の勝負」Hint Lv+2、「彼方の呼び声」Hint Lv+3、理事长羁绊 +15。
-- **発表会暂按全部大成功计算（2026-10-31 暂定）**：先用上表大成功奖励 / buff；成功档全能力 / PT 待样本。
-- `全训练 Lv+1` 仅大成功时发生（memo）。
-- 本番演出（`finals_act_effect`）：体力 +30、干劲 +1、失败率 -100%、全演目稽古追加 1 人。
+- **発表会 / 本番结果按实际演目 Lv 判定（2026-11-01 拍板，取代 2026-10-31 暂定）**：
+  `need_act_num`（5）个演目达到 `need_act_level`（3 / 5 / 6）→ **大成功**，否则 **成功**；
+  成功档奖励 / buff（memo 中可信度）真实生效（`game/settle.rs` `judge_presentation`）。
+- `全训练 Lv+1` 仅大成功时发生（memo），实现为独立 `train_level_bonus`（不污染设施计数）。
+- 本番演出（`finals_act_effect`）：体力 +30、干劲 +1、失败率 -100%、全部演目稽古的编成卡 +1 处；
+  本番结算后（turn 68–77）在 URA 训练中生效；発表会永久 buff 由最新已结算行派生（含基线 deyilv +20）。
+- **技能灵感 / 粉丝不建模**：上述一次性奖励中的具体技能 Hint Lv 与粉丝数跳过（`stubs.md` TBD）。
 
 ### 5.3 事件清单
 
@@ -397,8 +435,9 @@
 
 ## 6. 决策点与训练员
 
-- 回合动作集：5 普通训练 / **演目稽古 `ActTrain(act)`（亮起时）** / 休息 / 比赛 / 外出；稽古是独立动作，
-  不是普通训练的变体（2026-10-30 拍板）。
+- 回合动作集（S4 已落）：5 普通训练 / **演目稽古 `ActTrain(act)`（合宿全稽古、槽满亮起）** / 休息 /
+  **比赛（目标赛 / URA 决赛强制，非比赛回合可自选）** / 普通出行 / 友人出行 / 治病；稽古是独立动作，
+  不是普通训练的变体（2026-10-30 拍板）。**合宿期允许自选比赛**（2026-11-01 拍板）；第 2/3 年合宿禁出行。
 - 非回合决策：伝受分配 / 転成组合 / 出行；中间状态放局面字段。**担当分配不是决策点**（建局 / NPC 加入时的一次性动作）。
 - **教诲分配 / 融合**：融合走配置、分配走 120 排列，见 §6.1。
 - 手写训练员守门链：`<待定>`（治愈 → 比赛 → 演目稽古 → 训练等顺序待机制核对后定）。
@@ -443,18 +482,26 @@
 | `Action::AssignAdvice` | 拆成 5 步，每步 ≤5 候选 | 默认 rollout / 手动 |
 | `Action::AssignPlan` | combined 模式 top-K 原子计划 | MCTS 根 / 在线 |
 
+**S5 落地状态（2026-11-01）**：用户拍板「**只落接口、不自动择优**」——`game/advice.rs` 已有
+`assignment_candidates()`（120 全排列）、`apply_assignment()`（校验排列 + 401+801 硬约束）、
+`apply_fusion_pairs()`（配置预设就地融合）；窗口默认行为 = 按照获顺序落位 / 保持现有排列 / 融合就地，
+**不做价值矩阵与 top-K 选择**；`FusionPlan` 由 `MatsuriConfig.fusion` 承担（已覆盖层校验）。
+真策略（窗口改派 + 搜索根 top-K）留 S7。
+
 **实现落点**
 
 | 机制点 | 数据字段 | 阶段 / 动作 | 结算函数 | 测试 | 文档 |
 |---|---|---|---|---|---|
 | 守门链 | 剧本配置（S7） | `Train` | `trainer::select_action` | `<单测>` | §6 |
-| 融合配置 | 剧本配置 `fusion` | turn 23/47 | `apply_fusion_plan` | `<机制测试>` | §6.1 |
-| 教诲分配 | `AdviceContext`（S2/S5） | `End`（剧本结算后） | `apply_assignment` / `list_assignment_candidates` | `<机制测试>` | §6.1 |
+| 融合配置 | 剧本配置 `fusion` | turn 23/47（`End`） | `settle_advice_window` / `apply_fusion_pairs`（S5） | `settle.rs` / `advice.rs` 内联 | §6.1 |
+| 教诲分配 | 教诲槽账本（S3/S5） | `End`（剧本结算后） | `settle_advice_window`（机械默认）/ `assignment_candidates` / `apply_assignment`（S5 接口） | `advice.rs` / `settle.rs` 内联 | §6.1 |
 
 ## 7. 随机轴与可复现
 
 - 局面流 / 事件流：由 `BaseGame` 持有，每回合按 `(master, turn)` 派生。
 - 策略流：本局面自持，动作结算与剧本机制随机从它取；`set_rule_master` 与回合边界重置。
+  S5 里**追加稽古预掷**（`Begin`）与训练结算走策略流；**每回合人头分布 / 灵感分配**走回合固定流
+  （`streams.turn_fixed`，与引擎基础局 `distribute_all` 同轴）。
 - 决策流：只给 `Trainer`，不影响结算随机。
 - `fork_for_rollout`：克隆 + 注入 rollout 主种子；任何不由传入 rng 驱动的流必须在这里重置。
 
@@ -468,7 +515,7 @@
 | 合宿中的演目 Lv | memo 未记 | 合宿中不升，结束全演目 +1 | 官方帮助文案 | 有（训练值 / 节奏） |
 | 效果编号 | 易误用剧本 14 / 12 的 `effect_type` 语义 | **按剧本独立编号**；15 的语义以 `text_data` 458 / 461 / 466 / 499 为准 | 同号异义（如 4 在 14=友情、在 15=得意率） | 有（训练值） |
 | 演目稽古 | 部分资料称「节目练习」 | 统一用「演目稽古」 | 日文原名 | — |
-| 转生保留 | 图源写法不统一 | 保留自身效果 + 転成效果 | 官方帮助 + 数据表 | 待实现 |
+| 转生保留 | 图源写法不统一 | 保留自身效果 + 転成效果 | 官方帮助 + 数据表 | 已实现（S5） |
 | 属性上限 | 机制包 2150/1800/1700/1700/1800 | 2200/1850/1800/1700/1800 | official + memo 一致；2150 为另一层口径 | 有（评分） |
 | 演目稽古基础值 | 静态表 `command_level = 演目 Lv` | **按时期两档（Junior / Classic 及以后，第二档覆盖 Classic/Senior）**；**基础值无 Lv2–10 维度**；**下层 = 基础库原始公式，剧本加成走上层**；无 Senior 第三档（U02 收口） | memo 2026-10-29 收口；2026-10-31 两层口径；2026-11-01 U02 收口 | 有（训练值） |
 | 参考实现 | 机制包附带人数曲线 / buff 折算 | 仅方向性参考，不作机制事实 | 经验拟合，非数据表 | 无 |
@@ -483,7 +530,7 @@
 | 合宿延长回合（U18） | 第 1/2/3 年是否仍算合宿待测 | **所有年份的延长回合都算合宿（全部排练）**；第 1 年延长回合仍按第 1 年合宿规则；**Lv+1 结算点暂定固定 turn 15/39/63，全演目 +1**；离线模拟硬编码 | 用户拍板 | 有（阶段 / 事件） |
 | 合宿外出 / 休息（U33） | 待测 | **第 2/3 年不能普通/友人外出；休息：原本夏合宿期间（Classic/Senior 7–8 月）为合宿版，延长回合为普通休息**；第 1 年正常休息、可外出、可有支援卡事件 | 用户拍板 + memo 2026-10-31 细化 | 有（动作集 / 事件） |
 | 目标赛 +4 落点 | memo 只写 +4，漏了槽 tie-break | **按 4 次 +1，落点与休息 / 外出同一三则：Lv 最低 → 槽最低 → 属性序，满槽跳过；并列逐次分摊** | 用户拍板（2026-10-31） | 有（gauge） |
-| 発表会结果（2026-10-31 暂定） | 成功档数值缺失 | **暂按全部大成功计算** | 用户拍板（暂定） | 有（结算） |
+| 発表会结果（2026-11-01 拍板） | 2026-10-31 曾暂定「全部大成功」 | **按实际演目 Lv 判定**：5 个演目达 Lv3/5/6 → 大成功，否则成功（成功档数值取 memo 中可信度） | 用户拍板（S5 起演目 Lv 可算） | 有（结算） |
 | `check_point_effect 204` | 30 / 100 待复核 | **比赛加成百分比（30% / 100%）**，五维与 SP 都乘算 | 用户确认 | 有（比赛） |
 | 10 月前半事件 | 65–66 待核 | **turn 66**（0 基） | 用户确认 | 有（事件时间轴） |
 | 教诲效果等级（2026-10-31） | 易读成「教诲自身 Lv1–10」 | **效果等级 = 所绑定演目的 Lv**；改派后随新演目 Lv 改变 | 用户确认 | 有（训练值） |
@@ -492,5 +539,11 @@
 | 不屈転成（2026-10-31） | 视频写「体力消费 −15%」 | **−15% 属于 501 体力転成**；不屈仍为失败率降低 | 按 memo 口径 | 有（训练值） |
 | 担当轮换（2026-10-31） | 视频「演目担当交代まで N ターン」 | **无周期轮换**；担当分配仍是建局 / NPC 加入时的一次性动作 | 用户确认 | 无（阶段设计） |
 | 离线模拟（2026-10-31） | 考虑在线数据下发差异 | **只离线模拟，只需行为一致**；合宿延长等按已观测行为硬编码 | 用户拍板 | 无（实现口径） |
+| 稽古「全基础 +10」落点（2026-11-01） | 易读成「加进下段基数」或「只给主属性」 | **上层乘区之后全五维 flat 加**（未使用维也 +10），不参与乘区 / 不受上昇量上限 | 用户拍板；ja memo + 参考实现同口径 | 有（稽古数值） |
+| 训练上层上昇量上限（2026-11-01） | 引擎 §5.8 只写「基础上限 100，可被剧本提升」 | **100 + 特化 status_limit（按参与聚合）+ 稽古 5 种卡时演目 Lv9/10 status_limit；SP 上限同法 + sp_limit**；属性基础上限 2200 组是否上抬登记 TBD | 用户拍板 | 有（训练值；STUB） |
+| 教诲分配（2026-11-01） | 2026-10-31 方案含价值矩阵 / top-K | **S5 只落接口（120 全枚举 + apply + 融合预设 + 401+801 约束），机械默认不择优**；真策略 S7 | 用户拍板（做减法） | 有（教诲位置；无基线） |
+| NPC 不在率（2026-10-31） | 基础局 NPC 必定出现 | **剧本口径 absent_weight = 50（约 9.1%）**；亮起锁位时不判不在 | 用户拍板 / 待真机（U29） | 有（人头 / 训练值） |
+| 技能灵感 / 粉丝（2026-11-01） | 发布会 / 本番 / 出行有具体技能 Lv | **不建模**（本仓无技能 / 粉丝系统）；只少算灵感收益 | 用户口径 | 无（少算） |
+
 
 > 口径决定同时写入 `glossary.md` 的「决定记录」。

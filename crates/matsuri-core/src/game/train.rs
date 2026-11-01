@@ -1,0 +1,679 @@
+//! 训练结算（S5）：下层（引擎默认公式）+ 上层（剧本来源）+ 失败率 + 训练后处理
+//!
+//! 两层口径（2026-10-31 / 2026-11-01 拍板）：
+//! - **下层** = 引擎 `default_calc_training_value`（卡面友情 / 训练效果 / 人数 / 干劲 / 成长率都在下层）；
+//! - **上层** = 仅剧本来源（发布会 buff、教え、演目 Lv 效果、稽古 +10、特化 / 両道 / 絆 获得量等），
+//!   按 `memo` §3.3 的主 / 副 / SP 三式叠加，乘算后 floor，按「上昇量上限」封顶；
+//! - 稽古「全基础 +10」（act_lv `all_status_bonus`）= 上层乘区之后**全五维 flat 加**（2026-11-01 拍板）；
+//! - 失败率：引擎公式 + 不屈 / 本番演出 -100%；失败不给属性 / SP、不增设施计数、排练槽不动。
+//!
+//! 训练后处理改用剧本口径（羁绊基础值 / 絆教え平摊 / 灵感事件 / 加练 / 点击 / 支援卡类型条件）。
+
+use anyhow::Result;
+use rand::Rng;
+use rand::seq::IndexedRandom;
+use umaai_core::gamedata::ActionValue;
+use umaai_core::{Data, Ill};
+use umasim::game::{Game, Person, PersonType};
+
+use super::MatsuriGame;
+use super::person::PersonOrigin;
+
+/// 上层训练数值（剧本来源增量；体力 / 干劲改动也在这里汇总）
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct TrainingUpper {
+    /// 五维增量（上层，已封顶；不含稽古 +10 flat）
+    pub status: [i32; 5],
+    /// 技能点增量
+    pub skill_pt: i32,
+    /// 稽古「全基础 +10」flat 加（五维各 +N）
+    pub keiko_flat: i32,
+    /// 体力增量（已含稽古体力消耗下降 / 本番演出 +30）
+    pub vital: i32,
+    /// 干劲增量（本番演出 +1）
+    pub motivation: i32,
+}
+
+impl MatsuriGame {
+    /// 普通训练结算
+    pub(crate) fn do_train(&mut self, train: usize, rng: &mut impl Rng) -> Result<()> {
+        if train >= 5 {
+            return Err(anyhow::anyhow!("普通训练下标越界: {train}（训练位 0–4）"));
+        }
+        self.settle_training(train, false, rng)
+    }
+
+    /// 演目稽古结算（成功才升 Lv / 清槽；合宿中不升不清，Lv 由合宿结束统一 +1）
+    pub(crate) fn do_act_train(&mut self, act: usize, rng: &mut impl Rng) -> Result<()> {
+        let train = self
+            .data
+            .acts
+            .get(act)
+            .ok_or_else(|| anyhow::anyhow!("演目下标越界: {act}（演目 0–4）"))?
+            .train;
+        // 稽古结算期间让 `training_basic_table` 返回稽古表；无论成败都恢复
+        self.keiko_settling = true;
+        let result = self.settle_training(train, true, rng);
+        self.keiko_settling = false;
+        result
+    }
+
+    /// 一次训练结算（普通 / 稽古共用）：失败判定 → 数值入账 → 设施计数 → 剧本后处理
+    fn settle_training(&mut self, train: usize, keiko: bool, rng: &mut impl Rng) -> Result<()> {
+        let buffs = self.calc_training_buff(train)?;
+        let failure_rate = self.calc_training_failure_rate(&buffs, train)?;
+        let fail_prob = f64::from(failure_rate) / 100.0;
+        if rng.random_bool(fail_prob) {
+            return self.apply_training_failure(fail_prob, rng);
+        }
+        let value = self.calc_training_value(&buffs, train)?;
+        self.uma_mut().add_value(&value);
+        if !keiko {
+            self.base.train_level_count[train] += 1;
+        }
+        // 助カ支撑：本次训练若已生效则消耗 1 次（稽古获得后重置，见下）
+        if self.assist_support_left > 0 {
+            self.assist_support_left -= 1;
+        }
+        self.after_train(train, keiko, rng)?;
+        // 演目槽：普通训练按参与担当入账（闪彩 +2）；排练回合不涨
+        if !keiko {
+            self.gain_training_gauge(train);
+        }
+        // 演目稽古成功：非合宿 → 该演目 Lv+1、槽清零；合宿中不升不清
+        if keiko {
+            let act = self.act_of_train(train);
+            if !self.plan.camp_train(self.forced_rest) {
+                self.add_act_level(act, 1);
+                self.acts.gauge[act] = 0;
+            }
+            // 助カの支え：稽古获得（重置次数）
+            if self.participant_advice(train).effect.support_assist {
+                self.assist_support_left = self.data.rules.assist_support.count;
+            }
+        }
+        // 研鑽「追加の稽古」：普通训练 / 稽古成功都触发（绑定演目担当参与即可）
+        self.try_kensan(train, rng);
+        Ok(())
+    }
+
+    /// 训练失败：二次判定大失败（生病 / 不擅长），按基础局口径直接结算失败事件
+    fn apply_training_failure(&mut self, failure_rate: f64, rng: &mut impl Rng) -> Result<()> {
+        let event = if rng.random_bool(failure_rate) {
+            self.uma_mut().flags.ill.insert(Ill::BAD_TRAINER);
+            self.uma_mut().flags.bad_trainer = true;
+            Data::get()?.system_event("training_fail_low")?.clone()
+        } else {
+            Data::get()?.system_event("training_fail")?.clone()
+        };
+        self.apply_event(&event, 0, rng)
+    }
+
+    /// 上层训练数值（剧本来源；`lower` 为下层值，`keiko` 为排练上下文）
+    pub(crate) fn training_upper(
+        &self,
+        train: usize,
+        lower: &ActionValue,
+        keiko: bool,
+    ) -> TrainingUpper {
+        let advice = self.participant_advice(train).effect;
+        let presentation = self.presentation_bonus();
+        let five_types = self.deck_has_five_types();
+        let friend_training = self.shining_count(train) > 0;
+        let act = self.act_of_train(train);
+        let act_effect = keiko.then(|| self.act_effect(act));
+
+        // 友情合计（仅友情训练）：发布会 + 協力教え +（稽古：演目 Lv 友情 + 転成稽古友情）
+        let mut friendship = 0;
+        if friend_training {
+            friendship += presentation.friendship;
+            friendship += advice.cooperate_friendship;
+            if let Some(effect) = act_effect {
+                friendship += effect.friendship;
+                friendship += advice.keiko_friendship;
+            }
+        }
+        // 训练效果合计：助力（非友情）+ 助力支撑 +（稽古：両道 / 不屈 稽古效果）
+        let mut training_effect = 0;
+        if !friend_training {
+            training_effect += advice.non_friend_training_effect;
+        }
+        if self.assist_support_left > 0 {
+            training_effect += self.data.rules.assist_support.effect;
+        }
+        if keiko {
+            training_effect += advice.keiko_training_effect;
+        }
+        // 主获得合计：特化 +（稽古：絆教え / 絆転成 稽古）
+        let mut main_gain = advice.main_gain;
+        if keiko {
+            main_gain += advice.keiko_main_bonus;
+        }
+        // 副获得合计：両道（SP 不吃）
+        let sub_gain = advice.dual_sub_gain;
+        // SP 训练效果（稽古且 5 种卡：演目 Lv sp_training）
+        let mut sp_training = 0;
+        // 上层上限：基础上限 + 特化 status_limit +（稽古且 5 种卡：演目 Lv status_limit）
+        let mut status_cap = self.data.rules.training_upper_cap + advice.status_limit;
+        let mut sp_cap = self.data.rules.training_upper_cap + advice.status_limit;
+        let mut keiko_flat = 0;
+        if let Some(effect) = act_effect {
+            keiko_flat = effect.all_status_bonus;
+            if five_types {
+                sp_training += effect.sp_training;
+                status_cap += effect.status_limit;
+                sp_cap += effect.sp_limit;
+            }
+        }
+
+        let mut upper = TrainingUpper {
+            keiko_flat,
+            ..Default::default()
+        };
+        let friend_pct = 100 + friendship;
+        for axis in 0..5 {
+            let base = lower.status_pt[axis];
+            if base <= 0 {
+                continue;
+            }
+            let (rate1, rate2, cap) = if axis == train {
+                (100 + training_effect, 100 + main_gain, status_cap)
+            } else {
+                (100 + training_effect + sub_gain, 100, status_cap)
+            };
+            let real =
+                (i64::from(base) * i64::from(friend_pct) * i64::from(rate1) * i64::from(rate2)
+                    / 1_000_000) as i32;
+            let gain = (real - base).min(cap).max(0);
+            upper.status[axis] = gain;
+        }
+        // SP：不吃副获得；吃 SP 训练效果 + SP 上限
+        let sp_base = lower.status_pt[5];
+        if sp_base > 0 {
+            let rate1 = 100 + training_effect + sp_training;
+            let real =
+                (i64::from(sp_base) * i64::from(friend_pct) * i64::from(rate1) / 10_000) as i32;
+            upper.skill_pt = (real - sp_base).min(sp_cap).max(0);
+        }
+        // 体力 / 干劲：稽古体力消耗下降 + 本番演出（URA 训练：体力 +30 / 干劲 +1）
+        let mut vital = lower.vital;
+        if keiko && vital < 0 {
+            let drop = advice.keiko_vital_cost_drop.min(100);
+            vital = -(i64::from(-vital) * i64::from(100 - drop) / 100) as i32;
+        }
+        if self.ura_training_active() {
+            vital += self.data.finals_act.vital;
+            upper.motivation += self.data.finals_act.motivation;
+        }
+        upper.vital = vital;
+        upper
+    }
+
+    /// 剧本失败率下降 %（不屈 / 本番演出；100 = 必定成功）
+    pub(crate) fn scenario_fail_rate_drop(&self, train: usize) -> i32 {
+        let mut drop = 0;
+        if self.ura_training_active() {
+            drop = drop.max(self.data.finals_act.fail_rate_drop);
+        }
+        if let Some(threshold) = self.participant_advice(train).effect.fail_vital_threshold
+            && (threshold == 0 || self.uma().vital >= threshold)
+        {
+            drop = 100;
+        }
+        drop
+    }
+
+    /// 本番演出是否在 URA 收尾期训练中生效（turn 68–77）
+    pub(crate) fn ura_training_active(&self) -> bool {
+        self.finals_done && (68..=77).contains(&self.turn)
+    }
+
+    /// 训练成功后的剧本后处理：羁绊 / 灵感事件 / 加练 / 点击（替换引擎默认实现）
+    fn after_train(&mut self, train: usize, keiko: bool, rng: &mut impl Rng) -> Result<()> {
+        self.base.set_last_train(train);
+        let advice = self.participant_advice(train);
+        let lesson = advice.relationship_gain;
+        let touches = self.base.distribution[train].clone();
+        let mut hint_persons: Vec<usize> = Vec::new();
+        let mut yayoi_clicked = false;
+        let mut reporter_clicked = false;
+        for index in touches {
+            if index < 0 {
+                continue;
+            }
+            let person_index = index as usize;
+            let person = &self.persons[person_index];
+            let origin = person.origin;
+            let person_type = person.person_type();
+            let mut base = match person_type {
+                // 理事长 / 记者：引擎基础局口径 +5（剧本资产未单列）
+                PersonType::Yayoi | PersonType::Reporter => 5,
+                _ => match origin {
+                    PersonOrigin::Card => self.data.rules.friendship_gain.card,
+                    PersonOrigin::Friend => self.data.rules.friendship_gain.friend,
+                    // 编成外神驹只计人头，不给羁绊
+                    PersonOrigin::Guest => 0,
+                    _ => 0,
+                },
+            };
+            // 絆の教え：全编组卡 +3（平摊，不按参与人数叠加；爱娇由 add_friendship 统一施加一次）
+            if lesson > 0 && matches!(origin, PersonOrigin::Card | PersonOrigin::Friend) {
+                base += lesson;
+            }
+            if base > 0 {
+                self.base
+                    .add_friendship(&mut self.persons, person_index, base);
+            }
+            if self.persons[person_index].hint() {
+                hint_persons.push(person_index);
+            }
+            match person_type {
+                PersonType::Yayoi => yayoi_clicked = true,
+                PersonType::Reporter => reporter_clicked = true,
+                _ => {}
+            }
+        }
+        // 灵感事件：默认随机 1 人；排练 + 5 种卡 + 演目 Lv≥4 → 全灵感事件发动
+        let all_hint = keiko
+            && self.deck_has_five_types()
+            && self.act_effect(self.act_of_train(train)).all_hint;
+        let hint_level_bonus = if keiko {
+            self.participant_advice(train).effect.keiko_hint_level
+        } else {
+            0
+        };
+        if all_hint {
+            for person_index in &hint_persons {
+                self.do_hint_with_bonus(*person_index, hint_level_bonus, rng)?;
+            }
+        } else if let Some(&person_index) = hint_persons.choose(rng) {
+            self.do_hint_with_bonus(person_index, hint_level_bonus, rng)?;
+        }
+        // 加练（非夏合宿；引擎基础局口径）
+        let extra_train_prob = Data::get()?.event_prob("extra_train")?;
+        if !self.is_xiahesu() && rng.random_bool(extra_train_prob) {
+            let mut event = umasim::game::extra_training_event(train)?;
+            if let Some(yayoi) = self.person_index_of_type(PersonType::Yayoi) {
+                event.person_index = Some(yayoi as i32);
+            }
+            self.unresolved_events.push(event);
+        }
+        // 点击事件（理事长 / 记者；友人点击与真实吾妻事件留 S6，暂不推温泉事件）
+        if yayoi_clicked {
+            let mut event = Data::get()?.system_event("yayoi_click")?.clone();
+            if let Some(index) = self.person_index_of_type(PersonType::Yayoi) {
+                event.person_index = Some(index as i32);
+            }
+            self.unresolved_events.push(event);
+        }
+        if reporter_clicked {
+            let mut event = Data::get()?.system_event("reporter_click")?.clone();
+            event.choices[0][0].value.status_pt[train] = 2;
+            if let Some(index) = self.person_index_of_type(PersonType::Reporter) {
+                event.person_index = Some(index as i32);
+            }
+            self.unresolved_events.push(event);
+        }
+        Ok(())
+    }
+
+    /// 灵感事件（可叠加稽古灵感等级 +N；口径同引擎基础局，含单卡累计上限 / 次数）
+    pub(crate) fn do_hint_with_bonus(
+        &mut self,
+        person_index: usize,
+        level_bonus: i32,
+        rng: &mut impl Rng,
+    ) -> Result<()> {
+        let data = Data::get()?;
+        let attr_prob = data.event_prob("hint_attr")?;
+        let max_hint = data.consts.max_hint_per_card;
+        let card = self.persons[person_index].card_id().and_then(|card_id| {
+            self.base
+                .deck
+                .iter()
+                .position(|card| card.card_id == card_id)
+        });
+        let (hint_level, hint_count) = match card {
+            Some(index) => {
+                let level = (1 + self.base.deck[index].card_value().hint_level + level_bonus)
+                    .min(5)
+                    .min(max_hint - self.base.deck[index].total_hints)
+                    .max(0);
+                let count = 1 + self.base.deck[index].effect.hint_count_bonus;
+                (level, count)
+            }
+            None => (1 + level_bonus, 1),
+        };
+        for _ in 0..hint_count {
+            let mut event = if rng.random_bool(attr_prob) || hint_level == 0 {
+                umasim::game::hint_attr_event(
+                    self.persons[person_index].train_type() as usize,
+                    person_index,
+                )?
+            } else {
+                if let Some(index) = card {
+                    self.base.deck[index].total_hints += hint_level;
+                }
+                umasim::game::hint_skill_event(hint_level, person_index)
+            };
+            if let Some(index) = card {
+                event.name = format!("{} - {}", event.name, self.base.deck[index].short_name());
+            }
+            self.unresolved_events.push(event);
+        }
+        Ok(())
+    }
+
+    /// 普通训练成功后按参与担当入账演目槽（担当归集；闪彩 +2、其余 +1）
+    fn gain_training_gauge(&mut self, train: usize) {
+        let touches = self.base.distribution[train].clone();
+        for index in touches {
+            if index < 0 {
+                continue;
+            }
+            let person_index = index as usize;
+            let Some(act) = self.persons.get(person_index).and_then(|person| person.act) else {
+                continue;
+            };
+            let amount = if self.is_shining_at(person_index, train) {
+                self.data.rules.act_gauge_gain.friendship
+            } else {
+                self.data.rules.act_gauge_gain.member
+            };
+            self.gain_act_gauge(act, amount);
+        }
+    }
+
+    /// 研鑽「追加の稽古」：掷中且绑定演目担当参与成功训练时触发（上 / 下档）
+    fn try_kensan(&mut self, train: usize, rng: &mut impl Rng) {
+        if !self.kensan_pending {
+            return;
+        }
+        let Some(kensan_act) = self.kensan_act() else {
+            return;
+        };
+        let participated = self.base.distribution[train]
+            .iter()
+            .filter(|index| **index >= 0)
+            .any(|index| {
+                self.persons
+                    .get(*index as usize)
+                    .and_then(|person| person.act)
+                    == Some(kensan_act)
+            });
+        if !participated {
+            return;
+        }
+        self.kensan_pending = false;
+        let rules = self.data.rules.kensan.clone();
+        let upper = rng.random_bool(f64::from(rules.upper_prob) / 100.0);
+        let mut value = ActionValue::default();
+        if upper {
+            value.status_pt[train] += rules.upper_status;
+            value.status_pt[5] += rules.upper_skill_pt;
+            value.vital += rules.upper_vital;
+            self.uma_mut().add_value(&value);
+            self.gain_lowest_act_gauge(rules.upper_gauge);
+            if let Some(index) = self.person_index_of_type(PersonType::Yayoi) {
+                self.base.add_friendship(
+                    &mut self.persons,
+                    index,
+                    rules.upper_president_friendship,
+                );
+            }
+            // 随机解除一个 debuff（简化：优先清「不擅长训练」，其次生病位；无 debuff 则无效果）
+            if self.uma().flags.bad_trainer {
+                self.uma_mut().flags.bad_trainer = false;
+            } else if !self.uma().flags.ill.is_empty() {
+                self.uma_mut().flags.ill.remove(Ill::BAD_TRAINER);
+            }
+        } else {
+            value.status_pt[train] += rules.lower_status;
+            value.vital += rules.lower_vital;
+            self.uma_mut().add_value(&value);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+    use umaai_core::gamedata::ActionValue;
+    use umasim::game::{Game, Person, PersonType};
+
+    use super::*;
+
+    /// 合成下层值（只给速 / SP / 体力，其余 0）
+    fn lower_value(speed: i32, sp: i32, vital: i32) -> ActionValue {
+        let mut value = ActionValue::default();
+        value.status_pt[0] = speed;
+        value.status_pt[5] = sp;
+        value.vital = vital;
+        value
+    }
+
+    /// 把一个指定训练类型的支援卡放进该训练位并置为闪彩（友情训练）
+    fn make_shining(game: &mut MatsuriGame, train: usize) -> usize {
+        let index = game
+            .persons()
+            .iter()
+            .position(|person| {
+                person.person_type() == PersonType::Card && person.train_type() == train as i32
+            })
+            .expect("缺少该训练类型的支援卡");
+        game.base.distribution = vec![vec![]; 5];
+        game.base.distribution[train] = vec![index as i32];
+        game.persons[index].set_friendship(80);
+        index
+    }
+
+    /// 把一个指定演目的担当放进训练位（用于教え参与聚合）
+    fn person_of_act(game: &MatsuriGame, act: usize) -> usize {
+        game.persons
+            .iter()
+            .position(|person| person.act == Some(act))
+            .expect("该演目没有担当")
+    }
+
+    #[test]
+    fn upper_zero_without_scenario_sources() {
+        let game = crate::testing::sample_game();
+        let upper = game.training_upper(0, &lower_value(100, 100, -20), false);
+        assert_eq!(upper.status, [0; 5], "无发布会 / 教え时上层为 0");
+        assert_eq!(upper.skill_pt, 0);
+        assert_eq!(upper.keiko_flat, 0);
+        assert_eq!(upper.vital, -20, "普通训练体力不变");
+        assert_eq!(upper.motivation, 0);
+    }
+
+    #[test]
+    fn upper_presentation_friendship_applies_on_friend_training() {
+        let mut game = crate::testing::sample_game();
+        game.check_points[0] = crate::data::CheckPointResult::GreatSuccess;
+        make_shining(&mut game, 0);
+        let upper = game.training_upper(0, &lower_value(100, 100, -20), false);
+        assert_eq!(upper.status[0], 5, "发布会友情 +5% → 速 +5");
+        assert_eq!(upper.skill_pt, 5, "同一乘区作用于 SP");
+        assert_eq!(upper.status[1], 0, "非主属性无下层基数");
+    }
+
+    #[test]
+    fn upper_keiko_flat_and_act_effects() {
+        let mut game = crate::testing::sample_game();
+        game.acts.level[0] = 1;
+        make_shining(&mut game, 0);
+        let upper = game.training_upper(0, &lower_value(16, 9, -25), true);
+        assert_eq!(upper.keiko_flat, 10, "稽古全基础 +10（全五维 flat）");
+        // 演目 Lv1 友情 2%：16 × 1.02 = 16.32 → 16，增量为 0；SP 吃 sp_training（5 种卡 → 20%）
+        assert_eq!(upper.status[0], 0);
+        assert_eq!(
+            upper.skill_pt, 2,
+            "SP 训练效果：9 × 1.02 × 1.2 = 11 → 增量 2"
+        );
+        assert_eq!(upper.vital, -25, "未带体力教え时体力不变");
+    }
+
+    #[test]
+    fn upper_special_caps_and_main_gain() {
+        let mut game = crate::testing::sample_game();
+        game.advice.acquired = true;
+        game.advice.slots = [601, 201, 301, 401, 501];
+        game.acts.level = [10, 1, 1, 1, 1];
+        let person = person_of_act(&game, 0);
+        game.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
+        // 无闪彩 → 非友情：特化主获得 +25%、基础上限 +25
+        let upper = game.training_upper(0, &lower_value(100, 100, -20), false);
+        assert_eq!(upper.status[0], 25, "100 × 1.25 = 125 → 增量 25");
+        assert_eq!(upper.skill_pt, 0, "特化 main_gain 不吃 SP");
+    }
+
+    #[test]
+    fn upper_non_friend_assist_training_effect() {
+        let mut game = crate::testing::sample_game();
+        game.advice.acquired = true;
+        game.advice.slots = [401, 201, 301, 501, 101];
+        game.acts.level = [10, 1, 1, 1, 1];
+        let person = person_of_act(&game, 0);
+        game.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
+        let upper = game.training_upper(0, &lower_value(100, 0, -20), false);
+        assert_eq!(upper.status[0], 40, "助力 Lv10 非友情 +40%");
+    }
+
+    #[test]
+    fn upper_keiko_vital_cost_drop() {
+        let mut game = crate::testing::sample_game();
+        game.advice.acquired = true;
+        game.advice.slots = [101, 201, 301, 401, 501];
+        game.acts.level = [1, 1, 1, 1, 10];
+        let person = person_of_act(&game, 4);
+        game.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
+        let upper = game.training_upper(0, &lower_value(16, 9, -25), true);
+        assert_eq!(upper.vital, -21, "稽古体力消耗 -15%：-25 → -21");
+    }
+
+    #[test]
+    fn upper_sp_training_five_types() {
+        let mut game = crate::testing::sample_game();
+        game.acts.level[0] = 10;
+        let person = person_of_act(&game, 0);
+        game.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
+        let upper = game.training_upper(0, &lower_value(16, 100, -25), true);
+        assert_eq!(
+            upper.skill_pt, 170,
+            "演目 Lv10 SP 排练 +170%（上限 120 不截增量）"
+        );
+    }
+
+    #[test]
+    fn ura_training_effects() {
+        let mut game = crate::testing::sample_game();
+        game.finals_done = true;
+        game.turn = 70;
+        assert!(game.ura_training_active());
+        let upper = game.training_upper(0, &lower_value(100, 0, -20), false);
+        assert_eq!(upper.vital, 10, "URA 训练体力 +30");
+        assert_eq!(upper.motivation, 1, "URA 训练干劲 +1");
+        assert_eq!(game.scenario_fail_rate_drop(0), 100, "本番演出失败率 -100%");
+    }
+
+    #[test]
+    fn unyielding_drops_failure_to_zero() {
+        let mut game = crate::testing::sample_game();
+        game.advice.acquired = true;
+        game.advice.slots = [901, 201, 301, 401, 501];
+        game.acts.level[0] = 10;
+        let person = person_of_act(&game, 0);
+        game.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
+        game.uma_mut().vital = 10;
+        assert_eq!(
+            game.scenario_fail_rate_drop(0),
+            100,
+            "不屈 Lv10 体力无关 -100%"
+        );
+        game.acts.level[0] = 1;
+        assert_eq!(game.scenario_fail_rate_drop(0), 0, "不屈 Lv1 需体力 ≥45");
+    }
+
+    #[test]
+    fn kensan_triggers_upper_or_lower_profile() {
+        let mut game = crate::testing::sample_game();
+        game.advice.acquired = true;
+        game.advice.slots = [201, 101, 301, 401, 501];
+        game.advice.fused = [701, 0, 0, 0, 0];
+        game.acts.level[0] = 10;
+        let person = person_of_act(&game, 0);
+        game.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
+        game.kensan_pending = true;
+        let before = game.uma().clone();
+        let mut rng = StdRng::seed_from_u64(5);
+        game.try_kensan(0, &mut rng);
+        assert!(!game.kensan_pending, "触发后消耗本回合追加稽古");
+        let d_status = game.uma().five_status[0] - before.five_status[0];
+        let d_pt = game.uma().skill_pt - before.skill_pt;
+        let d_vital = game.uma().vital - before.vital;
+        let rules = game.data.rules.kensan.clone();
+        let profile = (d_status, d_pt, d_vital);
+        assert!(
+            profile == (rules.upper_status, rules.upper_skill_pt, rules.upper_vital)
+                || profile == (rules.lower_status, 0, rules.lower_vital),
+            "追加稽古只应有上 / 下档两种结果，实际 {profile:?}"
+        );
+    }
+
+    #[test]
+    fn gauge_gain_by_participants_with_shining() {
+        let mut game = crate::testing::sample_game();
+        game.acts.gauge = [0; 5];
+        let shining = make_shining(&mut game, 0); // act0 担当、速类型、闪彩
+        let other = person_of_act(&game, 1);
+        let npc = game
+            .persons()
+            .iter()
+            .position(|person| person.act == Some(2) && person.person_type() == PersonType::Npc)
+            .expect("act2 的神驹");
+        game.base.distribution = vec![
+            vec![shining as i32, other as i32, npc as i32],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ];
+        game.gain_training_gauge(0);
+        assert_eq!(
+            game.acts.gauge,
+            [2, 1, 1, 0, 0],
+            "参与担当各给自己担当演目 +1；闪彩担当 +2"
+        );
+    }
+
+    #[test]
+    fn kensan_triggers_on_normal_training_too() {
+        let mut game = crate::testing::sample_game();
+        game.advice.acquired = true;
+        game.advice.slots = [201, 101, 301, 401, 501];
+        game.advice.fused = [701, 0, 0, 0, 0];
+        game.acts.level[0] = 10;
+        let person = person_of_act(&game, 0);
+        game.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
+        game.kensan_pending = true;
+        let mut rng = StdRng::seed_from_u64(6);
+        game.try_kensan(0, &mut rng);
+        assert!(!game.kensan_pending, "普通训练成功也消耗追加稽古");
+    }
+
+    #[test]
+    fn keiko_flat_applies_to_all_five_stats() {
+        let mut game = crate::testing::sample_game();
+        game.keiko_settling = true;
+        let person = person_of_act(&game, 0);
+        game.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
+        let buffs = game.calc_training_buff(0).expect("训练 buff");
+        let value = game.calc_training_value(&buffs, 0).expect("训练值");
+        assert_eq!(
+            value.status_pt[1], 10,
+            "速度稽古的耐力基础为 0 → 只吃 +10 flat"
+        );
+        assert!(value.status_pt[0] >= 26, "速度 = 下层 + 10 flat");
+    }
+}

@@ -111,8 +111,8 @@
 - 演目命令的 `base_command_id` 分别映射 101 / 105 / 102 / 103 / 106；`command_level = 演目 Lv`（1–10）。
 - `5105` 另有 `result_state = 1` 行：体力 +5（失败档），语义待真机确认。
 - `106`（智力）训练回体 +5，与 `umaai-onsen` / 拉面同口径。
-- **演目稽古基础值按时期分两档、与训练 Lv 无关**（`memo` 2026-10-29，已收口；S2 资产当前**只落 Junior 档**
-  `training.keiko.junior`，Classic 档结构暂时下架、需要时恢复）：
+- **演目稽古基础值按时期分两档、与训练 Lv 无关**（`memo` 2026-10-29，已收口；S2 只落 Junior 档
+  `training.keiko.junior`，**S5 已恢复 `training.keiko.classic`**（turn 24 起切档，两种结果都强化））：
   主属性（速 / 耐 / 力 / 毅力 / 智）Junior `16 / 14 / 14 / 15 / 12`、Classic 以后 `21 / 20 / 20 / 23 / 14`。
   上表 `5101–5105` 的主属性正是 **Junior 档**；`command_level = 演目 Lv` 只作索引，不参与倍率计算。
   mdb 中 5101–5105 只有 `sub_id=1` 一组行；`single_mode_training` 的 10 行（command_level 1–10）只定义
@@ -346,6 +346,10 @@
 | R 连续事件第 1 回 | TODO |
 
 - 来源 memo；问号项与无凸效果仍待真机 / 官方 UI。
+- **S4 已建模**：外出第 1–5 段落 `data/events.json` 的 `matsuri_outing_1..5`（见 §4.1 映射）；
+  问号项取 memo 下界 / 首档（段 1 体力 33；段 2/4 干劲 +1、羁绊 +5），技能灵感（快速 / 神速）未建模；
+  「外出共通」的绊 +5 并入各段事件；`最低演目 Lv+1` 走 `outing` 资产 + 三则落点。
+  S6（真实卡面事件）落地后替换。
 - 友人卡位：1 固定友人 + 5 普通训练卡；SSR 0 凸即可，突破数不影响演目 Lv 上限。
 
 ### 3.13 事件时间轴（memo 2026-10-27，原始 1 基）
@@ -530,7 +534,7 @@
 | `acts`（5 条） | `single_mode_15_act_info` + `single_mode_15_act_member` + `single_mode_training.base_command_id` | `act_type → command_id(5101–5105) → train(0–4) → npc_chara_id`；行数 5 + 5 |
 | `training.normal`（5×5×7） | **Lv1** = `single_mode_training_effect`（`scenario_id=15, sub_id=1, result_state=2`）；**Lv2–5** = `memo` 2026-10-31 普通训练全表 | `[训练 0-4][等级 0-4] -> [速 耐 力 根 智 SP 体力]`；Lv1 与 mdb 逐值自检通过 |
 | `training.keiko.junior`（5×7） | `single_mode_training_effect` 命令 5101–5105 | 与静态表主属性一致 |
-| `training.keiko.classic` | `memo` 2026-10-29 / 10-31 | **暂时下架**（2026-11-01 用户指示；数值留在 §3.2，S5 需要时恢复字段 / 资产节 / 校验）。Classic 以后档（覆盖 Classic 与 Senior，无第三档；U02 2026-11-01 收口） |
+| `training.keiko.classic`（5×7） | `memo` 2026-10-29 / 10-31 | **S5 已恢复**（2026-11-01）；Classic 以后档（覆盖 Classic 与 Senior，无第三档；U02 收口）；turn 24 起替换 Junior 档（turn 23 発表会「演目稽古强化」，成功 / 大成功都切） |
 | `act_effects`（10 条） | `single_mode_15_act_effect`（66 行） | 每级聚合为类型化对象：`all_status_bonus`(105) / `friendship`(202) / `sp_training`(201.v4) / `hint_event`(106) / `all_hint`(107) / `sp_limit`(109) / `status_limit`(206) / `sp_training_hidden`(201.v1=30, TBD) |
 | `advices`（10 种 × 10 级） | `single_mode_15_advice`（10 行）+ `single_mode_15_advice_effect`（153 行） | 类型化效果（`kind` + 语义字段）：`friendship`(16/13) / `deyilv`(4) / `hint`(2) / `assist`(203/20) / `vital`(3) / `special`(13/206) / `kensan`(8) / `cooperate`(202/18) / `unyielding`(205+cond2 / 203) / `dual`(21/203) |
 | `fusion`（5 条 = 9 行） | `single_mode_15_fusion_effect`（9 行） | 每个基础教诲（101–501）的転成升级效果，按 `kind` 类型化 |
@@ -541,8 +545,13 @@
 | `schedule`（3 条） | `single_mode_15_schedule`（3 行） | `turn_num - 1`；Lv 3/5/6、`need_act_num = 5` |
 | `advice_windows`（6 个） | `single_mode_15_advice_recommend`（6 行） | `turn_num - 1` → 2/11/23/35/47/59 |
 | `camp` | 权威帮助 / `memo` / user 2026-10-30 | 3 窗口 (12–15)/(36–39)/(60–63) + 固定 Lv+1 结算点 15/39/63（暂定） |
-| `rules` | 数据 / user 口径 | gauge 上限 5、入账 1/2/4/1、训练 Lv 每 4 次 +1、普通训练 5 级、演目 Lv 上限 6/10、羁绊基础值 |
+| `rules` | 数据 / user 口径 | gauge 上限 5、入账 1/2/4/1、训练 Lv 每 4 次 +1、普通训练 5 级、演目 Lv 上限 6/10、羁绊基础值；**S5 扩**：`training_upper_cap`(100) / `assist_support`(3×5%) / `kensan`(上下档数值 + 50% STUB) |
 | `data/events.json`（赛后奖励，2026-11-01 接入） | `memo` 2026-10-29 定稿 / user 2026-11-01 / `umaai-next` 新基础 | **不再进剧本资产**（原 `race_rewards` 已移除）：目标赛 `race_career` 覆写 5×+5 / SP72；非目标赛 `race_g1–g4` 用引擎 `extra_status.random`（GI 10 / GII·GIII 8 / OP 5）；URA 决赛 `race_ura_{qualifier,semifinal,final}` 五维 +10 / SP 40·60·80；引擎 `push_race_event` 统一 floor |
+| `data/events.json`（吾妻出行 5 段，2026-11-01 接入） | `memo` 2026-10-27（中可信度，见 §3.12） | `matsuri_outing_1..5` 系统事件：每段体力 / 属性 / SP / 羁绊（`friendship`）；第 3 段上 / 下双选项（上 = 体力 +50，下 = 属性 + SP）。**未确认项取 memo 下界 / 首档**（段 1 体力 33；段 2/4 干劲 +1、羁绊 +5）；技能灵感（快速 Lv2 / 神速 Lv3）未建模；S6 换真实卡面事件 |
+
+- **S5 机制已建模（2026-11-01）**：本接入包中标注「S5」的机制全部落地——gauge 入账 / 消费、
+  稽古两档 + 演目 Lv 效果、教诲 10 种 + 融合 + 窗口、训练两层公式、発表会 / 本番 / 合宿 +1 /
+  URA 训练 / 育成终了；成功档数值、上昇量上限、追加稽古上下档、技能灵感等仍是 TBD，见 `stubs.md`。
 
 - **schema 命名口径**：效果按语义字段名（不存原始 `effect_type` 编码）；原始编码对照就是本节与 §3.3 / §3.4 / §3.5。
 - **一次性奖励与永久 buff 分开**：`check_points` 只放 `check_point_effect` 的永久 buff；全能力 / PT / 训练 Lv / 羁绊 / Hint

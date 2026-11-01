@@ -7,19 +7,56 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use matsuri_core::data::CheckPointResult;
 use matsuri_core::game::deck::inspect_deck;
 use matsuri_core::testing::data_dir;
 use matsuri_core::{
-    DeckError, DeckReport, DeckWarning, MAX_TURN, MatsuriConfig, MatsuriData, MatsuriGame,
+    Action, DeckError, DeckReport, DeckWarning, MAX_TURN, MatsuriConfig, MatsuriData, MatsuriGame,
     MatsuriPerson, MatsuriTrainer, MatsuriView, PersonOrigin, TurnPlan,
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use umaai::Config;
 use umaai_core::Data;
-use umasim::game::{Game, Person, SupportCard};
+use umaai_core::gamedata::EventChoice;
+use umasim::game::{FriendOutState, Game, Person, SupportCard, Trainer};
+
+/// 5 段友人出行的演目 Lv 期望：每段 Lv+1（三则落点）→ 槽+1（满槽跳过，三则落点）
+fn expected_outing_levels(level: [i32; 5], gauge: [i32; 5], gauge_max: i32) -> [i32; 5] {
+    let mut level = level;
+    let mut gauge = gauge;
+    for _ in 0..5 {
+        let act = (0..5)
+            .min_by_key(|act| (level[*act], gauge[*act], *act as i32))
+            .expect("5 演目非空");
+        level[act] += 1;
+        if let Some(next) = (0..5)
+            .filter(|act| gauge[*act] < gauge_max)
+            .min_by_key(|act| (level[*act], gauge[*act], *act as i32))
+        {
+            gauge[next] += 1;
+        }
+    }
+    level
+}
+
+/// 按三则落点 / 满槽跳过推进 `count` 次演目槽，返回各演目增量
+fn expected_gauge_up(level: [i32; 5], gauge: [i32; 5], count: i32, gauge_max: i32) -> [i32; 5] {
+    let mut guage = gauge;
+    let mut gained = [0; 5];
+    for _ in 0..count {
+        let Some(act) = (0..5)
+            .filter(|act| guage[*act] < gauge_max)
+            .min_by_key(|act| (level[*act], guage[*act], *act as i32))
+        else {
+            break;
+        };
+        guage[act] += 1;
+        gained[act] += 1;
+    }
+    gained
+}
 
 /// 单回合观测（`Begin` 阶段后的回合结构与资源快照）
 struct TurnObs {
@@ -707,5 +744,774 @@ fn view_snapshot_roundtrip() -> Result<()> {
     let back: MatsuriView = serde_json::from_str(&text).context("反序列化 View 失败")?;
     assert_eq!(back, view);
     println!("View 快照往返 OK：{text}");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// S4：动作集与单动作结算
+// ---------------------------------------------------------------------------
+
+/// 测试用训练员：动作固定、事件选项固定（不成立时直接报错，避免静默选别的动作）
+struct ScriptedTrainer {
+    action: Action,
+    choice: usize,
+}
+
+impl Trainer<MatsuriGame> for ScriptedTrainer {
+    fn select_action(
+        &self,
+        _game: &MatsuriGame,
+        actions: &[Action],
+        _rng: &mut StdRng,
+    ) -> Result<usize> {
+        actions
+            .iter()
+            .position(|action| action == &self.action)
+            .ok_or_else(|| anyhow!("候选动作缺少 {:?}", self.action))
+    }
+
+    fn select_choice(
+        &self,
+        _game: &MatsuriGame,
+        _choices: &[Vec<EventChoice>],
+        _rng: &mut StdRng,
+    ) -> Result<usize> {
+        Ok(self.choice)
+    }
+}
+
+/// 局面数值快照（测单动作增量用）
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Stats {
+    five: [i32; 5],
+    pt: i32,
+    vital: i32,
+    motivation: i32,
+}
+
+impl Stats {
+    fn of(game: &MatsuriGame) -> Self {
+        let uma = game.uma();
+        Self {
+            five: uma.five_status,
+            pt: uma.skill_pt,
+            vital: uma.vital,
+            motivation: uma.motivation,
+        }
+    }
+}
+
+/// 事件已结算次数（按事件 id）
+fn event_count(game: &MatsuriGame, id: u32) -> u32 {
+    *game.base.events.get(&id).unwrap_or(&0)
+}
+
+/// 用样例训练员把局面推进到 `target` 回合的 **Distribute 阶段**：
+/// 该回合 `Begin` 已执行（`plan` / `forced_rest` 已派生），`Train` 尚未决策。
+fn drive_to_turn(game: &mut MatsuriGame, target: i32) -> Result<()> {
+    let trainer = MatsuriTrainer::new(MatsuriConfig::default());
+    let mut decision = StdRng::seed_from_u64(7);
+    while !(game.turn() == target && game.stage().get() == 3) {
+        assert!(game.turn() <= target, "局面已越过目标回合 {target}");
+        game.run_stage(&trainer, &mut decision)?;
+        game.next();
+    }
+    Ok(())
+}
+
+/// 从当前阶段（Begin / Distribute）起用脚本训练员跑完本回合，并推进到下一回合 Begin
+fn finish_turn(game: &mut MatsuriGame, trainer: &impl Trainer<MatsuriGame>) -> Result<()> {
+    let mut decision = StdRng::seed_from_u64(11);
+    loop {
+        let stage = game.stage().get();
+        game.run_stage(trainer, &mut decision)?;
+        game.next();
+        if stage == 2 {
+            // 刚执行完 End 阶段
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// 一回合的动作集按回合类型分叉：普通 / 合宿年 1 / 合宿年 2·3 / 目标赛 / 强制休息 / 自选比赛 / URA
+#[test]
+fn action_set_by_turn_type() -> Result<()> {
+    let repo = Repo::load()?;
+
+    // 普通回合（turn 2）：5 普通训练 + 休息 + 普通出行；无比赛 / 稽古 / 友人出行 / 治病
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 2)?;
+    let actions = game.list_actions()?;
+    let trains: Vec<u8> = actions
+        .iter()
+        .filter_map(|action| match action {
+            Action::Train(train) => Some(*train),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(trains, vec![0, 1, 2, 3, 4], "普通回合 5 个训练位");
+    assert!(actions.contains(&Action::Rest));
+    assert!(actions.contains(&Action::NormalOuting));
+    assert!(!actions.contains(&Action::Race), "turn 2 未进自选比赛窗口");
+    assert!(!actions.contains(&Action::FriendOuting), "吾妻未解锁");
+    assert!(!actions.contains(&Action::Clinic));
+    assert!(!actions.iter().any(|a| matches!(a, Action::ActTrain(_))));
+
+    // 第 1 年合宿（turn 12）：5 稽古 + 休息 + 出行（第 1 年可出行）
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 12)?;
+    let actions = game.list_actions()?;
+    let acts: Vec<u8> = actions
+        .iter()
+        .filter_map(|action| match action {
+            Action::ActTrain(act) => Some(*act),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(acts, vec![0, 1, 2, 3, 4], "合宿回合 5 个训练位全变稽古");
+    assert!(actions.contains(&Action::Rest));
+    assert!(actions.contains(&Action::NormalOuting), "第 1 年合宿可出行");
+    assert!(!actions.iter().any(|a| matches!(a, Action::Train(_))));
+
+    // 第 2 年合宿（turn 36）：5 稽古 + 休息；第 2/3 年合宿不可出行
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 36)?;
+    let actions = game.list_actions()?;
+    assert_eq!(
+        actions
+            .iter()
+            .filter(|a| matches!(a, Action::ActTrain(_)))
+            .count(),
+        5
+    );
+    assert!(actions.contains(&Action::Rest));
+    assert!(!actions.contains(&Action::NormalOuting));
+    assert!(!actions.contains(&Action::FriendOuting));
+
+    // 目标赛回合（turn 11）：只有比赛
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 11)?;
+    assert!(game.plan.race, "turn 11 是目标赛回合");
+    assert_eq!(game.list_actions()?, vec![Action::Race]);
+
+    // 凯斯奇迹 T65：目标赛被强制休息占用 → 只有休息
+    let mut game = repo.game(109301)?;
+    drive_to_turn(&mut game, 65)?;
+    assert!(game.plan.race && game.forced_rest);
+    assert_eq!(game.list_actions()?, vec![Action::Rest]);
+
+    // 自选比赛窗口：13–71 中等级非 0 的回合含比赛动作
+    let grades = repo.cfg.race_grades()?;
+    let race_turn = (16..=35)
+        .find(|turn| grades[*turn as usize] > 0)
+        .context("样例赛程在 16–35 应至少有一个可自选比赛回合")?;
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, race_turn)?;
+    let actions = game.list_actions()?;
+    assert!(
+        actions.contains(&Action::Race),
+        "turn {race_turn} 应可自选比赛"
+    );
+
+    // URA 决赛（turn 73）：只有比赛
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 73)?;
+    assert_eq!(game.list_actions()?, vec![Action::Race]);
+
+    println!(
+        "动作集：普通 / 合宿年 1 / 合宿年 2 / 目标赛 / 强制休息 / 自选比赛（turn {race_turn}）/ URA 全部分支正确"
+    );
+    Ok(())
+}
+
+/// 目标赛结算：比赛事件入队并在 `AfterTrain` 入账；五维与 SP 都吃比赛加成（floor）
+#[test]
+fn target_race_reward_applied() -> Result<()> {
+    let repo = Repo::load()?;
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 11)?;
+    assert!(game.plan.race, "turn 11 是目标赛回合");
+    let scale = (100 + game.uma().race_bonus) as f64 / 100.0;
+    let career_id = Data::get()?.system_event("race_career")?.id;
+    let before = Stats::of(&game);
+    let races_before = event_count(&game, career_id);
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Race,
+            choice: 0,
+        },
+    )?;
+    let after = Stats::of(&game);
+    for axis in 0..5 {
+        let expect = (5.0 * scale).floor() as i32;
+        assert_eq!(
+            after.five[axis] - before.five[axis],
+            expect,
+            "五维 axis {axis} 应为 floor(5 × {scale:.2})"
+        );
+    }
+    assert_eq!(
+        after.pt - before.pt,
+        (72.0 * scale).floor() as i32,
+        "目标赛 SP 应为 floor(72 × {scale:.2})"
+    );
+    assert_eq!(event_count(&game, career_id), races_before + 1);
+    println!(
+        "目标赛奖励：race_bonus={} → 五维 +{} / SP +{}",
+        game.uma().race_bonus,
+        (5.0 * scale).floor() as i32,
+        (72.0 * scale).floor() as i32
+    );
+    Ok(())
+}
+
+/// 自选比赛结算：非目标赛随机 1 项属性 + 面板 SP，两者都吃比赛加成
+#[test]
+fn self_race_reward_applied() -> Result<()> {
+    use umaai_core::gamedata::ExtraStatus;
+
+    let repo = Repo::load()?;
+    let grades = repo.cfg.race_grades()?;
+    let race_turn = (16..=35)
+        .find(|turn| grades[*turn as usize] > 0)
+        .context("样例赛程在 16–35 应至少有一个可自选比赛回合")?;
+    let grade = grades[race_turn as usize];
+    let event = Data::get()?
+        .system_event(&format!("race_g{grade}"))?
+        .clone();
+    let panel = &event.choices[0][0].value;
+    let Some(ExtraStatus::Random { value, .. }) = event.choices[0][0].extra_status else {
+        return Err(anyhow!("race_g{grade} 应为随机 1 项额外属性"));
+    };
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, race_turn)?;
+    let scale = (100 + game.uma().race_bonus) as f64 / 100.0;
+    let before = Stats::of(&game);
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Race,
+            choice: 0,
+        },
+    )?;
+    let after = Stats::of(&game);
+    let delta: Vec<i32> = (0..5)
+        .map(|axis| after.five[axis] - before.five[axis])
+        .collect();
+    let expect_extra = (f64::from(value) * scale).floor() as i32;
+    assert_eq!(
+        delta.iter().filter(|value| **value != 0).count(),
+        1,
+        "非目标赛只给 1 项属性: {delta:?}"
+    );
+    assert_eq!(delta.iter().sum::<i32>(), expect_extra);
+    assert_eq!(
+        after.pt - before.pt,
+        (f64::from(panel.status_pt[5]) * scale).floor() as i32,
+        "自选比赛 SP 吃比赛加成"
+    );
+    println!(
+        "自选比赛 G{grade}（turn {race_turn}）：随机 1 项 +{expect_extra} / SP +{}",
+        after.pt - before.pt
+    );
+    Ok(())
+}
+
+/// 强制休息回合（凯斯奇迹 T65）：实际执行休息，不产生比赛事件 / 奖励
+#[test]
+fn forced_rest_turn_does_not_race() -> Result<()> {
+    let repo = Repo::load()?;
+    let mut game = repo.game(109301)?;
+    drive_to_turn(&mut game, 65)?;
+    assert!(game.plan.race && game.forced_rest);
+    let career_id = Data::get()?.system_event("race_career")?.id;
+    let before = Stats::of(&game);
+    let races_before = event_count(&game, career_id);
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Rest,
+            choice: 0,
+        },
+    )?;
+    assert_eq!(
+        event_count(&game, career_id),
+        races_before,
+        "强制休息不产生比赛事件"
+    );
+    let after = Stats::of(&game);
+    assert_eq!(after.five, before.five, "强制休息不改五维");
+    assert!(
+        after.vital >= before.vital,
+        "休息回体：{} -> {}",
+        before.vital,
+        after.vital
+    );
+    println!(
+        "凯斯奇迹 T65 强制休息：无比赛事件、五维不变、体力 {} -> {}",
+        before.vital, after.vital
+    );
+    Ok(())
+}
+
+/// 训练失败：不给属性收益 / 技能点；体力 0 时连续训练应出现失败（失败事件入账）
+#[test]
+fn training_failure_has_no_gain() -> Result<()> {
+    let repo = Repo::load()?;
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    let fail_ids = [
+        Data::get()?.system_event("training_fail")?.id,
+        Data::get()?.system_event("training_fail_low")?.id,
+    ];
+    let mut found = false;
+    for turn in 20..=24 {
+        drive_to_turn(&mut game, turn)?;
+        game.uma_mut().vital = 0;
+        let actions = game.list_actions()?;
+        // 槽满时该位变演目稽古；失败口径两者相同
+        let action = if actions.contains(&Action::Train(0)) {
+            Action::Train(0)
+        } else {
+            Action::ActTrain(0)
+        };
+        let before = Stats::of(&game);
+        let fail_before: u32 = fail_ids.iter().map(|id| event_count(&game, *id)).sum();
+        finish_turn(&mut game, &ScriptedTrainer { action, choice: 0 })?;
+        let fail_after: u32 = fail_ids.iter().map(|id| event_count(&game, *id)).sum();
+        if fail_after > fail_before {
+            let after = Stats::of(&game);
+            for axis in 0..5 {
+                assert!(
+                    after.five[axis] <= before.five[axis],
+                    "失败不给属性收益（axis {axis}：{} -> {}）",
+                    before.five[axis],
+                    after.five[axis]
+                );
+            }
+            assert_eq!(after.pt, before.pt, "失败不给技能点");
+            found = true;
+            break;
+        }
+    }
+    assert!(found, "体力 0 连续训练应至少出现一次训练失败");
+    println!("训练失败：触发失败事件、无属性 / SP 收益");
+    Ok(())
+}
+
+/// 休息：普通休息按 30/50/70 分档，合宿版（原夏合宿窗口）固定 +40 体 / +1 干劲
+#[test]
+fn rest_normal_and_camp_versions() -> Result<()> {
+    let repo = Repo::load()?;
+    // 普通休息（turn 20，体力 0 起）
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 20)?;
+    game.uma_mut().vital = 0;
+    let before = Stats::of(&game);
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Rest,
+            choice: 0,
+        },
+    )?;
+    let after = Stats::of(&game);
+    let delta = after.vital - before.vital;
+    assert!(
+        [30, 50, 70].contains(&delta),
+        "普通休息回体应为 30/50/70 之一：{delta}"
+    );
+    assert_eq!(after.motivation, before.motivation, "普通休息不改干劲");
+
+    // 合宿版休息（turn 36，原窗口内）
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 36)?;
+    game.uma_mut().vital = 0;
+    let before = Stats::of(&game);
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Rest,
+            choice: 0,
+        },
+    )?;
+    let after = Stats::of(&game);
+    assert_eq!(after.vital - before.vital, 40, "合宿版休息 +40 体");
+    assert_eq!(
+        after.motivation,
+        (before.motivation + 1).min(5),
+        "合宿版休息 +1 干劲"
+    );
+    println!(
+        "休息：普通档 +{delta} / 合宿版 +40 体 +1 干劲（体力 {} -> {}）",
+        before.vital, after.vital
+    );
+    Ok(())
+}
+
+/// 出行：普通出行结算通用事件；友吾妻出行 5 段推进 + 每段最低演目 Lv+1 + 段事件数值
+#[test]
+fn outing_actions() -> Result<()> {
+    let repo = Repo::load()?;
+    // 普通出行
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 20)?;
+    let before = Stats::of(&game);
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::NormalOuting,
+            choice: 0,
+        },
+    )?;
+    let outing_ids: Vec<u32> = ["normal_outing_1", "normal_outing_2", "normal_outing_3"]
+        .iter()
+        .map(|key| {
+            Data::get()
+                .expect("数据已初始化")
+                .system_event(key)
+                .expect("事件存在")
+                .id
+        })
+        .collect();
+    let hits = outing_ids
+        .iter()
+        .filter(|id| event_count(&game, **id) > 0)
+        .count();
+    assert_eq!(hits, 1, "普通出行应恰好结算 1 个通用出行事件");
+    assert_ne!(Stats::of(&game), before, "普通出行应带来数值变化");
+
+    // 友人出行：手动解锁（真实解锁事件留 S6），连续 5 段
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 20)?;
+    game.base.friend.out_state = FriendOutState::AfterUnlock;
+    let friend_index = game
+        .persons()
+        .iter()
+        .position(|person| person.card_id() == Some(30323))
+        .context("SSR 吾妻人头应存在")?;
+    let friendship_before = game.persons()[friend_index].friendship();
+    let before = Stats::of(&game);
+    let level_before = game.view().act_level;
+    let gauge_before = game.view().act_gauge;
+    for step in 0..5 {
+        assert!(
+            game.list_actions()?.contains(&Action::FriendOuting),
+            "第 {} 段应可友人出行",
+            step + 1
+        );
+        finish_turn(
+            &mut game,
+            &ScriptedTrainer {
+                action: Action::FriendOuting,
+                choice: 0,
+            },
+        )?;
+    }
+    assert_eq!(game.base.friend.out_used, vec![true; 5], "5 段全部用掉");
+    // S5：每段「最低演目 Lv+1」+ 出行入槽 +1，逐段按三则落点 / 满槽跳过推进
+    let gauge_max = repo.data.rules.act_gauge_max;
+    let expected_level = expected_outing_levels(level_before, gauge_before, gauge_max);
+    assert_eq!(
+        game.view().act_level,
+        expected_level,
+        "5 段出行的演目 Lv 落点（Lv 最低 → 槽最低 → 属性序）"
+    );
+    assert_eq!(
+        game.persons()[friend_index].friendship(),
+        friendship_before + 25,
+        "5 段各 +5 羁绊"
+    );
+    let after = Stats::of(&game);
+    // 第 3 段取上档（无属性），其余各段属性合计：速 10 / 耐 5 / 力 5 / 毅 20 / 智 20 / SP 45。
+    // 5 段横跨 turn 23 的進捗発表会：其一次性奖励（大成功 = 五维 +5 / SP +200）也在区间内。
+    let cp_reward = repo
+        .data
+        .check_point_rewards
+        .iter()
+        .find(|reward| {
+            reward.schedule == Some(1)
+                && match game.view().check_points[0] {
+                    CheckPointResult::GreatSuccess => {
+                        reward.result == matsuri_core::data::RewardResult::GreatSuccess
+                    }
+                    CheckPointResult::Success => {
+                        reward.result == matsuri_core::data::RewardResult::Success
+                    }
+                    CheckPointResult::NotReached => false,
+                }
+        })
+        .context("発表会奖励行应存在")?;
+    assert_eq!(
+        [
+            after.five[0] - before.five[0],
+            after.five[1] - before.five[1],
+            after.five[2] - before.five[2],
+            after.five[3] - before.five[3],
+            after.five[4] - before.five[4],
+        ],
+        [
+            10 + cp_reward.status,
+            5 + cp_reward.status,
+            5 + cp_reward.status,
+            20 + cp_reward.status,
+            20 + cp_reward.status,
+        ],
+        "5 段出行属性合计（memo 中可信度 + 発表会奖励）"
+    );
+    assert_eq!(
+        after.pt - before.pt,
+        45 + cp_reward.skill_pt,
+        "5 段出行 SP 合计 + 発表会 SP 奖励"
+    );
+    assert!(
+        !game.list_actions()?.contains(&Action::FriendOuting),
+        "5 段用完后不可再出行"
+    );
+    println!(
+        "出行：普通出行 1 个通用事件；友人出行 5 段 → 演目 Lv {level:?} / 羁绊 +25 / 五维 +[10,5,5,20,20] / SP+45",
+        level = game.view().act_level
+    );
+    Ok(())
+}
+
+/// 演目稽古（S5 两层）：成功 → 演目 Lv+1、槽清零；数值 = 下层 + 上层（含 +10 全基础 flat）
+#[test]
+fn keiko_success_levels_up_and_clears_gauge() -> Result<()> {
+    let repo = Repo::load()?;
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 20)?;
+    game.uma_mut().vital = 100;
+    let gauge_max = repo.data.rules.act_gauge_max;
+    // 手动点满槽（本回合进入排练），先从 Distribute 阶段跑出真实分布
+    game.acts.gauge[0] = gauge_max;
+    let level_before = game.view().act_level;
+    let mut decision = StdRng::seed_from_u64(7);
+    let trainer = MatsuriTrainer::new(MatsuriConfig::default());
+    game.run_stage(&trainer, &mut decision)?; // Distribute
+    assert!(game.next(), "Distribute → Train");
+    // 下层期望：稽古 Junior 速行 16 × 引擎公式各乘区（人数 / 干劲 / 成长率 / 卡面）
+    let buffs = game.calc_training_buff(0)?;
+    let person_count = game.count_training_persons(0);
+    let uma = game.uma();
+    let motivation_adj = ((uma.motivation - 3) * 10) as f32;
+    let lower = ((16 + buffs.bonus[0]) as f32
+        * (1.0 + 0.01 * buffs.youqing)
+        * (1.0 + 0.01 * motivation_adj * (1.0 + 0.01 * buffs.ganjing as f32))
+        * (1.0 + 0.01 * buffs.xunlian as f32)
+        * (1.0 + 0.05 * person_count as f32)
+        * (1.0 + 0.01 * uma.five_status_bonus[0] as f32))
+        .floor() as i32;
+    let before = Stats::of(&game);
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::ActTrain(0),
+            choice: 0,
+        },
+    )?;
+    let after = Stats::of(&game);
+    let level_after = game.view().act_level;
+    assert_eq!(level_after[0], level_before[0] + 1, "稽古成功演目 Lv+1");
+    assert_eq!(game.view().act_gauge[0], 0, "稽古成功该演目槽清零");
+    assert!(
+        after.five[0] - before.five[0] >= lower + 10,
+        "稽古数值至少含下层 {lower} + 全基础 +10 flat（实际 +{}）",
+        after.five[0] - before.five[0]
+    );
+    // 非主属性也吃 +10 全基础（速度稽古的耐力基础为 0，除 flat 外无下层收益）
+    assert!(
+        after.five[1] - before.five[1] >= 10,
+        "稽古全基础 +10 应作用于非主属性（耐力 +{}）",
+        after.five[1] - before.five[1]
+    );
+    println!(
+        "演目稽古 S5：Lv {} -> {} / 槽清零 / 速 +{}（下层 {lower} + 上层）",
+        level_before[0],
+        level_after[0],
+        after.five[0] - before.five[0]
+    );
+    Ok(())
+}
+
+/// 每回合 `AfterTrain` 把动作 / 训练后挂出的事件全部结算，不跨回合泄漏
+#[test]
+fn unresolved_events_drained_each_turn() -> Result<()> {
+    let repo = Repo::load()?;
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    let trainer = MatsuriTrainer::new(MatsuriConfig::default());
+    let mut decision = StdRng::seed_from_u64(7);
+    for turn in 0..=MAX_TURN {
+        for stage in 0..5 {
+            game.run_stage(&trainer, &mut decision)?;
+            if stage >= 3 {
+                assert!(
+                    game.base.unresolved_events.is_empty(),
+                    "turn {turn} stage {stage} 后仍有 {} 个待结算事件",
+                    game.base.unresolved_events.len()
+                );
+            }
+            game.next();
+        }
+    }
+    assert!(
+        !game.base.events.is_empty(),
+        "整局应结算过事件（比赛奖励等）"
+    );
+    println!("事件排空：78 回合每回合 AfterTrain / End 后无待结算事件");
+    Ok(())
+}
+
+/// 演目槽来源：目标赛 +4（按 4 次 +1）、自选赛 / 休息 / 出行 +1
+#[test]
+fn gauge_gains_from_race_and_rest() -> Result<()> {
+    let repo = Repo::load()?;
+    let gauge_max = repo.data.rules.act_gauge_max;
+    // 目标赛（turn 11 生涯目标赛）：+4，按三则落点 4 次 +1
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 11)?;
+    let level = game.view().act_level;
+    let gauge = game.view().act_gauge;
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Race,
+            choice: 0,
+        },
+    )?;
+    let expect = expected_gauge_up(level, gauge, 4, gauge_max);
+    assert_eq!(
+        game.view().act_gauge,
+        [0, 1, 2, 3, 4].map(|act| gauge[act] + expect[act]),
+        "目标赛演目槽 +4（含满槽跳过 / 并列分摊）"
+    );
+
+    // 自选赛（非目标）：+1
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 20)?;
+    assert!(
+        game.list_actions()?.contains(&Action::Race),
+        "turn 20 应有可自选比赛"
+    );
+    let level = game.view().act_level;
+    let gauge = game.view().act_gauge;
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Race,
+            choice: 0,
+        },
+    )?;
+    let expect = expected_gauge_up(level, gauge, 1, gauge_max);
+    assert_eq!(
+        game.view().act_gauge,
+        [0, 1, 2, 3, 4].map(|act| gauge[act] + expect[act]),
+        "自选比赛演目槽 +1"
+    );
+
+    // 休息：+1
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 20)?;
+    let level = game.view().act_level;
+    let gauge = game.view().act_gauge;
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Rest,
+            choice: 0,
+        },
+    )?;
+    let expect = expected_gauge_up(level, gauge, 1, gauge_max);
+    assert_eq!(
+        game.view().act_gauge,
+        [0, 1, 2, 3, 4].map(|act| gauge[act] + expect[act]),
+        "休息演目槽 +1"
+    );
+    println!("演目槽：目标赛 +4 / 自选赛 +1 / 休息 +1（三则落点 + 满槽跳过）");
+    Ok(())
+}
+
+/// 训练成功：参与担当按担当归集入槽（闪彩 +2）；排练回合不涨
+#[test]
+fn gauge_gains_from_training_participants() -> Result<()> {
+    let repo = Repo::load()?;
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 20)?;
+    game.acts.gauge = [0; 5];
+    // 先跑完 Distribute 得到真实分布（此时无排练锁位）
+    let mut decision = StdRng::seed_from_u64(7);
+    let trainer = MatsuriTrainer::new(MatsuriConfig::default());
+    game.run_stage(&trainer, &mut decision)?;
+    assert!(game.next(), "Distribute → Train");
+    let distribution = game.distribution()[0].clone();
+    let mut expect = [0; 5];
+    for index in &distribution {
+        if *index < 0 {
+            continue;
+        }
+        let person = &game.persons()[*index as usize];
+        let Some(act) = person.act else {
+            continue;
+        };
+        let shining = game.is_shining_at(*index as usize, 0);
+        expect[act] += if shining { 2 } else { 1 };
+    }
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Train(0),
+            choice: 0,
+        },
+    )?;
+    assert_eq!(
+        game.view().act_gauge,
+        expect,
+        "训练参与担当按担当归集入槽（闪彩 +2）"
+    );
+    println!("训练入槽：{expect:?}（闪彩按 +2）");
+    Ok(())
+}
+
+/// 整局机制链：教诲按窗口获得 / 融合、発表会结果结算、本番演出激活
+#[test]
+fn s5_mechanism_chain_over_full_run() -> Result<()> {
+    let repo = Repo::load()?;
+    let obs = sweep(repo.game(repo.cfg.sim.uma)?, |turn, game| {
+        if turn == 3 {
+            assert!(
+                game.view().advice_slots.iter().all(|slot| *slot != 0),
+                "turn 2 结束已获得教诲"
+            );
+        }
+        if turn == 24 {
+            assert_ne!(
+                game.view().check_points[0],
+                CheckPointResult::NotReached,
+                "turn 23 结束应结算第 1 回発表会"
+            );
+            assert!(
+                game.view().advice_fused.iter().any(|fused| *fused != 0),
+                "turn 23 结束应完成第 2 年融合"
+            );
+        }
+        if turn == 48 {
+            assert_ne!(game.view().check_points[1], CheckPointResult::NotReached);
+            assert!(
+                game.view().advice_fused.iter().all(|fused| *fused != 0),
+                "turn 47 结束应完成第 3 年融合"
+            );
+        }
+        if turn == 68 {
+            assert_ne!(game.view().check_points[2], CheckPointResult::NotReached);
+            assert!(game.view().finals_done, "本番演出已结算");
+        }
+        if turn == 70 {
+            assert!(game.plan.ura_period, "turn 70 在 URA 收尾期");
+        }
+        Ok(())
+    })?;
+    assert_eq!(obs.len(), (MAX_TURN + 1) as usize);
+    println!("S5 机制链：教诲 / 発表会 / 融合 / 本番演出按回合窗口结算");
     Ok(())
 }

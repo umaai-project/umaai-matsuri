@@ -787,6 +787,80 @@
                 "value": { "motivation": -1 }
             }
         ]]},
+        "matsuri_outing_1": {
+            "id": 8201,
+            "name": "吾妻出行·1 段",
+            "trigger": { "type": "Code" },
+            "choices": [[{
+                "value": {
+                    "status_pt": [ 10, 0, 0, 10, 0, 10 ],
+                    "motivation": 1,
+                    "vital": 33,
+                    "friendship": 5
+                }
+            }]]
+        },
+        "matsuri_outing_2": {
+            "id": 8202,
+            "name": "吾妻出行·2 段",
+            "trigger": { "type": "Code" },
+            "choices": [[{
+                "value": {
+                    "status_pt": [ 0, 0, 0, 0, 10, 10 ],
+                    "motivation": 1,
+                    "vital": 30,
+                    "friendship": 5
+                }
+            }]]
+        },
+        "matsuri_outing_3": {
+            "id": 8203,
+            "name": "吾妻出行·3 段",
+            "trigger": { "type": "Code" },
+            "player_select": true,
+            "choices": [
+                [{
+                    "value": {
+                        "motivation": 1,
+                        "vital": 50,
+                        "friendship": 5
+                    }
+                }],
+                [{
+                    "value": {
+                        "status_pt": [ 0, 10, 0, 10, 10, 20 ],
+                        "motivation": 1,
+                        "friendship": 5
+                    }
+                }]
+            ]
+        },
+        "matsuri_outing_4": {
+            "id": 8204,
+            "name": "吾妻出行·4 段",
+            "trigger": { "type": "Code" },
+            "choices": [[{
+                "value": {
+                    "status_pt": [ 0, 5, 5, 0, 0, 5 ],
+                    "motivation": 1,
+                    "vital": 35,
+                    "friendship": 5
+                }
+            }]]
+        },
+        "matsuri_outing_5": {
+            "id": 8205,
+            "name": "吾妻出行·5 段",
+            "trigger": { "type": "Code" },
+            "choices": [[{
+                "value": {
+                    "status_pt": [ 0, 0, 0, 10, 10, 20 ],
+                    "motivation": 1,
+                    "vital": 35,
+                    "friendship": 5
+                }
+            }]]
+        },
         "ending": {
             "id": 5011,
             "name": "育成结束",

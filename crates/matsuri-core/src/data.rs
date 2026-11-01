@@ -119,7 +119,7 @@ pub struct TrainingData {
     pub keiko: KeikoTraining,
 }
 
-/// 演目稽古基础值（当前只启用 Junior 档）
+/// 演目稽古基础值（两档）
 ///
 /// 时期切换点 = turn 23 的進捗発表会（「演目排练强化」），成功 / 大成功都切档（见 `mechanism.md` §3.2）。
 /// **只有两档**：第二档（`classic`）覆盖 Classic 与 Senior，无第三档（U02 2026-11-01 收口）；
@@ -129,9 +129,8 @@ pub struct TrainingData {
 pub struct KeikoTraining {
     /// Junior 档（= `mdb` 5101–5105）
     pub junior: Vec<[i32; 7]>,
-    // TBD: Classic 及以后档（= 第二档，覆盖 Classic / Senior）暂时下架；S5 恢复字段 / 资产节 / 校验；
-    // 数值见 `docs/plan/intake.md` §3.2（速 21 / 耐 20 / 力 20 / 根 23 / 智 14，SP 10/12/12/12/9，体力 -25 / +5）。
-    // pub classic: Vec<[i32; 7]>,
+    /// Classic 及以后档（第二档，覆盖 Classic / Senior；`memo` 2026-10-29，见 `intake.md` §3.2）
+    pub classic: Vec<[i32; 7]>,
 }
 
 /// 演目 Lv 效果（5 条演目共用；`condition_type=1/5` 的项 = 编成卡类型 ≥5 时生效）
@@ -510,6 +509,44 @@ pub struct Rules {
     pub act_level_max_with_friend: i32,
     /// 羁绊基础值
     pub friendship_gain: FriendshipGain,
+    /// 训练值上层（上昇量）基础上限（引擎 `game_rules.md` §5.8；可被特化 / 演目 Lv 提升）
+    pub training_upper_cap: i32,
+    /// 助力支撑（助力の教え / 転成 401 获得）
+    pub assist_support: AssistSupportRule,
+    /// 研鑽の教え「追加の稽古」数值
+    pub kensan: KensanRule,
+}
+
+/// 助力支撑数值（`memo` 2026-10-31：3 次内 +5%，再次获得重置次数）
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssistSupportRule {
+    /// 可用的加成次数
+    pub count: i32,
+    /// 每次训练效果 +N%
+    pub effect: i32,
+}
+
+/// 研鑽の教え「追加の稽古」数值（`memo` 2026-10-31；上下档概率待测 U40）
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KensanRule {
+    /// 上档：直前训练对象属性 +N
+    pub upper_status: i32,
+    /// 上档：技能Pt +N
+    pub upper_skill_pt: i32,
+    /// 上档：体力 +N（负值 = 消耗）
+    pub upper_vital: i32,
+    /// 上档：理事长羁绊 +N
+    pub upper_president_friendship: i32,
+    /// 上档：最低演目 gauge +N
+    pub upper_gauge: i32,
+    /// 上档概率 %（下档 = 100 − 本值；STUB U40）
+    pub upper_prob: i32,
+    /// 下档：直前训练对象属性 +N
+    pub lower_status: i32,
+    /// 下档：体力 +N
+    pub lower_vital: i32,
 }
 
 /// gauge 入账规则
@@ -668,6 +705,19 @@ impl MatsuriData {
             "training.keiko.junior 应有 {ACT_COUNT} 行，实际 {}",
             keiko.junior.len()
         );
+        ensure!(
+            keiko.classic.len() == ACT_COUNT,
+            "training.keiko.classic 应有 {ACT_COUNT} 行，实际 {}",
+            keiko.classic.len()
+        );
+        for (period, rows) in [("junior", &keiko.junior), ("classic", &keiko.classic)] {
+            for (train, row) in rows.iter().enumerate() {
+                ensure!(
+                    row[6] != 0,
+                    "training.keiko.{period}[{train}] 体力消耗不应为 0"
+                );
+            }
+        }
         Ok(())
     }
 
@@ -1095,6 +1145,31 @@ impl MatsuriData {
         ] {
             ensure!(value >= 0, "rules.friendship_gain.{name} 不应为负");
         }
+        ensure!(
+            rules.training_upper_cap > 0,
+            "rules.training_upper_cap 应为正"
+        );
+        ensure!(
+            rules.assist_support.count > 0 && rules.assist_support.effect > 0,
+            "rules.assist_support 的次数 / 效果应为正"
+        );
+        let kensan = &rules.kensan;
+        ensure!(
+            (1..100).contains(&kensan.upper_prob),
+            "rules.kensan.upper_prob 应在 1–99"
+        );
+        for (name, value) in [
+            ("upper_status", kensan.upper_status),
+            ("upper_skill_pt", kensan.upper_skill_pt),
+            (
+                "upper_president_friendship",
+                kensan.upper_president_friendship,
+            ),
+            ("upper_gauge", kensan.upper_gauge),
+            ("lower_status", kensan.lower_status),
+        ] {
+            ensure!(value >= 0, "rules.kensan.{name} 不应为负");
+        }
         Ok(())
     }
 }
@@ -1346,11 +1421,11 @@ mod tests {
     }
 
     #[test]
-    fn keiko_classic_disabled_rejected() {
+    fn keiko_classic_row_count_rejected() {
         let result = parse_mutated(|value| {
             value["training"]["keiko"]["classic"] = serde_json::json!([[21, 0, 3, 0, 0, 10, -25]]);
         });
-        assert!(result.is_err(), "Classic 稽古档当前下架，未知字段应报错");
+        assert!(result.is_err(), "Classic 稽古档应为 5 行，缺行应报错");
     }
 
     #[test]

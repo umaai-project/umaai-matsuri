@@ -30,7 +30,7 @@
   （`ActLedger` / `AdviceLedger`）+ `MatsuriView` 全量快照；建局门禁=仅 SSR 吾妻；凯斯奇迹 T65
   强制休息按临时记录落地（后续引擎「马娘特殊事件记录」改造后迁移）。四档绿（34 内联 + 11 L2 +
   5 机制 = 50 测例）。**参考卡组**换为：速·待兼诗歌剧 / 速·乐透心 / 耐·樱花千代王 /
-  力·摩耶重炮 / 智·爱慕律动 / 友·SSR 吾妻（满凸）。演目 / gauge / 教え / 合宿结算等机制在 S4+ 落地。
+  力·摩耶重炮 / 智·爱慕律动 / 友·SSR 吾妻（满凸）。演目 / gauge / 教え / 発表会 / 合宿结算等机制在 S5+ 落地。
 - **S4 前置：剧本人头与名单（2026-11-01）**：新增 `MatsuriPerson`（引擎 `BasePerson` 委托 +
   担当 / 来源 / 可用回合）与 `PersonOrigin`（与引擎 `PersonType` 分工：前者剧本标签、后者引擎语义）；
   建局完成「卡 → 理事长 / 记者 → 编成外神驹（第 1 批 5+余额 1、第 2 批 5）」名单与担当分配
@@ -38,20 +38,45 @@
   非 SSR 吾妻友人 / 通用规则）拒绝建局，警告项（link 类型 / 同类 ≥3 / 外派 / 类型 <5 种 /
   人物数极差 ≥2）随 `MatsuriView` 下发。
   四档绿（38 内联 + 11 L2 + 13 机制 = 62 测例）。
+- **S4 动作与结算（2026-11-01）**：`Action` 全集（普通训练 / 演目稽古 `ActTrain` / 比赛 / 休息 /
+  普通出行 / 友人出行 / 治病）+ 按回合类型的动作集（强制比赛 / 强制休息 / 合宿全稽古 / 日常与 URA 收尾）；
+  单动作结算：目标赛 / URA / 自选比赛走 `push_race_event`（比赛加成含発表会永久 buff，floor 在引擎）、
+  普通训练与演目稽古下层公式（稽古切 `training.keiko` 表）+ 失败判定、普通 / 合宿版休息、普通出行、
+  吾妻出行 5 段（每段最低演目 Lv+1 + memo 五段事件）；`AfterTrain` 统一结算 `unresolved_events`、
+  `apply_event` 补事件羁绊归属、`Distribute` 过渡清零（真实分布留 S5）。四档绿
+  （39 内联 + 12 L2 + 22 机制 = 73 测例）；整局冒烟（样例训练员）7690 分 / B、390 阶段。
+  演目 Lv / gauge / 発表会 / 训练上层加成 / 事件链留 S5 / S6。
+- **S5 机制（2026-11-01）**：机制闭环补齐——①**人头分布**重写（亮起锁担当 / 神驹不在率 50 /
+  吾妻排练补位 / 協力・転成・URA 分身 / 每位置 ≤5 / 得意率 + 発表会基线）；②**演目 gauge** 入账 /
+  消费（训练参与按担当归集、闪彩 +2；目标赛 +4；休息 / 出行 / 非目标赛 +1；稽古成功清槽 + Lv+1，
+  合宿稽古不升不清；三则落点 + 满槽跳过）；③**稽古两档**基础值（`training.keiko.classic` 恢复，
+  turn 24 起切档）与**演目 Lv 效果**（全基础 +10 / 友情 / SP 排练 / 灵感 / SP·基础上限）；④**教诲系统**
+  （10 种效果 × 绑定演目 Lv × 参与人数叠加、絆 +3 平摊、助力支撑、研鑽追加稽古、不屈、両道、
+  turn 2/11/23/35/47/59 窗口、turn 23/47 転成融合、120 排列接口留 S7）；⑤**训练两层公式**（下层 =
+  引擎默认公式 + 上层 = 发布会 / 教え / 演目 Lv / 稽古 +10 / 获得量乘区，主 / 副 / SP 拆分 + floor +
+  上昇量上限）；⑥**発表会 / 本番 / 合宿 +1 / URA 训练 / 育成终了**结算（结果按实际演目 Lv 判定，
+  buff / 一次性奖励 / 訓練 Lv+1 / 本番演出 / 全演目 +1 / 终局奖励）；⑦`MatsuriView` 补 S5 资源字段。
+  四档绿（**81 内联 + 13 L2 + 25 机制 = 119 测例**）；整局冒烟（样例训练员）**34368 分 / UE9、
+  PT 6128、390 阶段**（random 基线 19516 分 / SS+、PT 3985）。事件链（S6）、策略训练员 / 搜索（S7/M2）、
+  技能灵感与粉丝不建模（TBD）留后续。
 
 ## 结构
 
 | crate / 文件 | 职责 |
 |---|---|
 | `crates/matsuri-core/src/lib.rs` | 模块声明 + 对外重导出 + `MAX_TURN` |
-| `crates/matsuri-core/src/game/mod.rs` | 局面 `MatsuriGame`（含 `ActLedger` / `AdviceLedger` 账本）+ 资源快照 `MatsuriView` + `build_game`（含友人卡门禁） |
+| `crates/matsuri-core/src/game/mod.rs` | 局面 `MatsuriGame` + `ActLedger` / `AdviceLedger` 账本 + 演目 gauge / Lv / 发布日期 buff 派生 + `MatsuriView` + `build_game`（含友人卡门禁） |
 | `crates/matsuri-core/src/game/stage.rs` | 阶段机 `Stage`（含 `StageId` 投影）+ 回合结构 `TurnPlan` + 合宿进度 `CampState` |
 | `crates/matsuri-core/src/game/person.rs` | 剧本人头 `MatsuriPerson` + 来源 `PersonOrigin`（与引擎 `PersonType` 分工见文档） |
 | `crates/matsuri-core/src/game/roster.rs` | 建局人头名单 + 担当分配（link 钉位 / 外派链 / NPC 余额） |
 | `crates/matsuri-core/src/game/deck.rs` | 编成检测：禁止项 / 警告项（`DeckError` / `DeckWarning` / `DeckReport`） |
-| `crates/matsuri-core/src/game/action.rs` | `Action` + `Display` + `ActionEnum` |
-| `crates/matsuri-core/src/game/traits.rs` | 契约 impl（`Game` / `TrainingValueSource` / `FlatSearchGame`） |
-| `crates/matsuri-core/src/data.rs` | 剧本资产 schema / 载入 / 校验（`scenario_matsuri.json` 16 节） |
+| `crates/matsuri-core/src/game/distribute.rs` | 人头分布（亮起锁担当 / 不在率 / 吾妻补位 / 分身）+ 得意率 / 灵感分配 |
+| `crates/matsuri-core/src/game/train.rs` | 训练结算：下层引擎公式 + 上层剧本乘区 / 封顶 + 失败率 + 训练后处理（羁绊 / 灵感 / 加练 / 追加稽古） |
+| `crates/matsuri-core/src/game/advice.rs` | 教诲：槽效果聚合（按绑定演目 Lv × 参与人数）/ 融合 / 分配接口 |
+| `crates/matsuri-core/src/game/settle.rs` | 回合末结算：発表会 / 本番 / 合宿 +1 / 教诲窗口 / 育成终了 |
+| `crates/matsuri-core/src/game/action.rs` | `Action` + `Display` + `ActionEnum` + 比赛 / 休息 / 出行 / 治病结算入口（含演目槽入账） |
+| `crates/matsuri-core/src/game/traits.rs` | 契约 impl（`Game` / `TrainingValueSource` / `FlatSearchGame`，含分布 / 得意率 / 训练值 / 失败率 / 终局覆写） |
+| `crates/matsuri-core/src/data.rs` | 剧本资产 schema / 载入 / 校验（`scenario_matsuri.json` 16 节 + 稽古两档 / S5 规则常量） |
 | `crates/matsuri-core/src/config.rs` | 剧本配置段（融合 / 転成预设 + 覆盖层） |
 | `crates/matsuri-core/src/trainer.rs` | 样例训练员 `MatsuriTrainer` |
 | `crates/matsuri-cli/src/main.rs` | 终端前端：bin `matsuri`（跑局） |

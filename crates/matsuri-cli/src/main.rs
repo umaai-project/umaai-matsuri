@@ -60,7 +60,7 @@ fn run() -> Result<()> {
         color: false,
     };
     let mut fe = PrintFrontend::new(&mut out, opts, consts);
-    let game = build_game(&cfg, data)?;
+    let game = build_game(&cfg, data)?.with_config(matsuri_cfg.clone());
     // 编成警告（禁止项已在建局时报错）：提示宿主 / 玩家
     for warning in &game.deck_warnings {
         eprintln!("⚠ 编成警告：{warning}");
