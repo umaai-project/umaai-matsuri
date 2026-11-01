@@ -1,8 +1,9 @@
 //! # 骏大祭剧本（`matsuri` / scenarioId 15）
 //!
 //! 「朋、史解き ―午式駿大祭―」的剧本 workspace 骨架，给出「引擎契约怎么接」的完整清单；
-//! 当前为 S2 数据层态：剧本资产 / 配置已落地，`do_train` 走真实普通训练表；
-//! 演目 / gauge / 教え / 合宿等机制在 S3+ 落地。
+//! 当前为 S3 回合结构态：五阶段机（Begin / Distribute / Train / AfterTrain / End）、回合结构
+//! `TurnPlan`（强制比赛 / 合宿窗口与延长 / 発表会 / 本番 / URA 收尾）与资源快照 `MatsuriView`
+//! 已落地；演目 / gauge / 教え / 合宿结算等机制在 S4+ 落地。
 //!
 //! ## 结构（与 `umaai-onsen` 同构）
 //!
@@ -30,7 +31,10 @@ pub mod trainer;
 
 pub use config::MatsuriConfig;
 pub use data::MatsuriData;
-pub use game::{Action, MatsuriGame, MatsuriView, Stage, build_game};
+pub use game::{
+    ActLedger, Action, AdviceLedger, CampState, DeckError, DeckReport, DeckWarning, MatsuriGame,
+    MatsuriPerson, MatsuriView, PersonOrigin, Stage, TurnPlan, build_game,
+};
 pub use trainer::MatsuriTrainer;
 
 /// 育成最大回合（0 基，78 回合）；后续实现按自己的赛程改

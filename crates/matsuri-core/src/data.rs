@@ -13,7 +13,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, bail, ensure};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use umaai_core::Array5;
 
 /// 剧本数据文件名（放在宿主注入的剧本数据根下）
@@ -122,12 +122,14 @@ pub struct TrainingData {
 /// 演目稽古基础值（当前只启用 Junior 档）
 ///
 /// 时期切换点 = turn 23 的進捗発表会（「演目排练强化」），成功 / 大成功都切档（见 `mechanism.md` §3.2）。
+/// **只有两档**：第二档（`classic`）覆盖 Classic 与 Senior，无第三档（U02 2026-11-01 收口）；
+/// **基础值没有 Lv2–10 维度**（`command_level` 只查演目效果 / UI，见 `intake.md` §3.2）。
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KeikoTraining {
     /// Junior 档（= `mdb` 5101–5105）
     pub junior: Vec<[i32; 7]>,
-    // TBD: Classic 以后档暂时下架，需要时恢复字段 / 资产节 / 校验；
+    // TBD: Classic 及以后档（= 第二档，覆盖 Classic / Senior）暂时下架；S5 恢复字段 / 资产节 / 校验；
     // 数值见 `docs/plan/intake.md` §3.2（速 21 / 耐 20 / 力 20 / 根 23 / 智 14，SP 10/12/12/12/9，体力 -25 / +5）。
     // pub classic: Vec<[i32; 7]>,
 }
@@ -340,7 +342,7 @@ pub enum FusionEffectKind {
 }
 
 /// 進捗発表会结果
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckPointResult {
     /// 未达成（只用于第 1 回之前的基线行）
@@ -502,7 +504,7 @@ pub struct Rules {
     pub train_level_up_count: i32,
     /// 普通训练等级上限
     pub normal_train_level_max: i32,
-    /// 演目 Lv 上限（R / 不带吾妻）
+    /// 演目 Lv 上限（R / 不带吾妻；本仓离线模拟不支持该组合，见建局友人卡门禁）
     pub act_level_max: i32,
     /// 演目 Lv 上限（SSR 吾妻）
     pub act_level_max_with_friend: i32,

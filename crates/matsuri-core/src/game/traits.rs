@@ -6,15 +6,55 @@ use anyhow::{Result, anyhow};
 use rand::Rng;
 use rand::rngs::StdRng;
 use umaai_core::gamedata::EventData;
-use umasim::game::base::BasePerson;
 use umasim::game::{
-    Game, StageId, SupportCard, Trainer, TrainingBasicTable, TrainingValueSource, Uma,
+    Game, Person, PersonType, StageId, SupportCard, Trainer, TrainingBasicTable,
+    TrainingValueSource, Uma,
 };
 use umasim::search::FlatSearchGame;
 use umasim::trainer::RandomTrainer;
 
+use super::person::{MatsuriPerson, PersonOrigin};
 use super::{Action, MatsuriGame, Stage};
 use crate::MAX_TURN;
+use crate::data::CheckPointResult;
+
+/// 剧本人头：引擎通用字段逐项委托 [`BasePerson`](umasim::game::base::BasePerson)
+///
+/// `PersonOrigin` ↔ `PersonType` 的映射与边界见 [`MatsuriPerson`] 文档；引擎默认逻辑只读
+/// `PersonType`，剧本逻辑只看 `PersonOrigin`。
+impl Person for MatsuriPerson {
+    fn person_type(&self) -> PersonType {
+        self.base.person_type
+    }
+
+    fn person_index(&self) -> i32 {
+        self.base.person_index
+    }
+
+    fn train_type(&self) -> i32 {
+        self.base.train_type
+    }
+
+    fn friendship(&self) -> i32 {
+        self.base.friendship
+    }
+
+    fn hint(&self) -> bool {
+        self.base.is_hint
+    }
+
+    fn set_hint(&mut self, hint: bool) {
+        self.base.is_hint = hint;
+    }
+
+    fn set_friendship(&mut self, friendship: i32) {
+        self.base.friendship = friendship;
+    }
+
+    fn card_id(&self) -> Option<u32> {
+        self.base.card_id
+    }
+}
 
 impl TrainingValueSource for MatsuriGame {
     /// 剧本资产里的普通训练表（`training.normal`：5 训练 × 等级行）
@@ -24,7 +64,7 @@ impl TrainingValueSource for MatsuriGame {
 }
 
 impl Game for MatsuriGame {
-    type Person = BasePerson;
+    type Person = MatsuriPerson;
     type Action = Action;
 
     fn turn(&self) -> i32 {
@@ -106,18 +146,26 @@ impl Game for MatsuriGame {
     }
 
     fn init_persons(&mut self) -> Result<()> {
-        // S1：卡组人头 + 理事长；后续实现按自己的卡池与友人规则构造
-        let persons: Vec<BasePerson> = self
-            .base
-            .deck
-            .iter()
-            .map(BasePerson::try_from)
-            .collect::<Result<Vec<_>>>()?;
-        for person in persons {
-            self.add_person(person);
+        // 卡组人头（前缀同序）+ 理事长 / 记者 + 编成外神驹；担当分配在这里一次性完成
+        self.init_roster()
+    }
+
+    fn person_is_available(&self, person_index: usize) -> bool {
+        let Some(person) = self.persons.get(person_index) else {
+            return false;
+        };
+        match person.origin {
+            PersonOrigin::Card => true,
+            PersonOrigin::Friend => self.turn() >= 2,
+            PersonOrigin::Guest => {
+                self.turn() >= person.avail_turn
+                    && (!person.needs_great_success
+                        || self.check_points[1] == CheckPointResult::GreatSuccess)
+            }
+            // 理事长 / 记者按引擎基础局默认
+            PersonOrigin::Yayoi => true,
+            PersonOrigin::Reporter => self.turn() >= 13,
         }
-        self.add_person(BasePerson::yayoi());
-        Ok(())
     }
 
     fn distribution(&self) -> &Vec<Vec<i32>> {

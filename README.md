@@ -24,14 +24,31 @@
   四档验收绿（35 测例）。已接入 `umaai-next` 新基础：`data/events.json` 同步赛后奖励与 URA 决赛事件
   （目标赛 `race_career` 覆写 5/72，非目标赛随机 1 项，比赛乘算统一 floor）。演目 / gauge / 教え / 合宿等
   机制在 S3+ 落地，剩余 TBD 见 [`docs/plan/stubs.md`](docs/plan/stubs.md)。
+- **S3 局面与阶段机（2026-11-01）**：一回合五阶段 `Begin → Distribute → Train → AfterTrain → End`
+  （`StageId` 0/3/1/4/2，只增不改）；回合类型 / 边界（强制比赛、合宿窗口与延长、発表会 / 本番、
+  教诲窗口、URA 收尾）由 `TurnPlan` 表达；`CampState` 做合宿计数与顺延；演目 / 教诲账本
+  （`ActLedger` / `AdviceLedger`）+ `MatsuriView` 全量快照；建局门禁=仅 SSR 吾妻；凯斯奇迹 T65
+  强制休息按临时记录落地（后续引擎「马娘特殊事件记录」改造后迁移）。四档绿（34 内联 + 11 L2 +
+  5 机制 = 50 测例）。**参考卡组**换为：速·待兼诗歌剧 / 速·乐透心 / 耐·樱花千代王 /
+  力·摩耶重炮 / 智·爱慕律动 / 友·SSR 吾妻（满凸）。演目 / gauge / 教え / 合宿结算等机制在 S4+ 落地。
+- **S4 前置：剧本人头与名单（2026-11-01）**：新增 `MatsuriPerson`（引擎 `BasePerson` 委托 +
+  担当 / 来源 / 可用回合）与 `PersonOrigin`（与引擎 `PersonType` 分工：前者剧本标签、后者引擎语义）；
+  建局完成「卡 → 理事长 / 记者 → 编成外神驹（第 1 批 5+余额 1、第 2 批 5）」名单与担当分配
+  （link 钉位 / 整位 2 张 / 外派链 / 余额）；**编成检测**双层：禁止项（缺 SSR 吾妻 / 多友人 /
+  非 SSR 吾妻友人 / 通用规则）拒绝建局，警告项（link 类型 / 同类 ≥3 / 外派 / 类型 <5 种 /
+  人物数极差 ≥2）随 `MatsuriView` 下发。
+  四档绿（38 内联 + 11 L2 + 13 机制 = 62 测例）。
 
 ## 结构
 
 | crate / 文件 | 职责 |
 |---|---|
 | `crates/matsuri-core/src/lib.rs` | 模块声明 + 对外重导出 + `MAX_TURN` |
-| `crates/matsuri-core/src/game/mod.rs` | 局面 `MatsuriGame` + 资源快照 `MatsuriView` + `build_game` |
-| `crates/matsuri-core/src/game/stage.rs` | 阶段机 `Stage`（含 `StageId` 投影） |
+| `crates/matsuri-core/src/game/mod.rs` | 局面 `MatsuriGame`（含 `ActLedger` / `AdviceLedger` 账本）+ 资源快照 `MatsuriView` + `build_game`（含友人卡门禁） |
+| `crates/matsuri-core/src/game/stage.rs` | 阶段机 `Stage`（含 `StageId` 投影）+ 回合结构 `TurnPlan` + 合宿进度 `CampState` |
+| `crates/matsuri-core/src/game/person.rs` | 剧本人头 `MatsuriPerson` + 来源 `PersonOrigin`（与引擎 `PersonType` 分工见文档） |
+| `crates/matsuri-core/src/game/roster.rs` | 建局人头名单 + 担当分配（link 钉位 / 外派链 / NPC 余额） |
+| `crates/matsuri-core/src/game/deck.rs` | 编成检测：禁止项 / 警告项（`DeckError` / `DeckWarning` / `DeckReport`） |
 | `crates/matsuri-core/src/game/action.rs` | `Action` + `Display` + `ActionEnum` |
 | `crates/matsuri-core/src/game/traits.rs` | 契约 impl（`Game` / `TrainingValueSource` / `FlatSearchGame`） |
 | `crates/matsuri-core/src/data.rs` | 剧本资产 schema / 载入 / 校验（`scenario_matsuri.json` 16 节） |

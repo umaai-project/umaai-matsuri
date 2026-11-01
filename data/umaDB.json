@@ -851,6 +851,41 @@
     "raceNote": "事件不影响比赛回合",
     "star": 5
   },
+  "100903": {
+    "bonusData": [],
+    "fiveStatusBonus": [
+      0,
+      5,
+      10,
+      0,
+      15
+    ],
+    "fiveStatusInitial": [
+      100,
+      125,
+      88,
+      125,
+      112
+    ],
+    "freeRaces": [],
+    "gameId": 100903,
+    "name": "[陣風の花紺青]大和赤骥",
+    "preferRaces": [],
+    "preferReds": [],
+    "races": [
+      11,
+      28,
+      30,
+      33,
+      43,
+      44,
+      53,
+      67,
+      71
+    ],
+    "raceNote": "事件不影响比赛回合",
+    "star": 5
+  },
   "101001": {
     "bonusData": [],
     "fiveStatusBonus": [
@@ -8638,6 +8673,41 @@
     "freeRaces": [],
     "gameId": 110801,
     "name": "[Red in Black]大鸣大放",
+    "preferRaces": [],
+    "preferReds": [],
+    "races": [
+      11,
+      26,
+      30,
+      33,
+      43,
+      51,
+      53,
+      59,
+      67,
+      69
+    ],
+    "star": 5
+  },
+  "110802": {
+    "bonusData": [],
+    "fiveStatusBonus": [
+      8,
+      0,
+      0,
+      8,
+      14
+    ],
+    "fiveStatusInitial": [
+      123,
+      129,
+      111,
+      92,
+      95
+    ],
+    "freeRaces": [],
+    "gameId": 110802,
+    "name": "[Claret Nosferatu]大鸣大放",
     "preferRaces": [],
     "preferReds": [],
     "races": [

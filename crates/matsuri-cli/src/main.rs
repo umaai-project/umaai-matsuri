@@ -61,6 +61,10 @@ fn run() -> Result<()> {
     };
     let mut fe = PrintFrontend::new(&mut out, opts, consts);
     let game = build_game(&cfg, data)?;
+    // 编成警告（禁止项已在建局时报错）：提示宿主 / 玩家
+    for warning in &game.deck_warnings {
+        eprintln!("⚠ 编成警告：{warning}");
+    }
     // 规则主种子由 Runner 注入（`cfg.sim.seed`）：引擎两轴与剧本策略轴都按它派生
     let mut runner = Runner::new(&cfg, &mut fe)?;
     match trainer_name.as_str() {

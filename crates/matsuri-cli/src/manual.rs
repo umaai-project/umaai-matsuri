@@ -10,7 +10,7 @@ use matsuri_core::game::{Action, MatsuriGame};
 use rand::rngs::StdRng;
 use umaai_core::Data;
 use umaai_core::gamedata::{EventChoice, EventData};
-use umasim::game::{Game, Trainer};
+use umasim::game::{Game, Person, Trainer};
 
 /// 手动训练员：打印局面与候选，从标准输入读取编号
 pub struct ManualTrainer;
@@ -68,13 +68,23 @@ impl ManualTrainer {
         ));
         out.push_str("人头:\n");
         for person in game.persons() {
+            let act = person
+                .act
+                .map(|act| consts.train_name(game.data.acts[act].train).to_string())
+                .unwrap_or_else(|| "—".to_string());
             out.push_str(&format!(
-                "  [{}] {} 得意={} 羁绊={} 红点={}\n",
-                person.person_index,
+                "  [{}] {} 得意={} 羁绊={} 红点={} 担当={} {}可用\n",
+                person.person_index(),
                 person.short_name(),
-                person.train_type,
-                person.friendship,
-                if person.is_hint { "是" } else { "否" }
+                person.train_type(),
+                person.friendship(),
+                if person.hint() { "是" } else { "否" },
+                act,
+                if game.person_is_available(person.person_index() as usize) {
+                    ""
+                } else {
+                    "未"
+                }
             ));
         }
         out.push_str("训练位人数:");

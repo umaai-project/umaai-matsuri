@@ -10,7 +10,7 @@
 
 | crate | 测试面 | 现状 |
 |---|---|---|
-| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成） | 内联单测 24 个 + L2 数据层 11 个；机制集成待补（S3+） |
+| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成） | 内联单测 **38** 个 + L2 数据层 11 个 + 机制集成 **13** 个 |
 | `matsuri-sim` | `tests/baseline.rs`（固定种子基线） | 待补 |
 | `matsuri-cli` | `tests/smoke.rs`（一局冒烟 + 可复现） | 待补 |
 | `matsuri-ai` / `matsuri-tools` | 骨架，暂无 | — |
@@ -21,7 +21,8 @@
 |---|---|---|
 | `core/src/data.rs` | `parse_repo_data_ok` / `unknown_field_rejected` / `bad_row_width_rejected` / `wrong_act_count_rejected` / `act_effects_regression_rejected` / `advice_level_count_rejected` / `advice_kind_mismatch_rejected` / `fusion_kind_mismatch_rejected` / `check_point_buff_regression_rejected` / `reward_schedule_order_rejected` / `career_end_reward_with_schedule_rejected` / `keiko_classic_disabled_rejected` / `schedule_order_rejected` / `camp_settlement_point_rejected` / `limits_order_rejected` | 资产解析 / 未知字段 / 行宽 / 演目与教诲 id 对齐 / 等级表单调 / 场次顺序 / 合宿结算点 |
 | `core/src/config.rs` | `parse_repo_default` / `unknown_key_rejected` / `overlay_replaces_year2_only` / `duplicate_base_rejected` / `wrong_target_rejected` / `wrong_count_rejected` | 默认层 / 覆盖层 / 未知键 / 融合配对校验（2+3、base 不重复、target 年份内唯一） |
-| `core/src/game/stage.rs` | `next_chain` / `stage_ids_are_stable` | 阶段链 / 阶段号稳定 |
+| `core/src/game/roster.rs` | `card_assign_five_speed` / `card_assign_link_pins_and_dispatches` / `card_assign_reference_deck_shape` / `guest_balance_follows_min_persons` | 担当分配五步流水线：memo 三条真机算例（5 速 / 智大和+3速+2毅 / 参考卡组形状）、余额 NPC 落点与并列规则 |
+| `core/src/game/stage.rs` | `next_chain` / `stage_ids_are_stable` / `camp_starts_only_at_window_start` / `camp_basic_window` / `camp_race_turn_extends` / `camp_race_at_window_start_extends` / `camp_forced_rest_turn_extends` / `camp_consecutive_races_keep_extending` / `camp_rest_version_only_in_original_window` / `check_point_index_matches_schedule` / `advice_window_index_matches` / `ura_race_turns` | 五阶段链 / 阶段号稳定；合宿窗口起点、基础 4 回合、比赛 / 强制休息顺延、连续顺延、合宿版休息只限原窗口；発表会 / 教诲窗口 / URA 判定 |
 | `core/src/trainer.rs` | `preferred_training_wraps` | 样例训练员轮转 |
 
 ### 2.1 L2 数据层集成（`core/tests/data.rs`）
@@ -47,7 +48,19 @@
 
 | 用例 | 守门内容 | 对应机制文档 |
 |---|---|---|
-| `<待补>` | 演目 / gauge / 稽古 / 教え / 合宿 / 発表会 | `mechanism.md` §1–§6 |
+| `turn_structure` | 逐阶段跑满 78 回合：発表会 3 场 / 本番 / URA 收尾期 / URA 决赛 / 教诲窗口 / 合宿窗口与计数 / View 初值（演目 Lv 从 1 起、Lv 上限 10） | §1 / §2 / §5 |
+| `camp_forced_rest_extends` | 原窗口最后一回合被强制休息占用 → 不计入 4 回合、顺延一回合、Lv+1 结算点不推迟 | §1 |
+| `keis_miracle_t65_forced_rest` | 凯斯奇迹 T65 仍是目标赛回合但实际强制休息（T64 / T66 无标记） | §1 |
+| `friend_must_be_ssr_azuma` | 仅 SSR 吾妻可建局：R 吾妻 / 其他友人 / 不带友人报错；SSR 吾妻 → Lv 上限 10 | §2.1 / 建局门禁 |
+| `roster_and_act_assignment` | 19 人头名单：前缀同序 / 同 chara 唯一 / 参考卡组卡落位 2-1-1-0-1 / 余额与第 2 批神驹 / link 卡顶替冲突神驹 |
+| `person_availability_by_turn` | 吾妻 / 第 1 批神驹 turn 2、第 2 批需 Classic 大成功、记者 turn 13、理事长恒可用 |
+| `trained_uma_link_replaces_fixed_guest` | 育成马娘本身是 link 角色时，该演目固定神驹换成随机非 link 顶替 |
+| `deck_rules_rejected` | 团队卡 / 同角色两张卡 / 普通卡数量不对 → 建局报错 |
+| `deck_inspection` | 编成自查：参照卡组无禁止项且无警告；缺吾妻 / R 吾妻 / 团队卡 / 重复人物 / 多友人 / 含担当马娘均能报出 |
+| `deck_warnings_type_concentration` | 5 速卡组：W2 同类 ≥3 + W3 外派 + W4 类型 <5 种 + W10 人物数极差 ≥2；View 同步下发 |
+| `deck_warnings_link_type_mismatch` | 速重炮（link 力演目）→ W1 link 类型≠固定演目 |
+| `deck_warning_uneven_persons` | 各演目「卡+NPC」人物数极差 ≥2 → W10 |
+| `view_snapshot_roundtrip` | `MatsuriView` 值快照 serde 往返 | 契约 View |
 
 ## 4. 冒烟与基线
 
@@ -67,3 +80,5 @@
 | 2026-10-26 | `single_mode_15_*` / `training_effect` / `text_data` | 用户 + Agent | 数值与效果编号已解码；回合统一 **0 基**（原始 1 基 -1） | gauge 归属 / 合宿延长 / 友人分身 / 双人头 / 事件回合 |
 | 2026-10-26 | 合宿延长 / 合宿期支援卡事件 | 用户 + Agent | 每年保证 4 个非比赛合宿回合；正常合宿不触发支援卡事件 | 延长段连续事件 / Lv+1 结算点待测 |
 | 2026-11-01 | S2 数据层：资产 / 配置 / 校验 / L2 | 用户 + Agent | mdb 11 张表 + 训练表 + memo 口径 → 资产 16 个顶层键；配置 = 融合预设；四档验收绿（35 测例）；赛后奖励已接入 `umaai-next` 新基础（`data/events.json`，L2 守门） | 成功档 / 普通训练 Lv2–5 / 非目标赛随机项 待真机复核 |
+| 2026-11-01 | S4 前置：剧本人头 / 名单 / 编成检测 | 用户 + Agent | `MatsuriPerson` + `PersonOrigin`（与 `PersonType` 分工）；卡前缀 + 理事长/记者 + 神驹两批；担当分配（link 钉位 / 外派链 / 余额）；**编成检测**：禁止项（缺 SSR 吾妻 / 多友人 / 非 SSR 吾妻友人 / 通用规则）与警告项（W1 link 类型 / W2 同类 ≥3 / W3 外派 / W4 类型 <5 种 / W10 人物数极差 ≥2）随 View 下发；四档绿（62 测例） | 第 2 批神驹人選与随机非 link 取人为离线简化（stubs 登记）；S4 动作与结算待落 |
+| 2026-11-01 | S3 局面与阶段机：阶段链 / 回合边界 / 合宿延长 / 账本 / View | 用户 + Agent | 五阶段机 + `TurnPlan`（比赛 / 合宿 / 発表会 / 本番 / 教诲窗口 / URA）+ 合宿动态计数与顺延；结算与教诲分配均在 `End`；合宿 5 动作全可稽古、不改 Lv / 槽；URA 期回到日常机制；参考卡组换新（满凸）+ 仅 SSR 吾妻可建局；T65 强制休息临时记录落位；四档验收绿（50 测例） | 引擎「马娘特殊事件记录」改造后迁移 T65 表；S4/S5 机制待落 |
