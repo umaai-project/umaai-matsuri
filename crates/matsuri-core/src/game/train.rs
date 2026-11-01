@@ -14,10 +14,10 @@ use rand::Rng;
 use rand::seq::IndexedRandom;
 use umaai_core::gamedata::ActionValue;
 use umaai_core::{Data, Ill};
-use umasim::game::{Game, Person, PersonType};
+use umasim::game::{FriendOutState, Game, Person, PersonType};
 
-use super::MatsuriGame;
 use super::person::PersonOrigin;
+use super::{MatsuriGame, TrainingPreview};
 
 /// 上层训练数值（剧本来源增量；体力 / 干劲改动也在这里汇总）
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -35,6 +35,29 @@ pub(crate) struct TrainingUpper {
 }
 
 impl MatsuriGame {
+    /// 训练 / 演目稽古预览（S8 手动核对 / 前端面板）
+    ///
+    /// 在局面的**克隆**上临时切稽古上下文计算，不改动原局面、不消耗任何随机流。
+    pub fn preview_training(&self, train: usize, keiko: bool) -> Result<TrainingPreview> {
+        if train >= 5 {
+            return Err(anyhow::anyhow!("普通训练下标越界: {train}（训练位 0–4）"));
+        }
+        let mut probe = self.clone();
+        probe.keiko_settling = keiko;
+        let buffs = probe.calc_training_buff(train)?;
+        let failure_rate = probe.calc_training_failure_rate(&buffs, train)?;
+        let mut value = probe.calc_training_value(&buffs, train)?;
+        // 【变胖】预览与正式结算同口径：训练 / 排练速度增量归零
+        if probe.is_fat() {
+            value.status_pt[0] = 0;
+        }
+        Ok(TrainingPreview {
+            value,
+            failure_rate,
+            keiko,
+        })
+    }
+
     /// 普通训练结算
     pub(crate) fn do_train(&mut self, train: usize, rng: &mut impl Rng) -> Result<()> {
         if train >= 5 {
@@ -66,7 +89,11 @@ impl MatsuriGame {
         if rng.random_bool(fail_prob) {
             return self.apply_training_failure(fail_prob, rng);
         }
-        let value = self.calc_training_value(&buffs, train)?;
+        let mut value = self.calc_training_value(&buffs, train)?;
+        // 【变胖】训练 / 排练的速度增量归零；训练后事件 / 休息 / 出行 / 比赛 / 事件仍可加速度
+        if self.is_fat() {
+            value.status_pt[0] = 0;
+        }
         self.uma_mut().add_value(&value);
         if !keiko {
             self.base.train_level_count[train] += 1;
@@ -93,7 +120,7 @@ impl MatsuriGame {
             }
         }
         // 研鑽「追加の稽古」：普通训练 / 稽古成功都触发（绑定演目担当参与即可）
-        self.try_kensan(train, rng);
+        self.try_kensan(train)?;
         Ok(())
     }
 
@@ -235,6 +262,7 @@ impl MatsuriGame {
         let lesson = advice.relationship_gain;
         let touches = self.base.distribution[train].clone();
         let mut hint_persons: Vec<usize> = Vec::new();
+        let mut friend_clicked = false;
         let mut yayoi_clicked = false;
         let mut reporter_clicked = false;
         for index in touches {
@@ -271,6 +299,9 @@ impl MatsuriGame {
                 PersonType::Yayoi => yayoi_clicked = true,
                 PersonType::Reporter => reporter_clicked = true,
                 _ => {}
+            }
+            if matches!(origin, PersonOrigin::Friend) {
+                friend_clicked = true;
             }
         }
         // 灵感事件：默认随机 1 人；排练 + 5 种卡 + 演目 Lv≥4 → 全灵感事件发动
@@ -313,6 +344,26 @@ impl MatsuriGame {
                 event.person_index = Some(index as i32);
             }
             self.unresolved_events.push(event);
+        }
+        // 友人点击事件（Q4 已定：与追加稽古预掷相互独立）：
+        // 首次点击 → 首次事件并转入 BeforeUnlock；之后每次点击按引擎常量概率（默认 40%）推训练后事件。
+        if friend_clicked {
+            match self.base.friend.out_state {
+                FriendOutState::UnClicked => {
+                    self.base.friend.out_state = FriendOutState::BeforeUnlock;
+                    if let Some(event) = Data::get()?.events.friend_events.get("first") {
+                        self.unresolved_events.push(event.clone());
+                    }
+                }
+                _ => {
+                    let prob = Data::get()?.event_prob("friend_click")?;
+                    if rng.random_bool(prob)
+                        && let Some(event) = Data::get()?.events.friend_events.get("click")
+                    {
+                        self.unresolved_events.push(event.clone());
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -384,13 +435,16 @@ impl MatsuriGame {
         }
     }
 
-    /// 研鑽「追加の稽古」：掷中且绑定演目担当参与成功训练时触发（上 / 下档）
-    fn try_kensan(&mut self, train: usize, rng: &mut impl Rng) {
+    /// 研鑽「追加の稽古」：掷中且绑定演目担当参与成功训练时，推入二选一事件（训练员选择上 / 下档）
+    ///
+    /// 事件数据 = 剧本 `scenario_events` 的 `400015106`：上档 = 直前训练属性 +20 / SP+20 / 体力-5 /
+    /// 理事长羁绊+5 / 最低演目 gauge+1 / 解一个 debuff；下档 = 直前训练 +5 / 体力+5。
+    pub(crate) fn try_kensan(&mut self, train: usize) -> Result<()> {
         if !self.kensan_pending {
-            return;
+            return Ok(());
         }
         let Some(kensan_act) = self.kensan_act() else {
-            return;
+            return Ok(());
         };
         let participated = self.base.distribution[train]
             .iter()
@@ -402,36 +456,10 @@ impl MatsuriGame {
                     == Some(kensan_act)
             });
         if !participated {
-            return;
+            return Ok(());
         }
         self.kensan_pending = false;
-        let rules = self.data.rules.kensan.clone();
-        let upper = rng.random_bool(f64::from(rules.upper_prob) / 100.0);
-        let mut value = ActionValue::default();
-        if upper {
-            value.status_pt[train] += rules.upper_status;
-            value.status_pt[5] += rules.upper_skill_pt;
-            value.vital += rules.upper_vital;
-            self.uma_mut().add_value(&value);
-            self.gain_lowest_act_gauge(rules.upper_gauge);
-            if let Some(index) = self.person_index_of_type(PersonType::Yayoi) {
-                self.base.add_friendship(
-                    &mut self.persons,
-                    index,
-                    rules.upper_president_friendship,
-                );
-            }
-            // 随机解除一个 debuff（简化：优先清「不擅长训练」，其次生病位；无 debuff 则无效果）
-            if self.uma().flags.bad_trainer {
-                self.uma_mut().flags.bad_trainer = false;
-            } else if !self.uma().flags.ill.is_empty() {
-                self.uma_mut().flags.ill.remove(Ill::BAD_TRAINER);
-            }
-        } else {
-            value.status_pt[train] += rules.lower_status;
-            value.vital += rules.lower_vital;
-            self.uma_mut().add_value(&value);
-        }
+        self.trigger_kensan_event(train)
     }
 }
 
@@ -596,7 +624,7 @@ mod tests {
     }
 
     #[test]
-    fn kensan_triggers_upper_or_lower_profile() {
+    fn kensan_pushes_choice_event() {
         let mut game = crate::testing::sample_game();
         game.advice.acquired = true;
         game.advice.slots = [201, 101, 301, 401, 501];
@@ -605,20 +633,12 @@ mod tests {
         let person = person_of_act(&game, 0);
         game.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
         game.kensan_pending = true;
-        let before = game.uma().clone();
-        let mut rng = StdRng::seed_from_u64(5);
-        game.try_kensan(0, &mut rng);
+        game.try_kensan(0).expect("推入追加稽古事件");
         assert!(!game.kensan_pending, "触发后消耗本回合追加稽古");
-        let d_status = game.uma().five_status[0] - before.five_status[0];
-        let d_pt = game.uma().skill_pt - before.skill_pt;
-        let d_vital = game.uma().vital - before.vital;
-        let rules = game.data.rules.kensan.clone();
-        let profile = (d_status, d_pt, d_vital);
-        assert!(
-            profile == (rules.upper_status, rules.upper_skill_pt, rules.upper_vital)
-                || profile == (rules.lower_status, 0, rules.lower_vital),
-            "追加稽古只应有上 / 下档两种结果，实际 {profile:?}"
-        );
+        let event = game.unresolved_events.last().expect("应有待结算事件");
+        assert_eq!(event.id, 400015106, "追加稽古事件 id");
+        assert!(event.player_select, "追加稽古应由训练员选择上 / 下档");
+        assert_eq!(event.choices.len(), 2);
     }
 
     #[test]
@@ -657,8 +677,7 @@ mod tests {
         let person = person_of_act(&game, 0);
         game.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
         game.kensan_pending = true;
-        let mut rng = StdRng::seed_from_u64(6);
-        game.try_kensan(0, &mut rng);
+        game.try_kensan(0).expect("推入追加稽古事件");
         assert!(!game.kensan_pending, "普通训练成功也消耗追加稽古");
     }
 
@@ -675,5 +694,154 @@ mod tests {
             "速度稽古的耐力基础为 0 → 只吃 +10 flat"
         );
         assert!(value.status_pt[0] >= 26, "速度 = 下层 + 10 flat");
+    }
+
+    /// 友人点击链：首次点击 → 首次事件 + `BeforeUnlock`；之后每次点击 40% 触发训练后事件
+    #[test]
+    fn friend_click_pushes_first_then_click_by_probability() {
+        let mut game = crate::testing::sample_game();
+        game.base.turn = 5;
+        let friend = game
+            .persons
+            .iter()
+            .position(|person| person.origin == PersonOrigin::Friend)
+            .expect("应带 SSR 吾妻");
+        game.base.distribution = vec![vec![friend as i32], vec![], vec![], vec![], vec![]];
+        let mut rng = StdRng::seed_from_u64(5);
+        game.after_train(0, false, &mut rng).expect("训练后处理");
+        assert_eq!(
+            game.base.friend.out_state,
+            FriendOutState::BeforeUnlock,
+            "首次点击应转 BeforeUnlock"
+        );
+        let first_id = Data::get().expect("数据已初始化").events.friend_events["first"].id;
+        assert!(
+            game.unresolved_events
+                .iter()
+                .any(|event| event.id == first_id),
+            "首次点击应推首次事件"
+        );
+
+        let click_id = Data::get().expect("数据已初始化").events.friend_events["click"].id;
+        let mut hits = 0;
+        for _ in 0..200 {
+            game.unresolved_events.clear();
+            game.after_train(0, false, &mut rng).expect("训练后处理");
+            if game
+                .unresolved_events
+                .iter()
+                .any(|event| event.id == click_id)
+            {
+                hits += 1;
+            }
+        }
+        // 引擎常量 friend_click = 40%
+        assert!(
+            (60..=120).contains(&hits),
+            "200 次点击应约 80 次触发训练后事件，实际 {hits}"
+        );
+    }
+
+    /// 预览 = 正式结算（同一局面、成功的普通训练逐项一致）
+    #[test]
+    fn preview_matches_actual_training() {
+        let mut base = crate::testing::sample_game();
+        base.base.turn = 20;
+        base.uma_mut().vital = 100;
+        let person = person_of_act(&base, 0);
+        base.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
+        let preview = base.preview_training(0, false).expect("预览");
+        let mut matched = false;
+        for seed in 0..20_u64 {
+            let mut game = base.clone();
+            let before = game.uma().clone();
+            let mut rng = StdRng::seed_from_u64(seed);
+            game.do_train(0, &mut rng).expect("训练结算");
+            let after = game.uma();
+            let five: [i32; 5] =
+                std::array::from_fn(|axis| after.five_status[axis] - before.five_status[axis]);
+            if five == [0; 5] {
+                continue; // 训练失败，换种子
+            }
+            let delta = [
+                five[0],
+                five[1],
+                five[2],
+                five[3],
+                five[4],
+                after.skill_pt - before.skill_pt,
+            ];
+            assert_eq!(delta, preview.value.status_pt, "预览与实结算属性 / SP 一致");
+            assert_eq!(
+                after.vital - before.vital,
+                preview.value.vital,
+                "预览与实结算体力一致"
+            );
+            matched = true;
+            break;
+        }
+        assert!(matched, "20 个种子内应有成功的训练");
+    }
+
+    /// 变胖：训练 / 排练的速度增量归零，其他轴与事件收益不受影响
+    #[test]
+    fn fat_zeroes_training_speed_only() {
+        let base = crate::testing::sample_game();
+        let mut game = base.clone();
+        game.base.turn = 20;
+        game.uma_mut().vital = 100;
+        let person = person_of_act(&game, 0);
+        game.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
+        let mut fat = game.clone();
+        fat.uma_mut().flags.ill.insert(Ill::FAT);
+        let mut ok = false;
+        for seed in 0..20_u64 {
+            let mut a = game.clone();
+            let mut b = fat.clone();
+            a.uma_mut().flags.ill = Ill::NONE;
+            b.uma_mut().flags.ill.insert(Ill::FAT);
+            let before = a.uma().five_status;
+            let mut rng_a = StdRng::seed_from_u64(seed);
+            let mut rng_b = StdRng::seed_from_u64(seed);
+            a.do_train(0, &mut rng_a).expect("训练结算");
+            b.do_train(0, &mut rng_b).expect("训练结算");
+            let d_normal = std::array::from_fn::<i32, 5, _>(|i| a.uma().five_status[i] - before[i]);
+            let d_fat = std::array::from_fn::<i32, 5, _>(|i| b.uma().five_status[i] - before[i]);
+            if d_normal == [0; 5] {
+                continue; // 训练失败，换种子
+            }
+            ok = true;
+            assert_eq!(d_fat[0], 0, "变胖时速度增量应为 0");
+            assert_eq!(
+                [d_fat[1], d_fat[2], d_fat[3], d_fat[4]],
+                [d_normal[1], d_normal[2], d_normal[3], d_normal[4]],
+                "变胖不影响其他轴的训练增量"
+            );
+            break;
+        }
+        assert!(ok, "20 个种子内应有成功的速度训练");
+    }
+
+    /// 变胖：治病 / 合宿版休息解除；普通休息不解除
+    #[test]
+    fn fat_cleared_by_clinic_and_camp_rest() {
+        let mut game = crate::testing::sample_game();
+        let mut rng = StdRng::seed_from_u64(1);
+        game.uma_mut().flags.ill.insert(Ill::FAT);
+        game.do_clinic(&mut rng).expect("治病");
+        assert!(!game.is_fat(), "治病应清空生病位");
+
+        // 普通休息不解除
+        game.base.turn = 20;
+        game.plan.camp_rest = false;
+        game.uma_mut().flags.ill.insert(Ill::FAT);
+        game.do_rest(&mut rng).expect("普通休息");
+        assert!(game.is_fat(), "普通休息不解除变胖");
+
+        // 合宿版休息解除
+        game.base.turn = 36;
+        game.plan.camp_rest = true;
+        game.do_rest(&mut rng).expect("合宿版休息");
+        assert!(!game.is_fat(), "合宿版休息解除变胖");
     }
 }

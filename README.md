@@ -57,29 +57,54 @@
   上昇量上限）；⑥**発表会 / 本番 / 合宿 +1 / URA 训练 / 育成终了**结算（结果按实际演目 Lv 判定，
   buff / 一次性奖励 / 訓練 Lv+1 / 本番演出 / 全演目 +1 / 终局奖励）；⑦`MatsuriView` 补 S5 资源字段。
   四档绿（**81 内联 + 13 L2 + 25 机制 = 119 测例**）；整局冒烟（样例训练员）**34368 分 / UE9、
-  PT 6128、390 阶段**（random 基线 19516 分 / SS+、PT 3985）。事件链（S6）、策略训练员 / 搜索（S7/M2）、
-  技能灵感与粉丝不建模（TBD）留后续。
+  PT 6128、390 阶段**（random 基线 19516 分 / SS+、PT 3985）。
+- **S6 事件管线（2026-11-01）**：回合开始事件链落地——①**固定事件**（引擎通用 `story_events` +
+  剧本固定 `scenario_events`：`400015105` 教え見直し turn 11/35/59、`400015106` 追加の稽古代码触发）；
+  ②**随机分布**（支援卡连续事件 / 马娘事件 / 掉心情，分布与数值按引擎 `constants.json` / `events.json`
+  原始值；支援卡事件候选只取可用支援卡人头，友人 / 团队不计入）；③**合宿抑制**合并为单一判定
+  （第 1 年合宿允许、第 2/3 年常规与延长段抑制随机事件；非合宿回合沿用引擎 `no_event_turns` 基线，
+  STUB）；④**友人链**（吾妻 `809052xxx`：首次点击 → 首次事件 / 之后 40% 训练后事件 / 出行解锁上·下
+  → 疲劳回复 flag / 出行 5 段真实卡面事件 / Classic 正月 / 结局；友人事件叠卡面事件效果加成）；
+  ⑤**追加稽古事件化**（训练员二选一：上档 = 直前训练 +20 / SP+20 / 体力−5 / 理事长羁绊 +5 /
+  最低演目 gauge+1 / 解一个 debuff；下档 +5 / 体力+5；删除 50/50 STUB）；⑥**变胖状态**
+  （大胃王事件 33% 附加：训练 / 排练速度增量归零，回合开始 20% 概率解除、治病 / 合宿版休息解除）；
+  ⑦turn 66 进化技能只记 `hint_level + 1`；⑧接引擎通用「回合后」事件（turn 48 抽签 / turn 77 育成结束）
+  与继承特殊结算。四档绿（**95 内联 + 15 L2 + 27 机制 = 137 测例**）；整局冒烟（样例训练员）
+  **44946 分 / UC6、PT 7496、390 阶段**（S6 事件收益接入后的预期位移；S9 前不建基线）。
+  策略训练员 / 搜索（S7/M2）、技能灵感与粉丝不建模（TBD）留后续。
+- **S8 手动核对面板（2026-11-01，先行落地；S8 其余待做）**：`manual` 档从「摘要 + 编号输入」升级为
+  机制核对面板——每次决策前打印回合结构 / 五维（含引擎上限）/ 体力干劲 / 状态 / 演目 gauge·Lv·亮起·
+  绑定教诲与転成 / 発表会结果与永久 buff / 合宿计数 / 友人链（状态·出行段·下一段事件）/ 目标赛与自选赛
+  窗口 / 人头分布（按训练位，含设施 Lv 与计数）/ 动作候选（训练成功收益预览 + 失败率）；事件选择打印
+  选项组分支（概率 / 结果档 / 到账数值 / ExtraStatus / 状态增删）；每次提示附「自上次以来新结算事件」
+  （含事件 id / 名称 / 选项 / 实际到账）与「上一步后数值变化」。核心侧新增 `EventRecord` 事件记录
+  （容量 32，`MatsuriView.recent_events` 同步）与 `preview_training`（克隆局面算预览，不改动原局面）。
+  手动档引擎 `PrintFrontend` 切 `Quiet`，面板为唯一信息源；新增 CLI 冒烟（管道输入跑满整局）。
+  四档绿（**97 内联 + 15 L2 + 27 机制 + 1 CLI 冒烟 = 140 测例**）。S7 训练员 / S8 其余
+  （View 字段补全 / 在线外壳 / 选择器）仍待做。
 
 ## 结构
 
 | crate / 文件 | 职责 |
 |---|---|
 | `crates/matsuri-core/src/lib.rs` | 模块声明 + 对外重导出 + `MAX_TURN` |
-| `crates/matsuri-core/src/game/mod.rs` | 局面 `MatsuriGame` + `ActLedger` / `AdviceLedger` 账本 + 演目 gauge / Lv / 发布日期 buff 派生 + `MatsuriView` + `build_game`（含友人卡门禁） |
+| `crates/matsuri-core/src/game/mod.rs` | 局面 `MatsuriGame` + `ActLedger` / `AdviceLedger` 账本 + 演目 gauge / Lv / 发布日期 buff 派生 + 事件记录 `EventRecord` / 训练预览 `TrainingPreview` + `MatsuriView` + `build_game`（含友人卡门禁） |
 | `crates/matsuri-core/src/game/stage.rs` | 阶段机 `Stage`（含 `StageId` 投影）+ 回合结构 `TurnPlan` + 合宿进度 `CampState` |
 | `crates/matsuri-core/src/game/person.rs` | 剧本人头 `MatsuriPerson` + 来源 `PersonOrigin`（与引擎 `PersonType` 分工见文档） |
 | `crates/matsuri-core/src/game/roster.rs` | 建局人头名单 + 担当分配（link 钉位 / 外派链 / NPC 余额） |
 | `crates/matsuri-core/src/game/deck.rs` | 编成检测：禁止项 / 警告项（`DeckError` / `DeckWarning` / `DeckReport`） |
 | `crates/matsuri-core/src/game/distribute.rs` | 人头分布（亮起锁担当 / 不在率 / 吾妻补位 / 分身）+ 得意率 / 灵感分配 |
-| `crates/matsuri-core/src/game/train.rs` | 训练结算：下层引擎公式 + 上层剧本乘区 / 封顶 + 失败率 + 训练后处理（羁绊 / 灵感 / 加练 / 追加稽古） |
+| `crates/matsuri-core/src/game/event.rs` | 事件管线：回合开始事件链（固定 / 随机分布 / 合宿抑制 / 友人解锁）/ 友人链事件扩展 / 追加稽古事件 / 疲劳回复与变胖 / turn 66 hint 记账 |
+| `crates/matsuri-core/src/game/train.rs` | 训练结算：下层引擎公式 + 上层剧本乘区 / 封顶 + 失败率 + 训练后处理（羁绊 / 灵感 / 加练 / 追加稽古事件 / 友人点击 / 变胖速度归零） |
 | `crates/matsuri-core/src/game/advice.rs` | 教诲：槽效果聚合（按绑定演目 Lv × 参与人数）/ 融合 / 分配接口 |
 | `crates/matsuri-core/src/game/settle.rs` | 回合末结算：発表会 / 本番 / 合宿 +1 / 教诲窗口 / 育成终了 |
 | `crates/matsuri-core/src/game/action.rs` | `Action` + `Display` + `ActionEnum` + 比赛 / 休息 / 出行 / 治病结算入口（含演目槽入账） |
 | `crates/matsuri-core/src/game/traits.rs` | 契约 impl（`Game` / `TrainingValueSource` / `FlatSearchGame`，含分布 / 得意率 / 训练值 / 失败率 / 终局覆写） |
-| `crates/matsuri-core/src/data.rs` | 剧本资产 schema / 载入 / 校验（`scenario_matsuri.json` 16 节 + 稽古两档 / S5 规则常量） |
+| `crates/matsuri-core/src/data.rs` | 剧本资产 schema / 载入 / 校验（`scenario_matsuri.json` 18 节：+ `scenario_events` / `event_extras`；稽古两档 / S5·S6 规则常量） |
 | `crates/matsuri-core/src/config.rs` | 剧本配置段（融合 / 転成预设 + 覆盖层） |
 | `crates/matsuri-core/src/trainer.rs` | 样例训练员 `MatsuriTrainer` |
-| `crates/matsuri-cli/src/main.rs` | 终端前端：bin `matsuri`（跑局） |
+| `crates/matsuri-cli/src/main.rs` | 终端前端：bin `matsuri`（跑局；`matsuri` / `random` / `manual` 训练员选择） |
+| `crates/matsuri-cli/src/manual.rs` | 手动核对面板（S8）：局面 / 事件 / 分布 / 动作预览 + 事件选项显示 |
 | `crates/matsuri-cli/src/manual.rs` | 无颜色手动训练员（机制核对） |
 | `crates/matsuri-sim` | 模拟器与基线裁判（骨架） |
 | `crates/matsuri-ai` | 在线决策核心（骨架） |
@@ -106,7 +131,7 @@
 # 数据根是代码级常量 data/（crates/matsuri-cli/src/main.rs 的 DATA_ROOT）
 cargo run --release --bin matsuri --            # 样例训练员
 cargo run --release --bin matsuri -- random     # 引擎随机基线（对照用）
-cargo run --release --bin matsuri -- manual     # 无颜色人工选择（机制核对用）
+cargo run --release --bin matsuri -- manual     # 手动核对面板（交互式；q 退出）
 
 cargo fmt --all --check
 cargo check --workspace --all-targets --offline

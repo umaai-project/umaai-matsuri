@@ -21,7 +21,7 @@
 | `scenario_id` | `15` | data `single_mode_scenario` | `data/scenario_matsuri.json` | 已确认 | 无 | DONE |
 | gauge 归属规则 | 已实现 | user 2026-10-30 / memo | `game/mod.rs` `gain_lowest_act_gauge` / `gain_training_gauge` + `game/action.rs` / `game/train.rs` | 参与担当**每人给自己担当的演目 +1**（按担当归集）；**闪彩担当 +2**，同场其他仍 +1；目标比赛 +4（按 4 次 +1，三则落点 + 满槽跳过）；休息 / 外出 / 非目标比赛 +1；**排练回合全 5 槽不涨**；稽古成功清槽 + Lv+1（合宿稽古不升不清） | 会位移 | RESOLVED（S5 实现） |
 | 合宿延长规则 | 未实现（S3 计数已落） | user 2026-10-31 / memo 2026-10-31 | `game/stage.rs`（`TurnPlan` / `CampState`） | 每年保证 **4 个非比赛合宿回合**；目标比赛 / 强制休息顺延；**U18：所有年份的延长回合都算合宿（全部排练）**；**休息：原本夏合宿期间（Classic/Senior 7–8 月）为合宿版，延长回合为普通休息；第 2/3 年外出不可（含延长段）**；**离线模拟硬编码，不依赖在线下发**；S3 已落逐回合动态计数 + 标志（训练 / 事件分支 S4/S5/S6） | 会位移 | RESOLVED（口径）/ S3 已落（计数 / 标志） |
-| 合宿期事件 | 未实现 | user 2026-10-30 | `game/event.rs` | **第 1 年**：支援卡连续事件 + 普通马娘事件**都发生**；**第 2、3 年**常规合宿回合**两类都不发生**；**延长回合里的个体固定事件仍发生**（凯斯奇迹 turn 65 固定休息 → Senior 合宿延到 66）；延长段是否触发支援卡连续事件待测（U19）；**事件抑制表 / 不可发生连续事件回合表按年次 + 延长段重做，不复用引擎 `no_event_turns`** | 会位移 | TBD（实现） |
+| 合宿期事件 | 已实现（S6） | user 2026-10-30 | `game/event.rs` `random_events_suppressed` | **第 1 年**：支援卡连续事件 + 普通马娘事件**都发生**；**第 2、3 年**常规合宿回合与**延长段**都抑制随机事件；固定事件不经过抑制判定；**抑制判定合并**为「合宿规则层（优先）+ 引擎 `no_event_turns` 基线层」；延长段支援卡连续事件按抑制实现（U19 待真机） | 会位移 | RESOLVED（S6）/ TBD（引擎基线层待剧本表） |
 | 合宿 Lv +1 结算点 | 已实现 | user 2026-10-30 / 2026-10-31 | `game/settle.rs` | **固定为 8 月后半结束＝turn 15 / 39 / 63 结束时**（不随顺延推迟）；**全演目 +1**（上限 10）；S5 在 `End` 结算（`settle_turn_end`） | 会位移 | RESOLVED（S5 实现） |
 | 吾妻补位 | 单次补位 | user 2026-10-30 | `game/distribute.rs` `place_friend_filler` | **不参与职责分配**：不占演目座位、不占训练位卡配额；普通训练按通用规则出现（不在率 100）；**排练必补 1 个未满排练位、不可分身** | 会位移 | RESOLVED（S5 实现） |
 | 分身「+1 人」来源 | 已实现 | memo / user 2026-10-30 / 2026-10-31 | `game/distribute.rs` `place_splits` | **URA 收尾期（turn 68–77）全部演目稽古的编成卡各 +1 处 / 協力 801 该演目每个担当 +1 处 / 转成 101 合宿中该演目每个担当 +1 处**；**落点 = 另一个训练种类、不叠排练位**；槽满不点则每回合持续有效；**等级归属（U41）未建模**（分身按占位计、不复制面板等级） | 会位移 | RESOLVED（S5 实现）/ TBD（U41） |
@@ -56,8 +56,8 @@
 | Senior 每演目 +1 担当 | memo 已答 | memo | 人头布局 | 归档旁证 `evaluation_info_array` 25 → 30（5×5 → 5×6）；逐元素核对后收口 | 会位移 | TBD（复核） |
 | 事件触发回合 | memo 时间轴已给；**10 月前半进化 = turn 66** | data / memo / user | `game/event.rs` | 其他事件仍可故事脚本复核 | 会位移 | RESOLVED（turn 66）/ TBD（其他） |
 | 追加稽古发生率 | `p = r(绑定演目 Lv)`，**1 回合 1 次共通掷骰** | `memo` 2026-10-31（推翻旧 `min(100%, r×N)`） | `data/scenario_matsuri.json`（`advices` id=701 → `levels[].rate`）+ 训练结算 | `r` = 研钻 Lv1–10 → **20/22/24/27/30/35/40/50/65/80(%)**；**不按担当人数加算**；掷中后该演目担当参与的成功训练都触发；回合开始预掷、图标＝掷中，不点则作废 | 会位移 | RESOLVED（口径）/ TBD（真机复核） |
-| 追加稽古 gauge 增量 | +1（最低演目） | memo | 剧本资产 | 仅上档给；下档不给 | 会位移 | RESOLVED（数值）/ TBD（实现） |
-| 追加稽古上 / 下档 | 50 / 50 | memo（未给权重） | `rules.kensan.upper_prob` | 实测两档出现率（U40）；上档属性 +20 / SP +20 / 最低演目槽 +1 / 理事长羁绊 +5 / 体力 -5 / **简化解一个 debuff**（无 debuff 系统：清不擅长 / 生病位）；下档属性 +5 / 体力 +5 | 会位移 | STUB（S5 已实现占位） |
+| 追加稽古 gauge 增量 | +1（最低演目） | memo | `scenario_matsuri.json` `event_extras`（`400015106`, choice 0） | 仅上档给；下档不给；走上限拦截（满槽跳过、三则落点） | 会位移 | RESOLVED（S6 实现） |
+| 追加稽古上 / 下档 | **玩家选择**（非概率） | user 2026-11-01（B6 作废 50/50） | `scenario_matsuri.json` `scenario_events[400015106]` + `event_extras` | 训练员选择上 / 下档：上档直前训练属性 +20（`ExtraStatus::LastTrain`）/ SP+20 / 体力-5 / 理事长羁绊+5 / 最低演目 gauge+1 / 解一个 debuff；下档直前训练 +5 / 体力 +5；删除 `rules.kensan.upper_prob`（U40 作废） | 会位移 | RESOLVED（S6 实现）/ TBD（选项策略留 S7） |
 | 排练失败 | 完全无效 | user 2026-11-01 / memo 2026-10-31 | `game/train.rs` `settle_training` | 触发失败后事件、不给属性收益；**槽不动、演目 Lv 不升**（推翻旧「Lv 仍 +1 / 槽清零」） | 会位移 | RESOLVED（S5 实现） |
 | 吾妻无凸 / R 连续事件 | 未知 | memo | 事件管线 | 官方 UI / 真机 | 会位移 | TBD |
 | 通常训练 Lv 上升 | 已实现 | user 2026-10-30 | `game/train.rs` + `game/traits.rs` `train_level` | **基础训练 Lv + 每 4 次 +1**；**合宿中与点演目稽古时不增加**；发布会大成功「全训练 Lv+1」用独立 `train_level_bonus` 叠加 | 会位移 | RESOLVED（S5 实现） |
@@ -72,10 +72,10 @@
 | 马娘特殊事件记录 | **只登记凯斯奇迹 T65 强制休息**（S3 临时表） | user 2026-11-01 | `game/stage.rs`（临时常量表） | 目标赛回合被固定事件改为**实际执行休息**（`plan.race` 仍为真，不产生比赛事件 / 奖励）；**后续引擎层改造「马娘特殊事件记录」数据结构**以涵盖其他异常事件，改造后改读引擎数据、删除临时表 | 会位移 | 临时（硬编码单条）/ TBD（引擎改造） |
 | URA 收尾期机制 | 不做特殊化（2026-11-01 修正） | user 2026-11-01 | `game/stage.rs`（`TurnPlan::ura_period`） | 本番结算已完成，训练 / gauge / 稽古 / Lv 升级回到**日常机制**；专属收益只来自已结算的本番演出 | 会位移 | RESOLVED（口径） |
 | 友人卡门禁 | 仅 **SSR 吾妻**可建局 | user 2026-11-01 | `game/mod.rs`（建局校验） | `card_id` 由 `outing` 表识别 + 稀有度 SSR；**R 吾妻 / 不带友人 / 其他友人卡一律建局报错**；演目 Lv 上限固定 10 | 会位移（不可用组合报错） | RESOLVED（口径）/ S3 已落（校验） |
-| 友人出行卡面事件数值 | `matsuri_outing_1..5` 系统事件：体力 / 属性 / SP / 羁绊（第 3 段上 / 下双选项） | `memo` 2026-10-27（中可信度）→ `data/events.json` | `game/action.rs` `do_friend_outing` + `data/events.json` | **S6 换真实卡面事件**（支援卡事件表）；未确认项取 memo 下界 / 首档（段 1 体力 33；段 2/4 干劲按 +1、羁绊按 +5）；技能灵感「快速 Lv2 / 神速 Lv3」未建模 | 会位移 | STUB |
+| 友人出行卡面事件数值 | `809052011–015`（真实卡面事件，基础值入库 + 引擎叠卡面加成） | user 2026-11-01（Q2 按 memo 全量）/ `memo` §11.2 | `data/events.json` `friend_events["1".."5"]` + `game/action.rs` | 每段 = 体力 / 属性 / SP / 羁绊；第 3 段上 / 下双选项；未确认项取 memo 下界 / 首档（段 1 体力 33；段 2/4 干劲 +1、羁绊 +5）；技能灵感按 `hint_level` 记账（快速 Lv2 / 神速 Lv3）；`matsuri_outing_1..5` 占位事件已删 | 会位移（原 STUB → 当前记录值） | RESOLVED（S6 实现）/ TBD（真机复核） |
 | 合宿版休息数值 | 普通 30/50/70（`consts.rest_probs`）；合宿版 +40 体 / +1 干劲 | 引擎基础局默认（`is_xiahesu` = 36–39 / 60–63） | `game/action.rs` `do_rest` | memo 无数值；真机复核后替换 | 会位移 | STUB（S4 已实现） |
 | 训练失败 / 大失败判定 | 引擎默认公式 + 剧本失败率下降（不屈 / 本番演出） | 引擎 `calc_training_failure_rate` / `training_fail*` 事件 | `game/train.rs` `settle_training` / `game/traits.rs` `calc_training_failure_rate` | 不屈按参与担当阈值（Lv10 体力无关）、本番演出 -100%；合计 ≥100 → 必定成功 | 会位移 | RESOLVED（S5 实现）/ TBD（真机复核） |
-| 训练后处理与事件排空 | `AfterTrain` 排空 `unresolved_events`；羁绊按剧本基础值 + 絆教え平摊 + 爱娇一次；灵感 / 加练 / 点击保持；**友人不推温泉事件** | 剧本资产 / memo / 引擎同型 | `game/train.rs` `after_train` / `game/stage.rs` / `game/traits.rs` | 真实吾妻事件（首次 / 点击）留 S6 替换 | 有（比赛 / 出行 / 红点 / 点击） | RESOLVED（S5 实现）/ S6 换友人事件 |
+| 训练后处理与事件排空 | `AfterTrain` 排空 `unresolved_events`；羁绊按剧本基础值 + 絆教え平摊 + 爱娇一次；灵感 / 加练 / 点击保持；**友人首次 / 点击事件已接真实吾妻数据** | 剧本资产 / memo / 引擎同型 | `game/train.rs` `after_train` / `game/stage.rs` / `game/traits.rs` | 友人点击：首次点击必发，之后按引擎常量 40%（与追加稽古预掷独立） | 有（比赛 / 出行 / 红点 / 点击） | RESOLVED（S6 实现） |
 | 合宿期自选比赛 | **允许**（`can_self_race` 满足时） | user 2026-11-01 | `game/traits.rs` `list_actions`（camp 分支） | 无 | 有（动作集） | RESOLVED（口径）/ S4 已落 |
 | 治病动作 | 纳入 S4：`BaseAction::do_clinic`（+20 体、清生病位 / 不擅长） | 引擎基础局 / user 2026-11-01 | `game/action.rs` `do_clinic` | 后续事件口径复核 | 会位移 | RESOLVED（S4 实现） |
 
@@ -84,7 +84,7 @@
 | 发布会影响率叠加 | 剧本灵感率与卡面 `hint_prob_increase` 同层加算：`p = 7.5% × (1 + (卡面 + 发布会 + 教え)/100)` | memo 数值 / 推导 | `game/distribute.rs` `distribute_hints` | 倍率 vs 加算待真机；上限 clamp 1.0 | 会位移 | STUB（S5 占位口径） |
 | 发布会成功档一次性奖励 / buff | 数据已入资产（memo 中可信度）并真实生效 | memo / Wiki | `data/scenario_matsuri.json` | 成功档数值无实测样本；真机复核后替换 | 会位移 | TBD（成功档数值） |
 | 技能灵感 / 粉丝 | **不建模**：发布会 / 本番 / 育成终了 / 出行里的具体技能 Hint Lv 与粉丝数跳过 | 本仓无技能 / 粉丝系统 | — | 接技能系统 / 粉丝机制后补 | 无（只少算收益） | TBD（不建模） |
-| 友人点击事件 | **不推事件**：训练后不生成吾妻首次 / 点击事件（避免误用温泉事件数据） | 引擎 `default_after_train` 依赖 Data 根 | `game/train.rs` `after_train` | S6 接真实吾妻事件后替换 | 会位移（羁绊 / 事件收益） | TBD（S6） |
+| 友人点击事件 | **已接真实吾妻事件**：首次点击 → `809052001` 首次事件并转 `BeforeUnlock`；之后每次点击按 `friend_click` 40% 推 `809052032` 训练后事件 | user 2026-11-01（A5 / Q4） | `game/train.rs` `after_train` + `data/events.json` `friend_events` | 与追加稽古预掷**相互独立**；首次事件不在 40% 判定内 | 会位移（羁绊 / 事件收益） | RESOLVED（S6 实现） |
 | 追加稽古「随机解 debuff」 | 简化为清「不擅长训练」/ 生病位（无 debuff 系统） | memo（未给细节） | `game/train.rs` `try_kensan` | 真机 debuff 系统 / 实测后替换 | 会位移 | STUB（S5 占位） |
 
 ## 代码标记约定
@@ -104,3 +104,14 @@ const SAMPLE_RATE: i32 = 100;
 - [ ] 每项都有替换条件与影响面；
 - [ ] 替换后已重录基线并在 `glossary.md` 留痕；
 - [ ] 代码中搜索 `STUB:` / `TBD:` 与登记表一致。
+| 变胖状态（`Ill::FAT`） | 训练 / 排练速度增量归零；每回合 20% 解除；治病 / 合宿版休息解除 | user 2026-11-01 + memo/上游 | `data/scenario_matsuri.json` `rules.fat_recovery_prob` + `game/event.rs` / `game/train.rs` / `game/action.rs` | 事件来源=构造事件「大胃王」33% 档；解除概率为剧本自持暂定值（STUB）；训练后事件 / 休息 / 出行 / 比赛 / 事件仍可加速度 | 会位移 | STUB（概率待真机）/ 已实现 |
+| 大胃王（构造事件） | `id 5010`（**不模拟真实 ID：马娘事件 ID 每个马娘不同**，通用模拟用固定构造 ID）/ Random `max_time 3` / 选项 1 体力+10 PT+5；选项 2 体力+30 PT+10 + 33% 变胖 | user 2026-11-01（A17 + 补充：不用真实 ID） | `data/events.json` `uma_events` | 各马娘真实事件 ID 不同，本仓只做通用构造；次数 / 概率 / 数值按用户口径冻结 | 会位移（事件池多一条） | RESOLVED（构造口径） |
+| 友人卡事件槽位映射 | `001` first / `032` click / `004` out / `021` newyear / `011–015` 出行 1–5 / `023` end；`002/003/033` R 卡、`022` 未满 5 段结局变体、`031` 随机事件 | user 2026-11-01 核对（按名字 + memo + 温泉同构） | `data/events.json` `friend_events` | 待真机帧复核槽位语义（尤其 `023` 结局 / `004` 出行解锁） | 会位移（若映射错） | TBD（真机复核） |
+| 友人事件数值口径 | memo 值按**基础值**入库，结算时引擎叠卡面「事件效果 +30% / 回复量 +60%」 | user 2026-11-01（A13 / B11 按引擎）+ 推断证据（事件⑤ 56=35×1.6 等） | `data/events.json` `friend_events` + 引擎 `apply_friend_bonus` | 若「事件⑤」观测值证明 memo 是终值，则需关闭加成并修正全部友人事件 | 会位移 | STUB（口径推断） |
+| 主剧本过场事件 | 属性 ≤5 点，忽略不计；`003/010/020` 仅记录为 Advice 标志、`026` 仅记 hint+1 | user 2026-11-01 | 文档记录 | 如后续实测某过场事件有 >5 点属性再入资产 | 无 | RESOLVED（不建模） |
+| 事件⑤（SSR 技能事件） | 不接（`022/031` 均非事件⑤） | user 2026-11-01 | — | 场上有值：体力槽+5 / 体力+56 / 干劲+1 / 根性·智力+13 / SP+26 / 神通 hint / 最低演目 Lv+1；若真机给出事件 ID 再入资产 | 会位移（少算） | TBD |
+| 引擎 `no_event_turns` 基线层 | 沿用引擎基线（STUB）；合宿规则层优先 | user 2026-11-01（Q6 按推荐） | `game/event.rs` `random_events_suppressed` | 真机剧本专属「不可发生连续事件回合表」出来后只替换第二层 | 会位移 | STUB |
+| 通用事件数值（引擎基础局） | 按 `data/events.json` / `constants.json` 原始值直接模拟（马娘登场 / 新年 / 继承 / 卡连续 / 马娘事件 / 掉心情 / 抽签 / 育成结束） | user 2026-11-01（Q9 / B2 / B12） | `data/events.json` / `data/constants.json` | 引擎手写近似值，非剧本 15 真机口径；后续真机复核 | 会位移 | STUB（口径）/ RESOLVED（接入） |
+| `400015105` 教え見直し数值 | 体力 +15 / 干劲 +1（turn 11/35/59） | memo（中可信）；user 2026-11-01「需实测」 | `scenario_matsuri.json` `scenario_events` | 真机实测后替换；mdb 3 行疑似 3 选项不建模 | 会位移 | STUB |
+| turn 66 进化技能 | 只记 `hint_level + 1`（不建事件、不占回合） | user 2026-10-30 / 2026-11-01（B9） | `game/event.rs` `apply_evolution_hint` | 金技能 / 具体灵感 Lv 不建模；按「进化 = 该灵感升 1 级」记账 | 会位移（PT） | RESOLVED（记账）/ TBD（真机） |
+| 马娘特殊事件（非 T65） | 先不管（只登记凯斯奇迹 T65） | user 2026-11-01（A9） | `game/stage.rs` 临时表 | 引擎「马娘特殊事件记录」改造后统一迁移 | 会位移 | TBD |

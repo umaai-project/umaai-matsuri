@@ -248,12 +248,21 @@ impl MatsuriGame {
             Stage::Begin => {
                 self.plan = self.derive_plan();
                 // 目标赛回合仍按赛程分类（`plan.race`），马娘特殊事件可把本回合实际动作改为休息；
-                // 事件链落地前先读剧本自持记录，S6 / 引擎「马娘特殊事件记录」后改为事件管线设置。
+                // 目前只登记凯斯奇迹 T65（临时表，引擎「马娘特殊事件记录」改造后迁移）。
                 self.forced_rest = is_forced_rest_turn(self.base.uma.chara_id(), self.base.turn);
+                // 回合开始的状态判定：友人疲劳回复（一次性）、变胖解除概率（剧本规则）
+                self.recover_fatigue();
+                self.roll_fat_recovery(strategy);
+                // 回合开始事件链：固定事件 + 友人解锁 + 随机分布（事件流）；正月事件随本回合跑，
+                // 结局 / 抽签 / 育成结束入队到 `AfterTrain`（引擎基础局同型）。
+                let mut events = self.generate_events(&mut streams.event);
+                self.append_begin_friend_event(&mut events);
+                self.queue_after_train_events();
+                for event in &events {
+                    self.run_event(event, trainer, decision, &mut streams.event)?;
+                }
                 // 研鑽「追加の稽古」：回合开始用策略流预掷（掷中后未点对应训练则作废）
                 self.roll_kensan(strategy);
-                // TODO(S6): 回合开始事件链（固定回合 / 概率事件 / 合宿抑制表），需要 `streams.event`。
-                let _ = &mut streams.event;
             }
             Stage::Distribute => {
                 // 真实人头分布（亮起锁担当 / NPC 不在率 / 吾妻补位 / 分身）+ 灵感图标
@@ -286,6 +295,8 @@ impl MatsuriGame {
                 self.camp.end_turn(counted, &self.data.camp.windows);
                 // 剧本结算：発表会 / 本番 → 合宿结束全演目 Lv+1 → 教诲窗口（含 turn 23/47 転成）
                 self.settle_turn_end()?;
+                // turn 66（Senior 10 月前半行动后）进化技能：只记 hint_level + 1
+                self.apply_evolution_hint();
             }
         }
         Ok(())

@@ -159,6 +159,28 @@
                     }
                 }]
             ]
+        },
+        {
+            "id": 5010,
+            "name": "大胃王",
+            "trigger": { "type": "Random", "max_time": 3 },
+            "player_select": true,
+            "choices": [
+                [{ "value": {
+                    "vital": 10,
+                    "status_pt": [ 0, 0, 0, 0, 0, 5 ]
+                }}],
+                [
+                    { "result": 1, "prob": 33, "value": {
+                        "vital": 30,
+                        "status_pt": [ 0, 0, 0, 0, 0, 10 ]
+                    }, "add_flags": { "ill": 1 } },
+                    { "result": 1, "prob": 67, "value": {
+                        "vital": 30,
+                        "status_pt": [ 0, 0, 0, 0, 0, 10 ]
+                    } }
+                ]
+            ]
         }
     ],
     "card_events": [
@@ -203,142 +225,143 @@
     ],
     "friend_events": {
         "first": {
-            "id": 809050001,
-            "name": "極楽への誘い",
-            "trigger": { "type": "Random", "max_time": 1 },
+            "id": 809052001,
+            "name": "妙なる巫女、吾妻",
+            "trigger": { "type": "Code" },
             "choices": [[{
                 "value": {
-                    "status_pt": [ 0, 0, 9, 9, 9, 0 ],
+                    "status_pt": [ 0, 5, 0, 5, 0, 5 ],
+                    "max_vital": 4,
                     "motivation": 1,
-                    "friendship": 10,
-                    "max_vital": 4
+                    "friendship": 15
                 }
-            }]]          
+            }]]
         },
         "click": {
-            "id": 809050032,
-            "name": "存分に励みな！",
-            "trigger": { "type": "Random", "max_time": 99 },
+            "id": 809052032,
+            "name": "まばゆき二人三脚",
+            "trigger": { "type": "Code" },
             "choices": [[{
                 "value": {
-                    "status_pt": [ 0, 0, 0, 0, 0, 9 ],
+                    "status_pt": [ 0, 0, 0, 4, 0, 4 ],
                     "friendship": 5
                 }
             }]]
         },
         "out": {
-            "id": 809050004,
-            "name": "湯煙サスペンス劇場～女将・保科健子～",
-            "trigger": { "type": "Random", "max_time": 1 },
+            "id": 809052004,
+            "name": "求むるは、新たな書",
+            "trigger": { "type": "Code" },
             "player_select": true,
-            "choices": [[{
-                "value": {
-                    "status_pt": [ 10, 0, 0, 0, 0, 0 ],
-                    "friendship": 5,
+            "choices": [
+                [{ "value": {
+                    "status_pt": [ 0, 5, 0, 5, 0, 0 ],
+                    "vital": 25,
                     "motivation": 1,
-                    "vital": 20
+                    "friendship": 5
                 }}],
-                [{
-                    "value": {
-                        "status_pt": [ 4, 4, 4, 4, 4, 0 ],
-                        "friendship": 5,
-                        "motivation": 1,
-                        "hint_level": 5
-                    }
-                }]
-            ]            
+                [{ "value": {
+                    "status_pt": [ 0, 0, 0, 5, 5, 5 ],
+                    "motivation": 1,
+                    "hint_level": 5,
+                    "friendship": 5
+                }}]
+            ]
         },
         "newyear": {
-            "id": 809050021,
-            "name": "健子との絆・新春温泉奮闘記",
-            "trigger": { "type": "Fixed", "turns": [24] },
+            "id": 809052021,
+            "name": "吾妻との絆・新たなる年に",
+            "trigger": { "type": "Code" },
             "choices": [[{
                 "value": {
-                    "status_pt": [ 0, 12, 12, 12, 0, 0 ],
-                    "max_vital": 4,
+                    "status_pt": [ 10, 0, 0, 0, 10, 5 ],
                     "motivation": 1,
                     "hint_level": 3,
                     "friendship": 5
                 }
-            }]]           
+            }]]
         },
         "1": {
-            "id": 809050011,
-            "name": "牌で語る",
-            "trigger": { "type": "Random", "max_time": 1 },
+            "id": 809052011,
+            "name": "故に我、日々を綴る",
+            "trigger": { "type": "Code" },
             "choices": [[{
                 "value": {
-                    "status_pt": [ 15, 0, 15, 0, 15, 22 ],
-                    "friendship": 5,
+                    "status_pt": [ 10, 0, 0, 10, 0, 10 ],
+                    "vital": 33,
                     "motivation": 1,
-                    "max_vital": 4
+                    "friendship": 5
                 }
-            }]]           
+            }]]
         },
         "2": {
-            "id": 809050012,
-            "name": "ねっ、女将♪",
-            "trigger": { "type": "Random", "max_time": 1 },
+            "id": 809052012,
+            "name": "流れ、追い難く",
+            "trigger": { "type": "Code" },
             "choices": [[{
                 "value": {
-                    "status_pt": [ 0, 25, 0, 0, 0, 20 ],
-                    "friendship": 5,
+                    "status_pt": [ 0, 0, 0, 0, 10, 10 ],
+                    "vital": 30,
                     "motivation": 1,
-                    "hint_level": 2
+                    "hint_level": 2,
+                    "friendship": 5
                 }
-            }]]         
+            }]]
         },
         "3": {
-            "id": 809050013,
-            "name": "くゆる、あの日々",
-            "trigger": { "type": "Random", "max_time": 1 },
+            "id": 809052013,
+            "name": "共に、今を辿る",
+            "trigger": { "type": "Code" },
             "player_select": true,
-            "choices": [[
-                { "value": {
-                    "friendship": 5,
+            "choices": [
+                [{ "value": {
                     "vital": 50,
-                    "motivation": 1
+                    "motivation": 1,
+                    "friendship": 5
                 }}],
                 [{ "value": {
-                    "status_pt": [ 12, 12, 12, 12, 12, 10 ],
-                    "friendship": 5,
-                    "motivation": 1
+                    "status_pt": [ 0, 10, 0, 10, 10, 20 ],
+                    "motivation": 1,
+                    "friendship": 5
                 }}]
-            ]         
+            ]
         },
         "4": {
-            "id": 809050014,
-            "name": "どんな道を選ぼうと",
-            "trigger": { "type": "Random", "max_time": 1 },
+            "id": 809052014,
+            "name": "時重ね、絆は",
+            "trigger": { "type": "Code" },
             "choices": [[{
                 "value": {
-                    "status_pt": [ 15, 0, 20, 0, 0, 25 ],
-                    "motivation": 1
+                    "status_pt": [ 0, 5, 5, 0, 0, 5 ],
+                    "vital": 35,
+                    "motivation": 1,
+                    "friendship": 5
                 }
-            }]]        
+            }]]
         },
         "5": {
-            "id": 809050015,
-            "name": "純情すぎる若人に",
-            "trigger": { "type": "Random", "max_time": 1 },
-            "choices": [[{
-                    "value": {
-                        "status_pt": [ 20, 0, 0, 25, 0, 30 ],
-                        "motivation": 1,
-                        "hint_level": 3
-                    }
-                }
-            ]] 
-        },
-        "end": {
-            "id": 809050023,
-            "name": "ゆこまよいとこ、なんどでも……",
-            "trigger": { "type": "Fixed", "turns": [78] },
+            "id": 809052015,
+            "name": "其は泡沫、されど――",
+            "trigger": { "type": "Code" },
             "choices": [[{
                 "value": {
-                    "status_pt": [ 0, 0, 10, 10, 10, 40 ]
+                    "status_pt": [ 0, 0, 0, 10, 10, 20 ],
+                    "vital": 35,
+                    "motivation": 1,
+                    "hint_level": 3,
+                    "friendship": 5
                 }
-            }]]           
+            }]]
+        },
+        "end": {
+            "id": 809052023,
+            "name": "ひとり、幸を祈る",
+            "trigger": { "type": "Code" },
+            "choices": [[{
+                "value": {
+                    "status_pt": [ 15, 0, 0, 15, 15, 50 ]
+                }
+            }]]
         }
     },
     "system_events": {
@@ -787,80 +810,6 @@
                 "value": { "motivation": -1 }
             }
         ]]},
-        "matsuri_outing_1": {
-            "id": 8201,
-            "name": "吾妻出行·1 段",
-            "trigger": { "type": "Code" },
-            "choices": [[{
-                "value": {
-                    "status_pt": [ 10, 0, 0, 10, 0, 10 ],
-                    "motivation": 1,
-                    "vital": 33,
-                    "friendship": 5
-                }
-            }]]
-        },
-        "matsuri_outing_2": {
-            "id": 8202,
-            "name": "吾妻出行·2 段",
-            "trigger": { "type": "Code" },
-            "choices": [[{
-                "value": {
-                    "status_pt": [ 0, 0, 0, 0, 10, 10 ],
-                    "motivation": 1,
-                    "vital": 30,
-                    "friendship": 5
-                }
-            }]]
-        },
-        "matsuri_outing_3": {
-            "id": 8203,
-            "name": "吾妻出行·3 段",
-            "trigger": { "type": "Code" },
-            "player_select": true,
-            "choices": [
-                [{
-                    "value": {
-                        "motivation": 1,
-                        "vital": 50,
-                        "friendship": 5
-                    }
-                }],
-                [{
-                    "value": {
-                        "status_pt": [ 0, 10, 0, 10, 10, 20 ],
-                        "motivation": 1,
-                        "friendship": 5
-                    }
-                }]
-            ]
-        },
-        "matsuri_outing_4": {
-            "id": 8204,
-            "name": "吾妻出行·4 段",
-            "trigger": { "type": "Code" },
-            "choices": [[{
-                "value": {
-                    "status_pt": [ 0, 5, 5, 0, 0, 5 ],
-                    "motivation": 1,
-                    "vital": 35,
-                    "friendship": 5
-                }
-            }]]
-        },
-        "matsuri_outing_5": {
-            "id": 8205,
-            "name": "吾妻出行·5 段",
-            "trigger": { "type": "Code" },
-            "choices": [[{
-                "value": {
-                    "status_pt": [ 0, 0, 0, 10, 10, 20 ],
-                    "motivation": 1,
-                    "vital": 35,
-                    "friendship": 5
-                }
-            }]]
-        },
         "ending": {
             "id": 5011,
             "name": "育成结束",

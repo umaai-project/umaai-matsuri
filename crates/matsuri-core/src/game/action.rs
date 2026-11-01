@@ -9,8 +9,8 @@ use std::fmt::Display;
 use anyhow::{Result, anyhow};
 use rand::Rng;
 use umaai_core::Data;
-use umasim::game::ActionEnum;
 use umasim::game::base::BaseAction;
+use umasim::game::{ActionEnum, Game};
 
 use super::MatsuriGame;
 
@@ -95,8 +95,13 @@ impl MatsuriGame {
     }
 
     /// 休息：普通 / 合宿版走基础库默认（`is_xiahesu` = 原夏合宿窗口 36–39 / 60–63）；演目槽 +1
+    ///
+    /// 合宿版休息额外解除【变胖】（剧本口径）。
     pub(crate) fn do_rest(&mut self, rng: &mut impl Rng) -> Result<()> {
         BaseAction::do_sleep(&mut self.base, rng)?;
+        if self.plan.camp_rest {
+            self.uma_mut().flags.ill.remove(umaai_core::Ill::FAT);
+        }
         self.gain_lowest_act_gauge(self.data.rules.act_gauge_gain.other);
         Ok(())
     }
@@ -113,9 +118,10 @@ impl MatsuriGame {
         BaseAction::do_clinic(&mut self.base, rng)
     }
 
-    /// 友人（吾妻）出行：推进 5 段进度 + 按 `outing` 资产给最低演目 Lv+1 + 本段事件入队
+    /// 友人（吾妻）出行：推进 5 段进度 + 按 `outing` 资产给最低演目 Lv+1 + 本段真实卡面事件入队
     ///
-    /// 卡面出行事件数值为 `memo` 中可信度（`matsuri_outing_*` 系统事件，S6 落地真实卡面事件后替换）。
+    /// 段事件 = `events.friend_events["1".."5"]`（吾妻 `809052011–015`）；数值为 memo 基础值，
+    /// 结算时由引擎叠卡面「事件效果 / 回复量」加成。
     pub(crate) fn do_friend_outing(&mut self, _rng: &mut impl Rng) -> Result<()> {
         if !self.base.can_friend_outing() {
             return Err(anyhow!("当前不能友人出行（未解锁 / 终盘 / 5 段已用完）"));
@@ -142,11 +148,14 @@ impl MatsuriGame {
         self.base.friend.out_used[step] = true;
         self.add_lowest_act_level(add_level);
         self.gain_lowest_act_gauge(self.data.rules.act_gauge_gain.other);
-        // 本段演出事件：数值来源 memo（见 docs/plan/intake.md §3.12），S6 换成真实卡面事件
-        let mut event = Data::get()?
-            .system_event(&format!("matsuri_outing_{}", step + 1))?
-            .clone();
-        event.person_index = self.friend_person_index().map(|index| index as i32);
+        // 本段真实卡面事件（吾妻 809052011–015，memo 基础值）
+        let key = (step + 1).to_string();
+        let event = Data::get()?
+            .events
+            .friend_events
+            .get(&key)
+            .cloned()
+            .ok_or_else(|| anyhow!("友人出行段事件缺行: friend_events[{key}]"))?;
         self.unresolved_events.push(event);
         Ok(())
     }

@@ -1157,6 +1157,8 @@ fn outing_actions() -> Result<()> {
     // 普通出行
     let mut game = repo.game(repo.cfg.sim.uma)?;
     drive_to_turn(&mut game, 20)?;
+    // 干劲压到 1：三种普通出行事件都必然带来增量（否则 KTV 档只加干劲会被上限吃掉）
+    game.uma_mut().motivation = 1;
     let before = Stats::of(&game);
     finish_turn(
         &mut game,
@@ -1182,9 +1184,11 @@ fn outing_actions() -> Result<()> {
     assert_eq!(hits, 1, "普通出行应恰好结算 1 个通用出行事件");
     assert_ne!(Stats::of(&game), before, "普通出行应带来数值变化");
 
-    // 友人出行：手动解锁（真实解锁事件留 S6），连续 5 段
+    // 友人出行：手动解锁（真实解锁事件的「上 / 下」选择留事件链单测），连续 5 段
+    // 从 turn 27 起：跨过 turn 24 的正月事件、避开本局目标赛（turn 26 / 33），
+    // 使本段 delta 只含出行 5 段（期间随机事件只会额外增加）
     let mut game = repo.game(repo.cfg.sim.uma)?;
-    drive_to_turn(&mut game, 20)?;
+    drive_to_turn(&mut game, 27)?;
     game.base.friend.out_state = FriendOutState::AfterUnlock;
     let friend_index = game
         .persons()
@@ -1220,57 +1224,47 @@ fn outing_actions() -> Result<()> {
     );
     assert_eq!(
         game.persons()[friend_index].friendship(),
-        friendship_before + 25,
-        "5 段各 +5 羁绊"
+        (friendship_before + 25).min(100),
+        "5 段各 +5 羁绊（封顶 100）"
     );
+    // 5 段段事件（809052011–015）各结算 1 次
+    for key in 1..=5 {
+        let id = Data::get()?
+            .events
+            .friend_events
+            .get(&key.to_string())
+            .context("友人出行段事件应存在")?
+            .id;
+        assert_eq!(event_count(&game, id), 1, "出行第 {key} 段事件应结算 1 次");
+    }
     let after = Stats::of(&game);
-    // 第 3 段取上档（无属性），其余各段属性合计：速 10 / 耐 5 / 力 5 / 毅 20 / 智 20 / SP 45。
-    // 5 段横跨 turn 23 的進捗発表会：其一次性奖励（大成功 = 五维 +5 / SP +200）也在区间内。
-    let cp_reward = repo
-        .data
-        .check_point_rewards
-        .iter()
-        .find(|reward| {
-            reward.schedule == Some(1)
-                && match game.view().check_points[0] {
-                    CheckPointResult::GreatSuccess => {
-                        reward.result == matsuri_core::data::RewardResult::GreatSuccess
-                    }
-                    CheckPointResult::Success => {
-                        reward.result == matsuri_core::data::RewardResult::Success
-                    }
-                    CheckPointResult::NotReached => false,
-                }
-        })
-        .context("発表会奖励行应存在")?;
-    assert_eq!(
-        [
-            after.five[0] - before.five[0],
-            after.five[1] - before.five[1],
-            after.five[2] - before.five[2],
-            after.five[3] - before.five[3],
-            after.five[4] - before.five[4],
-        ],
-        [
-            10 + cp_reward.status,
-            5 + cp_reward.status,
-            5 + cp_reward.status,
-            20 + cp_reward.status,
-            20 + cp_reward.status,
-        ],
-        "5 段出行属性合计（memo 中可信度 + 発表会奖励）"
-    );
-    assert_eq!(
-        after.pt - before.pt,
-        45 + cp_reward.skill_pt,
-        "5 段出行 SP 合计 + 発表会 SP 奖励"
+    // 第 3 段取上档（无属性），其余各段属性合计（memo 基础值）：速 10 / 耐 5 / 力 5 / 毅 20 / 智 20 / SP 45。
+    // turn 26–30 期间随机事件只会额外增加，断言取下界。
+    let delta = [
+        after.five[0] - before.five[0],
+        after.five[1] - before.five[1],
+        after.five[2] - before.five[2],
+        after.five[3] - before.five[3],
+        after.five[4] - before.five[4],
+    ];
+    let floor = [10, 5, 5, 20, 20];
+    for (axis, (got, need)) in delta.iter().zip(floor).enumerate() {
+        assert!(
+            *got >= need,
+            "5 段出行属性下界（轴 {axis}）：{got} < {need}，delta={delta:?}"
+        );
+    }
+    assert!(
+        after.pt - before.pt >= 45,
+        "5 段出行 SP 合计应 ≥ 45：{}",
+        after.pt - before.pt
     );
     assert!(
         !game.list_actions()?.contains(&Action::FriendOuting),
         "5 段用完后不可再出行"
     );
     println!(
-        "出行：普通出行 1 个通用事件；友人出行 5 段 → 演目 Lv {level:?} / 羁绊 +25 / 五维 +[10,5,5,20,20] / SP+45",
+        "出行：普通出行 1 个通用事件；友人出行 5 段 → 演目 Lv {level:?} / 羁绊 +25 / 五维下界 +[10,5,5,20,20] / SP+45",
         level = game.view().act_level
     );
     Ok(())
@@ -1513,5 +1507,81 @@ fn s5_mechanism_chain_over_full_run() -> Result<()> {
     })?;
     assert_eq!(obs.len(), (MAX_TURN + 1) as usize);
     println!("S5 机制链：教诲 / 発表会 / 融合 / 本番演出按回合窗口结算");
+    Ok(())
+}
+
+/// S6 事件链：剧本固定事件「教え見直し」在 turn 11 行动前结算（体力 +15 / 干劲 +1）
+#[test]
+fn scenario_fixed_event_at_turn11() -> Result<()> {
+    let repo = Repo::load()?;
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 10)?;
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Train(0),
+            choice: 0,
+        },
+    )?;
+    // 回合 10 已走完，当前在 turn 11 的 Begin（尚未执行）
+    assert_eq!(game.turn(), 11);
+    game.uma_mut().vital = 50;
+    game.uma_mut().motivation = 2;
+    let trainer = MatsuriTrainer::new(MatsuriConfig::default());
+    let mut decision = StdRng::seed_from_u64(3);
+    game.run_stage(&trainer, &mut decision)?;
+    assert_eq!(
+        event_count(&game, 400015105),
+        1,
+        "教え見直し事件应结算 1 次"
+    );
+    assert_eq!(game.uma().vital, 65, "行动前体力 +15");
+    assert_eq!(game.uma().motivation, 3, "行动前干劲 +1");
+    println!("S6：turn 11 教え見直し事件（体力+15 / 干劲+1）");
+    Ok(())
+}
+
+/// S6 事件链整局：通用固定事件 / 随机分布 / 剧本固定事件 / 友人链 / 抽签 / 结局
+#[test]
+fn s6_event_chain_over_full_run() -> Result<()> {
+    let repo = Repo::load()?;
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    let trainer = MatsuriTrainer::new(MatsuriConfig::default());
+    let mut decision = StdRng::seed_from_u64(7);
+    game.run_full_game(&trainer, &mut decision)?;
+
+    let count = |id: u32| event_count(&game, id);
+    // 引擎通用固定事件
+    assert_eq!(count(400000400), 1, "turn 0 马娘登场");
+    assert_eq!(count(4009), 1, "turn 24 经典年-新年");
+    assert_eq!(count(4010), 1, "turn 48 古马年-新年");
+    assert_eq!(count(4012), 1, "turn 30 第二年继承");
+    assert_eq!(count(4013), 1, "turn 54 第三年继承");
+    // 引擎通用「回合后」事件（B2/Q9 按引擎接）
+    assert_eq!(count(4011), 1, "turn 48 新年抽签");
+    assert_eq!(count(5011), 1, "turn 77 育成结束事件");
+    // 剧本固定事件：教え見直し ×3（turn 11 / 35 / 59）
+    assert_eq!(count(400015105), 3, "教え見直し事件按 3 个窗口结算");
+    // 友人链：首次事件 / 训练后事件（40%）/ 出行解锁 / 正月 / 结局
+    assert!(count(809052001) >= 1, "首次点击事件应发生");
+    assert!(count(809052032) >= 1, "训练后点击事件应发生");
+    assert_eq!(count(809052004), 1, "出行解锁事件应发生 1 次");
+    assert_eq!(count(809052021), 1, "已解锁时 turn 24 应发生正月事件");
+    assert_eq!(count(809052023), 1, "已解锁时 turn 77 应发生友人结局");
+    // 随机分布：至少发生一些支援卡 / 马娘事件
+    let random_events = count(8001) + count(8002) + count(8003) + count(5006);
+    assert!(random_events >= 1, "随机事件分布应至少命中一次");
+    // 旧出行占位事件已删除、不再结算
+    for id in 8201..=8205 {
+        assert_eq!(count(id), 0, "旧出行占位事件 {id} 不应再结算");
+    }
+    let big_eater = count(5010);
+    assert!(big_eater <= 3, "大胃王最多 3 次");
+    println!(
+        "S6 整局事件链：通用固定 ✓ / 教え見直し ×{} / 友人链 first+click+out+newyear+end ✓ / 随机≥{} / 大胃王 {} 次",
+        count(400015105),
+        random_events,
+        big_eater
+    );
     Ok(())
 }

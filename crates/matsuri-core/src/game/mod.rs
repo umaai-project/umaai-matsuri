@@ -8,6 +8,7 @@ pub mod action;
 pub mod advice;
 pub mod deck;
 pub mod distribute;
+pub mod event;
 pub mod person;
 pub mod roster;
 pub mod settle;
@@ -21,6 +22,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use umaai::Config;
+use umaai_core::gamedata::ActionValue;
 use umaai_core::rng::StrategyRng;
 use umaai_core::{Array5, Data};
 use umasim::game::base::BaseGame;
@@ -62,6 +64,45 @@ pub struct AdviceLedger {
     pub fused: Array5,
     /// 本局是否已获得教诲（turn 2 的 `End` 首次授予；此前槽位不可用）
     pub acquired: bool,
+}
+
+/// 事件记录容量（S8 手动 / 前端回显：滚动保留最近 N 条）
+pub const EVENT_LOG_CAPACITY: usize = 32;
+
+/// 一次事件结算记录（S8：手动核对 / 前端回显）
+///
+/// 由 [`MatsuriGame`] 在事件结算后追加：事件 id / 名称 / 选项 / 实际到账数值（含卡面加成）。
+/// 属剧本自持的“呈现辅助状态”，不参与机制结算。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventRecord {
+    /// 单调递增序号（记录滚动后仍可用于「自上次以来」判断）
+    pub seq: u64,
+    /// 结算回合（0 基）
+    pub turn: i32,
+    /// 事件 id
+    pub id: u32,
+    /// 事件名
+    pub name: String,
+    /// 选项组下标（0 基）
+    pub choice: usize,
+    /// 结算摘要（实际到账数值 / 状态变化；无选项或无数值时为空）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// 训练 / 演目稽古预览（S8：手动核对与前端面板）
+///
+/// 成功收益 = 下层（引擎默认公式）+ 上层（剧本来源），已含变胖速度归零 / 本番演出等剧本修正；
+/// 失败率 % = 引擎基础公式 + 剧本失败率下降。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrainingPreview {
+    /// 成功时的到账值
+    pub value: ActionValue,
+    /// 失败率（%）
+    pub failure_rate: f32,
+    /// 是否为演目稽古上下文
+    pub keiko: bool,
 }
 
 /// 剧本资源快照（给前端的纯数据 View）
@@ -126,6 +167,9 @@ pub struct MatsuriView {
     pub train_level_bonus: Array5,
     /// 编成警告项（建局时一次算定；None 段位表示编成合规）
     pub deck_warnings: Vec<DeckWarning>,
+
+    /// 最近事件记录（S8：手动核对 / 前端回显；容量上限 [`EVENT_LOG_CAPACITY`]）
+    pub recent_events: Vec<EventRecord>,
 }
 
 /// 剧本局面
@@ -160,12 +204,16 @@ pub struct MatsuriGame {
     pub plan: TurnPlan,
     /// 本回合是否被强制休息事件占用（S6 事件管线设置；合宿计数排除用）
     pub forced_rest: bool,
+    /// 友人出行解锁时获得的「疲劳回复」flag（剧本自持；体力 ≤49 时一次 +15，S6）
+    pub fatigue_recovery: bool,
     /// 進捗発表会 / 本番结果（3 场；`End` 阶段结算，S5 落地）
     pub check_points: [CheckPointResult; 3],
     /// 本番演出是否已结算（S5 落地）
     pub finals_done: bool,
     /// 编成警告项（建局时由 `game/deck.rs` 一次算定；禁止项已拒绝建局）
     pub deck_warnings: Vec<DeckWarning>,
+    /// 最近事件记录（S8：手动 / 前端核对用；事件结算后追加，容量上限 [`EVENT_LOG_CAPACITY`]）
+    pub event_log: Vec<EventRecord>,
     /// 助力支撑剩余次数（0 = 无；演目稽古获得「助力の支え」时重置为规则上限，S5）
     pub assist_support_left: i32,
     /// 本回合研鑽「追加の稽古」是否掷中（`Begin` 用策略流预掷；本回合未点对应训练则作废）
@@ -223,9 +271,11 @@ impl MatsuriGame {
             camp: CampState::default(),
             plan: TurnPlan::default(),
             forced_rest: false,
+            fatigue_recovery: false,
             check_points: [CheckPointResult::NotReached; 3],
             finals_done: false,
             deck_warnings: Vec::new(),
+            event_log: Vec::new(),
             assist_support_left: 0,
             kensan_pending: false,
             train_level_bonus: [0; 5],
@@ -278,7 +328,19 @@ impl MatsuriGame {
             kensan_pending: self.kensan_pending,
             train_level_bonus: self.train_level_bonus,
             deck_warnings: self.deck_warnings.clone(),
+            recent_events: self.event_log.clone(),
         }
+    }
+
+    /// 追加一条事件记录（S8 手动 / 前端核对；滚动保留最近 [`EVENT_LOG_CAPACITY`] 条）
+    ///
+    /// 序号由记录自身延续（滚动丢弃旧记录后仍单调递增），供前端判断「自上次以来」的新事件。
+    pub(crate) fn push_event_log(&mut self, mut record: EventRecord) {
+        record.seq = self.event_log.last().map_or(1, |last| last.seq + 1);
+        if self.event_log.len() >= EVENT_LOG_CAPACITY {
+            self.event_log.remove(0);
+        }
+        self.event_log.push(record);
     }
 
     /// 演目 Lv 上限（仅支持 SSR 吾妻 → 带友人档 10）

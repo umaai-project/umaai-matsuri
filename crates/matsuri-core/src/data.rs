@@ -12,9 +12,10 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use serde::{Deserialize, Serialize};
 use umaai_core::Array5;
+use umaai_core::gamedata::{EventData, TriggerType};
 
 /// 剧本数据文件名（放在宿主注入的剧本数据根下）
 pub const MATSURI_DATA_FILE: &str = "scenario_matsuri.json";
@@ -73,6 +74,13 @@ pub struct MatsuriData {
     pub schedule: Vec<CheckPointSchedule>,
     /// 教诲可调整窗口（`single_mode_15_advice_recommend`，0 基）
     pub advice_windows: Vec<i32>,
+    /// 剧本固定事件（S6 事件链；`TriggerType::Fixed` 按 0 基回合触发）
+    ///
+    /// 目前只有 `400015105`（教え見直し）与 `400015106`（追加の稽古，代码触发）；
+    /// 主剧本其余事件为过场说明、无数值，不入资产（口径见 `docs/plan/scenario_dev_plan.md`）。
+    pub scenario_events: Vec<EventData>,
+    /// 事件额外效果（引擎 `ActionValue` 表达不了的部分：演目 gauge / 解 debuff）
+    pub event_extras: Vec<EventExtra>,
     /// 3 次合宿窗口 + 固定演目 Lv+1 结算点
     pub camp: CampData,
     /// 规则常量（gauge 上限 / 入账 / 训练 Lv / 羁绊基础值）
@@ -513,8 +521,8 @@ pub struct Rules {
     pub training_upper_cap: i32,
     /// 助力支撑（助力の教え / 転成 401 获得）
     pub assist_support: AssistSupportRule,
-    /// 研鑽の教え「追加の稽古」数值
-    pub kensan: KensanRule,
+    /// 【变胖】每回合解除概率 %（剧本自持暂定值 20；STUB 待真机）
+    pub fat_recovery_prob: i32,
 }
 
 /// 助力支撑数值（`memo` 2026-10-31：3 次内 +5%，再次获得重置次数）
@@ -527,26 +535,22 @@ pub struct AssistSupportRule {
     pub effect: i32,
 }
 
-/// 研鑽の教え「追加の稽古」数值（`memo` 2026-10-31；上下档概率待测 U40）
+/// 事件额外效果（事件 `ActionValue` 之外、剧本专属的部分）
+///
+/// 按 `(event_id, choice)` 定位；`choice` 为选项组下标（0 基）。
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct KensanRule {
-    /// 上档：直前训练对象属性 +N
-    pub upper_status: i32,
-    /// 上档：技能Pt +N
-    pub upper_skill_pt: i32,
-    /// 上档：体力 +N（负值 = 消耗）
-    pub upper_vital: i32,
-    /// 上档：理事长羁绊 +N
-    pub upper_president_friendship: i32,
-    /// 上档：最低演目 gauge +N
-    pub upper_gauge: i32,
-    /// 上档概率 %（下档 = 100 − 本值；STUB U40）
-    pub upper_prob: i32,
-    /// 下档：直前训练对象属性 +N
-    pub lower_status: i32,
-    /// 下档：体力 +N
-    pub lower_vital: i32,
+pub struct EventExtra {
+    /// 事件 ID（须在 `scenario_events` 中定义）
+    pub event_id: u32,
+    /// 选项组下标（0 基）
+    pub choice: usize,
+    /// 最低演目 gauge +N（满槽跳过、三则落点）
+    #[serde(default)]
+    pub act_gauge_lowest: i32,
+    /// 解除一个 debuff（优先不擅长训练，其次生病位）
+    #[serde(default)]
+    pub clear_debuff: bool,
 }
 
 /// gauge 入账规则
@@ -618,6 +622,7 @@ impl MatsuriData {
         self.validate_outing()?;
         self.validate_schedule()?;
         self.validate_advice_windows()?;
+        self.validate_events()?;
         self.validate_camp()?;
         self.validate_rules()?;
         Ok(())
@@ -1153,22 +1158,69 @@ impl MatsuriData {
             rules.assist_support.count > 0 && rules.assist_support.effect > 0,
             "rules.assist_support 的次数 / 效果应为正"
         );
-        let kensan = &rules.kensan;
         ensure!(
-            (1..100).contains(&kensan.upper_prob),
-            "rules.kensan.upper_prob 应在 1–99"
+            (0..=100).contains(&rules.fat_recovery_prob),
+            "rules.fat_recovery_prob 应在 0–100"
         );
-        for (name, value) in [
-            ("upper_status", kensan.upper_status),
-            ("upper_skill_pt", kensan.upper_skill_pt),
-            (
-                "upper_president_friendship",
-                kensan.upper_president_friendship,
-            ),
-            ("upper_gauge", kensan.upper_gauge),
-            ("lower_status", kensan.lower_status),
-        ] {
-            ensure!(value >= 0, "rules.kensan.{name} 不应为负");
+        Ok(())
+    }
+
+    /// 剧本固定事件与事件额外效果：id 唯一 / 触发回合合法 / extras 能定位到事件与选项
+    fn validate_events(&self) -> Result<()> {
+        let mut ids = vec![];
+        for (i, event) in self.scenario_events.iter().enumerate() {
+            ensure!(
+                !event.name.is_empty(),
+                "scenario_events[{i}] 的名称不应为空"
+            );
+            ensure!(
+                !event.choices.is_empty(),
+                "scenario_events[{i}] 应有至少一个选项组"
+            );
+            ensure!(
+                !ids.contains(&event.id),
+                "scenario_events[{i}] 的事件 id 重复: {}",
+                event.id
+            );
+            ids.push(event.id);
+            match &event.trigger {
+                TriggerType::Fixed { turns } => {
+                    ensure!(
+                        !turns.is_empty(),
+                        "scenario_events[{i}] 的 Fixed 触发回合不应为空"
+                    );
+                    for turn in turns {
+                        ensure!(
+                            (0..=crate::MAX_TURN).contains(turn),
+                            "scenario_events[{i}] 的触发回合越界: {turn}"
+                        );
+                    }
+                }
+                TriggerType::Code => {}
+                TriggerType::Random { .. } => {
+                    bail!("scenario_events[{i}] 不应使用 Random 触发（随机事件走 events.json）");
+                }
+            }
+        }
+        for (i, extra) in self.event_extras.iter().enumerate() {
+            let event = self
+                .scenario_events
+                .iter()
+                .find(|event| event.id == extra.event_id)
+                .ok_or_else(|| anyhow!("event_extras[{i}] 引用的事件不存在: {}", extra.event_id))?;
+            ensure!(
+                extra.choice < event.choices.len(),
+                "event_extras[{i}] 的选项组越界: {}",
+                extra.choice
+            );
+            ensure!(
+                extra.act_gauge_lowest > 0 || extra.clear_debuff,
+                "event_extras[{i}] 没有配置任何效果"
+            );
+            ensure!(
+                extra.act_gauge_lowest >= 0,
+                "event_extras[{i}].act_gauge_lowest 不应为负"
+            );
         }
         Ok(())
     }

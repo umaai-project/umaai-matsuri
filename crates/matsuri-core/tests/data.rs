@@ -301,9 +301,9 @@ fn engine_events_race_rewards() -> Result<()> {
     Ok(())
 }
 
-/// S5 规则常量：上层上限 / 助力支撑 / 研鑽追加稽古
+/// S5 规则常量：上层上限 / 助力支撑；S6：追加稽古数值迁到事件资产、变胖解除概率
 #[test]
-fn rules_s5() -> Result<()> {
+fn rules_s5_s6() -> Result<()> {
     let data = MatsuriData::load(data_dir())?;
     let rules = &data.rules;
     assert_eq!(rules.training_upper_cap, 100);
@@ -311,21 +311,11 @@ fn rules_s5() -> Result<()> {
         (rules.assist_support.count, rules.assist_support.effect),
         (3, 5)
     );
-    let kensan = &rules.kensan;
     assert_eq!(
-        (
-            kensan.upper_status,
-            kensan.upper_skill_pt,
-            kensan.upper_vital,
-            kensan.upper_president_friendship,
-            kensan.upper_gauge,
-            kensan.upper_prob,
-            kensan.lower_status,
-            kensan.lower_vital,
-        ),
-        (20, 20, -5, 5, 1, 50, 5, 5)
+        rules.fat_recovery_prob, 20,
+        "变胖每回合解除概率（剧本自持暂定值）"
     );
-    println!("S5 规则常量：上层上限 100 / 助力支撑 3×5% / 追加稽古上下档");
+    println!("S5/S6 规则常量：上层上限 100 / 助力支撑 3×5% / 变胖解除 20%");
     Ok(())
 }
 
@@ -345,38 +335,174 @@ fn finals_act() -> Result<()> {
     Ok(())
 }
 
-/// 仓内 `data/events.json`：吾妻出行 5 段事件（`memo` 中可信度，S6 换真实卡面事件）
+/// 仓内 `data/events.json`：吾妻（`809052xxx`）友人链事件全部就位、无温泉残留
 ///
-/// 数值来源 [`../../docs/plan/intake.md`](../../docs/plan/intake.md) §3.12：第 3 段是上 / 下双选项，
-/// 单选项各段 = 体力 / 属性 / 技能点 / 羁绊；未确认项按 memo 下界 / 首档登记（见 `stubs.md`）。
+/// 槽位口径（user 2026-11-01 核对）：`001`=首次 / `032`=训练后 / `004`=出行解锁 / `021`=正月 /
+/// `011–015`=出行 1–5 / `023`=结局；`002/003/033`=R 卡、`022`=未满 5 段结局变体（不接）、
+/// `031`=随机友人卡事件（忽略）。
 #[test]
-fn engine_events_matsuri_outing() -> Result<()> {
+fn engine_events_friend_chain() -> Result<()> {
     use umaai_core::Data;
 
     let data = Data::init(data_dir())?;
-    let expect: [(u32, [i32; 6], i32); 5] = [
-        (8201, [10, 0, 0, 10, 0, 10], 33),
-        (8202, [0, 0, 0, 0, 10, 10], 30),
-        (8203, [0, 10, 0, 10, 10, 20], 0),
-        (8204, [0, 5, 5, 0, 0, 5], 35),
-        (8205, [0, 0, 0, 10, 10, 20], 35),
+    let keys = [
+        "first", "click", "out", "newyear", "1", "2", "3", "4", "5", "end",
     ];
-    for (step, (id, status, vital)) in expect.iter().enumerate() {
-        let event = data.system_event(&format!("matsuri_outing_{}", step + 1))?;
-        assert_eq!(event.id, *id);
-        // 第 3 段双选项取「下」档核对属性（上档为纯体力回复，见下方断言）
-        let value = if step == 2 {
-            assert!(event.player_select, "第 3 段应有上下档选择");
-            assert_eq!(event.choices[0][0].value.vital, 50, "第 3 段上档 +50 体");
-            &event.choices[1][0].value
-        } else {
-            &event.choices[0][0].value
-        };
-        assert_eq!(value.status_pt, *status, "outing {} 段属性", step + 1);
-        assert_eq!(value.vital, *vital, "outing {} 段体力", step + 1);
-        assert_eq!(value.friendship, 5, "outing {} 段羁绊", step + 1);
+    assert_eq!(data.events.friend_events.len(), keys.len());
+    for (key, expect_id) in [
+        ("first", 809052001_u32),
+        ("click", 809052032),
+        ("out", 809052004),
+        ("newyear", 809052021),
+        ("1", 809052011),
+        ("2", 809052012),
+        ("3", 809052013),
+        ("4", 809052014),
+        ("5", 809052015),
+        ("end", 809052023),
+    ] {
+        let event = data
+            .events
+            .friend_events
+            .get(key)
+            .unwrap_or_else(|| panic!("friend_events[{key}] 应存在"));
+        assert_eq!(event.id, expect_id, "friend_events[{key}] 的事件 id");
+        assert!(
+            (809052001..=809052999).contains(&event.id),
+            "友人事件应是吾妻 809052xxx，实际 {}（不应残留温泉 80905xxx）",
+            event.id
+        );
     }
-    println!("吾妻出行 5 段事件：数值与 memo 2026-10-27 一致");
+    // 出行解锁（上 / 下双选项）：上 = 体力 +25，下 = 弧を描いて Lv5（hint_level 5）
+    let out = &data.events.friend_events["out"];
+    assert!(out.player_select, "出行解锁应有上 / 下选项");
+    assert_eq!(out.choices.len(), 2);
+    assert_eq!(
+        (
+            out.choices[0][0].value.vital,
+            out.choices[0][0].value.friendship
+        ),
+        (25, 5)
+    );
+    assert_eq!(out.choices[1][0].value.hint_level, 5);
+    // 出行第 3 段也是上 / 下双选项
+    let outing3 = &data.events.friend_events["3"];
+    assert!(outing3.player_select);
+    assert_eq!(outing3.choices[0][0].value.vital, 50);
+    // 结局 = 外出 5 次档（速 / 根 / 智 +15、SP +50，按 memo 基础值）
+    let end = &data.events.friend_events["end"];
+    assert_eq!(end.choices[0][0].value.status_pt, [15, 0, 0, 15, 15, 50]);
+    // 训练后事件 = 根性 +4 / SP +4 / 羁绊 +5
+    let click = &data.events.friend_events["click"];
+    assert_eq!(
+        (
+            click.choices[0][0].value.status_pt[3],
+            click.choices[0][0].value.status_pt[5]
+        ),
+        (4, 4)
+    );
+    // 出行段事件全为真实卡面事件：不再有 matsuri_outing_* 占位
+    assert!(
+        !data
+            .events
+            .system_events
+            .keys()
+            .any(|key| key.starts_with("matsuri_outing")),
+        "出行占位事件应已删除"
+    );
+    println!("吾妻友人链事件：10 个槽位全就位、无温泉残留、出行 5 段 + 结局数值与 memo 一致");
+    Ok(())
+}
+
+/// 仓内 `data/events.json`：构造事件「大胃王」（user 2026-11-01 口径）
+///
+/// 选择 1：体力 +10 / PT +5；选择 2：体力 +30 / PT +10，33% 追加「变胖」（`Ill::FAT`）。
+#[test]
+fn engine_events_big_eater() -> Result<()> {
+    use umaai_core::gamedata::TriggerType;
+    use umaai_core::{Data, Ill};
+
+    let data = Data::init(data_dir())?;
+    let event = data
+        .events
+        .uma_events
+        .iter()
+        .find(|event| event.id == 5010)
+        .expect("马娘事件池应含构造事件 5010（大胃王）");
+    assert_eq!(event.name, "大胃王");
+    assert!(event.player_select);
+    assert!(
+        matches!(event.trigger, TriggerType::Random { max_time: 3 }),
+        "大胃王触发次数应为 3"
+    );
+    assert_eq!(event.choices.len(), 2);
+    assert_eq!(
+        (
+            event.choices[0][0].value.vital,
+            event.choices[0][0].value.status_pt[5]
+        ),
+        (10, 5)
+    );
+    let second = &event.choices[1];
+    assert_eq!((second[0].prob, second[1].prob), (33, 67));
+    assert_eq!(second[0].value.vital, 30);
+    assert_eq!(second[0].value.status_pt[5], 10);
+    let flags = second[0].add_flags.as_ref().expect("33% 档应附带变胖状态");
+    assert!(
+        flags.ill.contains(Ill::FAT),
+        "33% 档应附 Ill::FAT（变胖）：{:?}",
+        flags.ill
+    );
+    assert!(second[1].add_flags.is_none(), "67% 档无状态");
+    println!("大胃王：二选一 + 33% 变胖，max_time = 3");
+    Ok(())
+}
+
+/// 剧本固定事件（`scenario_matsuri.json`）：`400015105` / `400015106` + 事件额外效果
+#[test]
+fn scenario_events_asset() -> Result<()> {
+    use umaai_core::gamedata::TriggerType;
+
+    let data = MatsuriData::load(data_dir())?;
+    assert_eq!(data.scenario_events.len(), 2, "剧本固定事件应只有 2 条");
+    let review = data
+        .scenario_events
+        .iter()
+        .find(|event| event.id == 400015105)
+        .expect("应有教え見直し事件");
+    assert!(matches!(review.trigger, TriggerType::Fixed { ref turns } if turns == &[11, 35, 59]));
+    assert_eq!(review.choices[0][0].value.vital, 15);
+    assert_eq!(review.choices[0][0].value.motivation, 1);
+    let kensan = data
+        .scenario_events
+        .iter()
+        .find(|event| event.id == 400015106)
+        .expect("应有追加の稽古事件");
+    assert!(kensan.player_select, "追加稽古应由训练员选上 / 下档");
+    assert_eq!(kensan.choices.len(), 2);
+    // 上档：直前训练 +20（LastTrain）、SP+20、体力-5、理事长羁绊+5
+    let upper = &kensan.choices[0][0];
+    assert_eq!(upper.value.vital, -5);
+    assert_eq!(upper.value.status_pt[5], 20);
+    assert_eq!(upper.value.friendship, 5);
+    assert!(matches!(
+        upper.extra_status,
+        Some(umaai_core::gamedata::ExtraStatus::LastTrain { value: 20 })
+    ));
+    // 下档：直前训练 +5、体力 +5
+    let lower = &kensan.choices[1][0];
+    assert_eq!(lower.value.vital, 5);
+    assert!(matches!(
+        lower.extra_status,
+        Some(umaai_core::gamedata::ExtraStatus::LastTrain { value: 5 })
+    ));
+    // 事件额外效果：上档最低演目 gauge+1 + 解一个 debuff
+    assert_eq!(data.event_extras.len(), 1);
+    let extra = &data.event_extras[0];
+    assert_eq!((extra.event_id, extra.choice), (400015106, 0));
+    assert_eq!(extra.act_gauge_lowest, 1);
+    assert!(extra.clear_debuff);
+    println!("剧本固定事件：教え見直し + 追加稽古（上下档 + 事件扩展）");
     Ok(())
 }
 

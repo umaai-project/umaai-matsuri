@@ -14,7 +14,7 @@ use umasim::search::FlatSearchGame;
 use umasim::trainer::RandomTrainer;
 
 use super::person::{MatsuriPerson, PersonOrigin};
-use super::{Action, MatsuriGame, Stage};
+use super::{Action, EventRecord, MatsuriGame, Stage};
 use crate::MAX_TURN;
 use crate::data::CheckPointResult;
 
@@ -178,21 +178,65 @@ impl Game for MatsuriGame {
         Ok(actions)
     }
 
-    fn generate_events(&self, _rng: &mut impl Rng) -> Vec<EventData> {
-        // S6 事件管线：固定回合 / 概率事件 / 伝受 / 合宿抑制表在这里生成（S5 只结算动作 / 训练后事件）
-        Vec::new()
+    fn generate_events(&self, rng: &mut impl Rng) -> Vec<EventData> {
+        // S6 事件链：固定回合 / 合宿抑制 / 友人解锁 / 随机分布（见 `game/event.rs`）
+        self.begin_events(rng)
     }
 
     fn apply_event(&mut self, event: &EventData, choice: usize, rng: &mut impl Rng) -> Result<()> {
-        // 引擎底座负责通用事件结算；剧本补「事件羁绊归属」（红点 / 点击 / 出行等事件带羁绊值）
+        // ① 引擎底座负责通用数值结算（含友人卡事件加成、ExtraStatus）
         let result = self.base.apply_event(event, choice, rng);
-        if let Some(result) = result
-            && result.value.friendship != 0
-            && let Some(person_index) = self.base.event_person_target(event, &self.persons)
-        {
-            self.base
-                .add_friendship(&mut self.persons, person_index, result.value.friendship);
+        if let Some(result) = &result {
+            // ② 引擎 `BaseEvent::apply_event` 不结算 add/remove_flags，剧本侧补齐（变胖等状态）
+            self.base.uma.update_flags(result);
+            // ③ 事件羁绊归属（红点 / 点击 / 出行 / 友人事件等带羁绊值）
+            if result.value.friendship != 0
+                && let Some(person_index) = self.base.event_person_target(event, &self.persons)
+            {
+                self.base
+                    .add_friendship(&mut self.persons, person_index, result.value.friendship);
+            }
         }
+        // ④ 剧本特例：友人出行解锁 + 疲劳回复 flag
+        if event.id == super::event::FRIEND_OUT_EVENT_ID {
+            self.base.friend.out_state = umasim::game::FriendOutState::AfterUnlock;
+            self.fatigue_recovery = true;
+        }
+        // ⑤ 事件额外效果（演目 gauge / 解 debuff）
+        self.apply_event_extra(event.id, choice);
+        // ⑥ 事件记录（S8 手动 / 前端核对）：记录实际到账数值与状态变化
+        let mut detail = result
+            .as_ref()
+            .map(|result| result.value.to_string())
+            .unwrap_or_default();
+        if let Some(result) = &result {
+            if let Some(flags) = &result.add_flags
+                && !flags.to_string().is_empty()
+            {
+                if !detail.is_empty() {
+                    detail.push('；');
+                }
+                detail.push_str("状态+");
+                detail.push_str(&flags.to_string());
+            }
+            if let Some(flags) = &result.remove_flags
+                && !flags.to_string().is_empty()
+            {
+                if !detail.is_empty() {
+                    detail.push('；');
+                }
+                detail.push_str("状态-");
+                detail.push_str(&flags.to_string());
+            }
+        }
+        self.push_event_log(EventRecord {
+            seq: 0,
+            turn: self.turn(),
+            id: event.id,
+            name: event.name.clone(),
+            choice,
+            detail: (!detail.is_empty()).then_some(detail),
+        });
         Ok(())
     }
 

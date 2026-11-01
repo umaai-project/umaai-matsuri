@@ -986,6 +986,53 @@
     }
   ],
   "advice_windows": [2, 11, 23, 35, 47, 59],
+  "scenario_events": [
+    {
+      "id": 400015105,
+      "name": "教えの見直し",
+      "trigger": { "type": "Fixed", "turns": [11, 35, 59] },
+      "choices": [[{
+        "value": {
+          "vital": 15,
+          "motivation": 1
+        }
+      }]]
+    },
+    {
+      "id": 400015106,
+      "name": "追加の稽古",
+      "trigger": { "type": "Code" },
+      "player_select": true,
+      "choices": [
+        [{
+          "result": 1,
+          "prob": 100,
+          "value": {
+            "vital": -5,
+            "status_pt": [ 0, 0, 0, 0, 0, 20 ],
+            "friendship": 5
+          },
+          "extra_status": { "kind": "last_train", "value": 20 }
+        }],
+        [{
+          "result": 1,
+          "prob": 100,
+          "value": {
+            "vital": 5
+          },
+          "extra_status": { "kind": "last_train", "value": 5 }
+        }]
+      ]
+    }
+  ],
+  "event_extras": [
+    {
+      "event_id": 400015106,
+      "choice": 0,
+      "act_gauge_lowest": 1,
+      "clear_debuff": true
+    }
+  ],
   "camp": {
     "windows": [
       {
@@ -1027,15 +1074,6 @@
       "count": 3,
       "effect": 5
     },
-    "kensan": {
-      "upper_status": 20,
-      "upper_skill_pt": 20,
-      "upper_vital": -5,
-      "upper_president_friendship": 5,
-      "upper_gauge": 1,
-      "upper_prob": 50,
-      "lower_status": 5,
-      "lower_vital": 5
-    }
+    "fat_recovery_prob": 20
   }
 }
