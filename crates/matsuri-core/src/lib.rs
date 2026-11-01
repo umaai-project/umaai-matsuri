@@ -35,8 +35,8 @@ pub use config::MatsuriConfig;
 pub use data::MatsuriData;
 pub use game::{
     ActLedger, Action, AdviceLedger, CampState, DeckError, DeckReport, DeckWarning, EventRecord,
-    MatsuriGame, MatsuriPerson, MatsuriView, PersonOrigin, Stage, TrainingPreview, TurnPlan,
-    build_game,
+    MatsuriGame, MatsuriPerson, MatsuriView, PersonOrigin, SCENARIO_START_TURN, Stage,
+    TrainingPreview, TurnPlan, build_game,
 };
 pub use trainer::MatsuriTrainer;
 

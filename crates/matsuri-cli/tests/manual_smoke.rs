@@ -1,6 +1,7 @@
 //! 手动档冒烟：管道输入走完整局，确认面板 / 事件回显 / 终局块都能产出
 //!
-//! 手动档不引交互依赖，用标准输入喂「全 0」（第一个动作 / 第一项选项）即可跑满 78 回合。
+//! 手动档动作选择在交互终端用 Inquire、非 TTY 退回编号输入；此处用标准输入喂「全 0」
+//! （第一个动作 / 第一项选项）即跑满 78 回合。
 
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -33,8 +34,11 @@ fn manual_mode_runs_full_game_with_scripted_input() {
     for marker in [
         "【事件】",
         "【数值】",
-        "【演目】",
-        "【分布】",
+        "【剧本资源】",
+        "剧本机制自 T2",
+        "未分配",
+        "【训练】",
+        "教诲 → 転成",
         "【动作】",
         "【目标赛】",
         "评分",
@@ -45,6 +49,12 @@ fn manual_mode_runs_full_game_with_scripted_input() {
             stdout.len()
         );
     }
+    // 管道（非 TTY）输出应自动关色：颜色只在实际终端生效
+    assert!(
+        !stdout.contains('\x1b'),
+        "非 TTY 输出不应含 ANSI 颜色序列（stdout 长度 {}）",
+        stdout.len()
+    );
     // 事件回显覆盖 S6 关键链
     for event in ["马娘登场", "求むるは、新たな書", "追加の稽古"] {
         assert!(

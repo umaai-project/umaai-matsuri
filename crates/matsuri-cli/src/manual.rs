@@ -1,21 +1,26 @@
 //! 手动训练员（S8：机制核对面板）
 //!
-//! 用途：机制核对时由人逐决策选择。每次需要决策前打印完整面板：回合结构 / 五维与状态 /
-//! 演目与教诲 / 発表会与永久 buff / 合宿 / 友人链 / 事件回显 / 人头分布 / 动作候选（带训练预览
-//! 与失败率）。事件选择时打印选项组与各分支数值。
+//! 用途：机制核对时由人逐决策选择。每次动作决策前打印完整面板：回合结构 / 数值与状态 /
+//! 剧本资源与教诲（advice）分配（演目槽 · Lv · 教诲→転成 · 担当人物）/ 彩色训练明细表
+//! （每训练一列，格内列出该位置全部人头：短名、未满 100 的羁绊、Hint 亮黄叹号；友人绿 /
+//! 彩圈卡亮绿 / 普通支援卡白 / NPC 灰）/ 合宿·友人链·赛程 / 动作候选（成功收益预览、失败率）。
+//! 事件选择时打印选项组与各分支数值；动作选择在交互终端用 Inquire 列表，非 TTY 退回编号输入。
 //!
-//! 只依赖标准输入输出（无颜色、无终端重依赖）；颜色与表格归终端前端。本模式下引擎侧
-//! `PrintFrontend` 静默（`Verbosity::Quiet`），面板是唯一信息源。
+//! 交互依赖 Inquire（仅终端）；颜色与表格复用 umaai-cli 呈现原语（term 三重门禁：非 TTY /
+//! NO_COLOR 自动退化纯文本）。本模式下引擎侧 PrintFrontend 静默（Quiet），面板是唯一信息源。
 
 use std::cell::Cell;
 use std::fmt::Write as _;
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 
 use anyhow::{Context, Result, anyhow};
-use matsuri_core::MAX_TURN;
+use inquire::Select;
 use matsuri_core::data::CheckPointResult;
 use matsuri_core::game::{Action, MatsuriGame, PersonOrigin};
+use matsuri_core::{MAX_TURN, SCENARIO_START_TURN};
 use rand::rngs::StdRng;
+use umaai_cli::render::table::Grid;
+use umaai_cli::render::term;
 use umaai_core::Data;
 use umaai_core::gamedata::{EventChoice, EventData};
 use umasim::game::{FriendOutState, Game, Person, Trainer};
@@ -23,20 +28,255 @@ use umasim::game::{FriendOutState, Game, Person, Trainer};
 /// 训练 / 五维轴名（简称）
 const AXIS_NAMES: [&str; 5] = ["速", "耐", "力", "根", "智"];
 
-/// 教诲 id → 中文简称
-fn advice_name(id: i32) -> &'static str {
-    match id {
-        101 => "絆",
-        201 => "得意率",
-        301 => "灵感",
-        401 => "助力",
-        501 => "体力",
-        601 => "特化",
-        701 => "研钻",
-        801 => "协力",
-        901 => "不屈",
-        1001 => "両道",
-        _ => "—",
+/// 演目名（官方中文 text_data_dict 462:1–5；缺静态数据时兜底）
+const ACT_NAMES: [&str; 5] = ["流镝马", "神旗争夺战", "纳舞", "大曳神舆", "飞悬"];
+
+/// 教诲短名兜底（官方中文 463 组去掉「教诲」后缀；缺静态数据时用）
+const ADVICE_FALLBACK: [(i32, &str); 10] = [
+    (101, "牵绊"),
+    (201, "擅长率"),
+    (301, "灵感"),
+    (401, "助力"),
+    (501, "体力"),
+    (601, "特化"),
+    (701, "研习"),
+    (801, "协助"),
+    (901, "不屈"),
+    (1001, "兼修"),
+];
+
+/// ANSI 前景色：友人卡
+const ANSI_GREEN: &str = "32";
+/// ANSI 前景色：普通支援卡（白）
+const ANSI_WHITE: &str = "37";
+/// ANSI 前景色：彩圈支援卡 / 达成 / 亮起
+const ANSI_BRIGHT_GREEN: &str = "92";
+/// ANSI 前景色：支援卡 / 资源数值
+const ANSI_BRIGHT_CYAN: &str = "96";
+/// ANSI 前景色：Hint 叹号 / 提醒
+const ANSI_BRIGHT_YELLOW: &str = "93";
+/// ANSI 前景色：NPC / 无数据
+const ANSI_GRAY: &str = "90";
+/// ANSI 前景色：负面状态 / 减量
+const ANSI_RED: &str = "31";
+
+/// ANSI 前景色包装（color = false 时原样返回）
+fn paint(text: &str, code: Option<&str>, color: bool) -> String {
+    match code {
+        Some(code) if color => format!("\x1b[{code}m{text}\x1b[0m"),
+        _ => text.to_string(),
+    }
+}
+
+/// 按显示宽度右补空格（CJK / ANSI 由 term::text_width 计宽；超宽原样返回）
+fn pad_to(text: &str, width: usize) -> String {
+    let used = term::text_width(text);
+    if used >= width {
+        text.to_string()
+    } else {
+        format!("{text}{}", " ".repeat(width - used))
+    }
+}
+
+/// 从引擎静态文本表取官方中文名；分组 / 键缺失时返回 None
+fn text_name(group: &str, key: &str) -> Option<String> {
+    Data::get()
+        .ok()
+        .and_then(|data| data.text.get(group))
+        .and_then(|entries| entries.get(key))
+        .cloned()
+}
+
+/// 演目名（官方中文；缺数据时用 ACT_NAMES 兜底）
+fn act_name(act: usize) -> String {
+    text_name("462", &(act + 1).to_string())
+        .unwrap_or_else(|| ACT_NAMES.get(act).copied().unwrap_or("演目").to_string())
+}
+
+/// 教诲兜底短名（官方文本缺失时使用）
+fn advice_fallback(id: i32) -> Option<&'static str> {
+    ADVICE_FALLBACK
+        .iter()
+        .find(|(advice_id, _)| *advice_id == id)
+        .map(|(_, name)| *name)
+}
+
+/// 教诲短名（官方中文去掉「教诲」后缀；缺数据时用 advice_fallback 兜底）
+fn advice_name(id: i32) -> String {
+    if id == 0 {
+        return "—".to_string();
+    }
+    text_name("463", &id.to_string())
+        .map(|name| name.trim_end_matches("教诲").to_string())
+        .unwrap_or_else(|| advice_fallback(id).map_or_else(|| format!("#{id}"), str::to_string))
+}
+
+/// 增减量色调：正绿 / 负红 / 零默认
+fn delta_tone(delta: i32) -> Option<&'static str> {
+    match delta {
+        d if d > 0 => Some(ANSI_GREEN),
+        d if d < 0 => Some(ANSI_RED),
+        _ => None,
+    }
+}
+
+/// 训练位下标 → 演目下标
+fn act_of_train(game: &MatsuriGame, train: usize) -> usize {
+    game.data
+        .acts
+        .iter()
+        .position(|act| act.train == train)
+        .unwrap_or(train)
+}
+
+/// 本回合按排练处理的演目集合（合宿排练回合 → 全部；否则演目槽满亮起集合）
+fn practice_acts(game: &MatsuriGame) -> [bool; 5] {
+    if game.plan.camp_train(game.forced_rest) {
+        return [true; 5];
+    }
+    let max = game.data.rules.act_gauge_max;
+    let mut lit = [false; 5];
+    for (act, gauge) in game.acts.gauge.iter().enumerate() {
+        lit[act] = *gauge >= max;
+    }
+    lit
+}
+
+/// 演目槽数字文本（x/y；满槽亮绿、差一格亮黄、有进度亮青、空灰）
+fn gauge_text(gauge: i32, max: i32, color: bool) -> String {
+    let max = max.max(1);
+    let gauge = gauge.clamp(0, max);
+    let code = if gauge >= max {
+        Some(ANSI_BRIGHT_GREEN)
+    } else if gauge + 1 == max {
+        Some(ANSI_BRIGHT_YELLOW)
+    } else if gauge > 0 {
+        Some(ANSI_BRIGHT_CYAN)
+    } else {
+        Some(ANSI_GRAY)
+    };
+    paint(&format!("{gauge}/{max}"), code, color)
+}
+
+/// 下次考核（発表会 / 本番）：(回合, 需要演目 Lv, 需要演目数)；本番之后为 None
+fn next_check_point(game: &MatsuriGame) -> Option<(i32, i32, i32)> {
+    game.data
+        .schedule
+        .iter()
+        .find(|row| row.turn >= game.turn())
+        .map(|row| (row.turn, row.need_act_level, row.need_act_num))
+}
+
+/// 演目 Lv 文本（未达下次考核门槛亮黄、已达成绿；本番后默认色）
+fn act_level_text(level: i32, cap: i32, need: Option<i32>, color: bool) -> String {
+    let code = match need {
+        Some(need) if level >= need => Some(ANSI_GREEN),
+        Some(_) => Some(ANSI_BRIGHT_YELLOW),
+        None => None,
+    };
+    paint(&format!("{level}/{cap}"), code, color)
+}
+
+/// 教诲分配格：基础教诲亮青、転成亮绿；研鑽掷中时追加亮黄叹号
+fn advice_cell(base: i32, fused: i32, kensan_pending: bool, color: bool) -> String {
+    if base == 0 && fused == 0 {
+        return paint("—", Some(ANSI_GRAY), color);
+    }
+    let mut cell = if base == 0 {
+        String::new()
+    } else {
+        paint(
+            &format!("{base} {}", advice_name(base)),
+            Some(ANSI_BRIGHT_CYAN),
+            color,
+        )
+    };
+    if fused != 0 {
+        if !cell.is_empty() {
+            cell.push_str(" → ");
+        }
+        cell.push_str(&paint(
+            &format!("{fused} {}", advice_name(fused)),
+            Some(ANSI_BRIGHT_GREEN),
+            color,
+        ));
+        if fused == 701 && kensan_pending {
+            cell.push_str(&paint(" !", Some(ANSI_BRIGHT_YELLOW), color));
+        }
+    }
+    cell
+}
+
+/// 演目担当人物（卡 + 编成外神驹；只列当前可用者，卡亮青 / 神驹灰）
+///
+/// 0–1 回合剧本机制尚未开始，没有担当分配。
+fn act_members(game: &MatsuriGame, act: usize, color: bool) -> String {
+    if !game.scenario_started() {
+        return paint("未分配", Some(ANSI_GRAY), color);
+    }
+    let names: Vec<String> = (0..game.persons().len())
+        .filter(|index| game.persons()[*index].act == Some(act))
+        .filter(|index| game.person_is_available(*index))
+        .map(|index| {
+            let person = &game.persons()[index];
+            let code = if person.origin == PersonOrigin::Card {
+                Some(ANSI_BRIGHT_CYAN)
+            } else {
+                Some(ANSI_GRAY)
+            };
+            paint(&person.short_name(), code, color)
+        })
+        .collect();
+    if names.is_empty() {
+        "—".to_string()
+    } else {
+        names.join(" ")
+    }
+}
+
+/// 单个人头在训练位的显示（类型着色 + Hint 亮黄叹号 + 未满 100 的羁绊）
+fn person_label(game: &MatsuriGame, person_index: usize, train: usize, color: bool) -> String {
+    let person = &game.persons()[person_index];
+    let name = person.short_name();
+    // 编成外神驹没有羁绊面板；其余人物未满 100 时尾附数值
+    let body = if person.origin != PersonOrigin::Guest && person.friendship() < 100 {
+        format!("{name}{}", person.friendship())
+    } else {
+        name
+    };
+    let body = match person.origin {
+        PersonOrigin::Card => {
+            let code = if game.is_shining_at(person_index, train) {
+                Some(ANSI_BRIGHT_GREEN)
+            } else {
+                Some(ANSI_WHITE)
+            };
+            paint(&body, code, color)
+        }
+        PersonOrigin::Friend => paint(&body, Some(ANSI_GREEN), color),
+        PersonOrigin::Guest | PersonOrigin::Yayoi | PersonOrigin::Reporter => {
+            paint(&body, Some(ANSI_GRAY), color)
+        }
+    };
+    if person.hint() {
+        format!("{}{body}", paint("!", Some(ANSI_BRIGHT_YELLOW), color))
+    } else {
+        body
+    }
+}
+
+/// 一个训练位的全部人头（一格内多行；无人显示 —）
+fn person_cell(game: &MatsuriGame, train: usize, color: bool) -> String {
+    let members: Vec<String> = game.distribution()[train]
+        .iter()
+        .filter(|index| **index >= 0)
+        .filter_map(|index| usize::try_from(*index).ok())
+        .map(|index| person_label(game, index, train, color))
+        .collect();
+    if members.is_empty() {
+        "—".to_string()
+    } else {
+        members.join("\n")
     }
 }
 
@@ -49,7 +289,7 @@ fn check_point_name(result: CheckPointResult) -> &'static str {
     }
 }
 
-/// 事件结果档名（`ChoiceResult` 的整数值）
+/// 事件结果档名（ChoiceResult 的整数值）
 fn choice_result_name(result: i32) -> &'static str {
     match result {
         0 => "普通",
@@ -144,7 +384,7 @@ impl ManualTrainer {
         }
     }
 
-    /// 读取一个落在 `0..len` 的下标；空行重试，`q` 退出
+    /// 读取一个落在 0..len 的下标；空行重试，q 退出
     fn read_index(prompt: &str, len: usize) -> Result<usize> {
         let stdin = io::stdin();
         loop {
@@ -254,8 +494,8 @@ impl ManualTrainer {
         self.last_event_seq.set(max_seq);
     }
 
-    /// 上一步后的数值变化
-    fn write_delta(&self, game: &MatsuriGame, out: &mut String) {
+    /// 上一步后的数值变化（正绿 / 负红）
+    fn write_delta(&self, game: &MatsuriGame, out: &mut String, color: bool) {
         let Some(last) = self.last.get() else {
             return;
         };
@@ -267,70 +507,109 @@ impl ManualTrainer {
         };
         let axes: Vec<String> = (0..5)
             .filter(|axis| now.five[*axis] != last.five[*axis])
-            .map(|axis| format!("{}{:+}", AXIS_NAMES[axis], now.five[axis] - last.five[axis]))
+            .map(|axis| {
+                let delta = now.five[axis] - last.five[axis];
+                paint(
+                    &format!("{}{:+}", AXIS_NAMES[axis], delta),
+                    delta_tone(delta),
+                    color,
+                )
+            })
             .collect();
+        let vital = paint(
+            &format!("体力{:+}", now.vital - last.vital),
+            delta_tone(now.vital - last.vital),
+            color,
+        );
+        let motivation = paint(
+            &format!("干劲{:+}", now.motivation - last.motivation),
+            delta_tone(now.motivation - last.motivation),
+            color,
+        );
+        let pt = paint(
+            &format!("PT{:+}", now.pt - last.pt),
+            delta_tone(now.pt - last.pt),
+            color,
+        );
         let _ = writeln!(
             out,
-            "【变化】{range}：{} 体力{:+} 干劲{:+} PT{:+}",
+            "【变化】{range}：{} {vital} {motivation} {pt}",
             if axes.is_empty() {
                 "五维±0".to_string()
             } else {
                 axes.join(" ")
-            },
-            now.vital - last.vital,
-            now.motivation - last.motivation,
-            now.pt - last.pt
+            }
         );
     }
 
     /// 五维 / 体力 / 状态
-    fn write_uma(&self, game: &MatsuriGame, out: &mut String) {
+    fn write_uma(&self, game: &MatsuriGame, out: &mut String, color: bool) {
         let data = &game.data;
         let uma = game.uma();
         let consts = Data::get().map(|data| &data.consts).ok();
-        let motivation = consts
+        let motivation_name = consts
             .and_then(|consts| {
                 consts
                     .motivation_names
                     .get(uma.motivation.max(1) as usize - 1)
             })
             .map_or("?", String::as_str);
+        let motivation_code = match uma.motivation {
+            5 => Some(ANSI_BRIGHT_GREEN),
+            4 => Some(ANSI_GREEN),
+            3 => None,
+            2 => Some(ANSI_GRAY),
+            _ => Some(ANSI_RED),
+        };
+        let vital_pct = if uma.max_vital > 0 {
+            uma.vital * 100 / uma.max_vital
+        } else {
+            uma.vital
+        };
+        let vital_code = if vital_pct <= 34 {
+            Some(ANSI_RED)
+        } else if vital_pct <= 49 {
+            Some(ANSI_BRIGHT_YELLOW)
+        } else {
+            Some(ANSI_GREEN)
+        };
+        let vital_text = paint(
+            &format!("体力 {}/{}", uma.vital, uma.max_vital),
+            vital_code,
+            color,
+        );
+        let motivation_text = paint(
+            &format!("{motivation_name}({})", uma.motivation),
+            motivation_code,
+            color,
+        );
         let axes: Vec<String> = (0..5)
             .map(|axis| {
-                format!(
+                let near_limit = uma.five_status_limit[axis] > 0
+                    && uma.five_status[axis] * 10 >= uma.five_status_limit[axis] * 9;
+                let text = format!(
                     "{} {}/{}",
                     AXIS_NAMES[axis], uma.five_status[axis], uma.five_status_limit[axis]
-                )
+                );
+                paint(&text, near_limit.then_some(ANSI_BRIGHT_YELLOW), color)
             })
             .collect();
         let _ = writeln!(
             out,
-            "【数值】体力 {}/{}  干劲 {}({})  PT {}  灵感合计 {}  比赛加成 +{}%",
-            uma.vital,
-            uma.max_vital,
-            motivation,
-            uma.motivation,
-            uma.skill_pt,
-            uma.total_hints,
-            uma.race_bonus
+            "【数值】{vital_text}  干劲 {motivation_text}  PT {}  灵感合计 {}  比赛加成 +{}%",
+            uma.skill_pt, uma.total_hints, uma.race_bonus
         );
         let _ = writeln!(out, "       {}", axes.join("  "));
         let mut states: Vec<String> = Vec::new();
         let flags = uma.flags.to_string();
         if !flags.is_empty() {
-            states.push(flags);
+            states.push(paint(&flags, Some(ANSI_RED), color));
         }
         if game.fatigue_recovery {
-            states.push("疲劳回复".to_string());
-        }
-        if game.kensan_pending {
-            states.push("追加稽古待触发".to_string());
-        }
-        if game.assist_support_left > 0 {
-            states.push(format!("助力支撑×{}", game.assist_support_left));
+            states.push(paint("疲劳回复", Some(ANSI_GREEN), color));
         }
         if game.plan.advice_window.is_some() {
-            states.push("教诲窗口".to_string());
+            states.push(paint("教诲窗口", Some(ANSI_BRIGHT_YELLOW), color));
         }
         if let Some(train) = game.base.last_train {
             states.push(format!(
@@ -339,75 +618,175 @@ impl ManualTrainer {
             ));
         }
         if data.camp.windows.len() != 3 {
-            states.push("合宿窗口数据异常".to_string());
+            states.push(paint("合宿窗口数据异常", Some(ANSI_RED), color));
         }
-        let _ = writeln!(
-            out,
-            "【状态】{}",
-            if states.is_empty() {
-                "无".to_string()
-            } else {
-                states.join("、")
-            }
-        );
+        // 仅显示已置状态；全部没有时不打印该行（不用「无」占位）
+        if !states.is_empty() {
+            let _ = writeln!(out, "【状态】{}", states.join("、"));
+        }
     }
 
-    /// 演目（gauge / Lv / 亮起 / 绑定教诲）与発表会 / 永久 buff
-    fn write_acts(&self, game: &MatsuriGame, out: &mut String) {
+    /// 剧本资源：演目表（槽 / Lv / 教诲→転成 / 担当人物）+ 発表会·永久 buff·资源状态
+    fn write_resources(&self, game: &MatsuriGame, out: &mut String, color: bool) {
         let view = game.view();
         let rules = &game.data.rules;
-        out.push_str("【演目】");
-        for act in 0..5 {
-            let level = view.act_level[act];
-            let gauge = view.act_gauge[act];
-            let base = view.advice_slots[act];
-            let fused = view.advice_fused[act];
-            let _ = write!(
-                out,
-                "\n  [{act}] {}稽古  Lv{}/{}  槽 {}/{}  {}",
-                AXIS_NAMES[game.data.acts[act].train],
-                level,
-                view.act_level_max,
-                gauge,
-                rules.act_gauge_max,
-                if gauge >= rules.act_gauge_max {
-                    "亮起"
-                } else {
-                    "—"
-                },
+        let need = next_check_point(game);
+        let need_level = need.map(|(_, level, _)| level);
+        out.push_str("【剧本资源】\n");
+        if !game.scenario_started() {
+            let note = format!(
+                "（剧本机制自 T{SCENARIO_START_TURN} 开始：0–1 回合无担当分配，训练等不获取演目资源）"
             );
-            let _ = write!(
-                out,
-                "  教诲 {}({})",
-                if base == 0 {
-                    "—".to_string()
-                } else {
-                    base.to_string()
-                },
-                advice_name(base)
-            );
-            if fused != 0 {
-                let _ = write!(out, " + 転成 {}({})", fused, advice_name(fused));
-            }
+            let _ = writeln!(out, "  {}", paint(&note, Some(ANSI_GRAY), color));
         }
+        let mut grid = Grid::new(["演目", "槽", "Lv", "教诲 → 転成", "担当"]);
+        for act in 0..5 {
+            let train = game.data.acts.get(act).map_or(act, |act| act.train);
+            let name = format!(
+                "{}({})",
+                act_name(act),
+                AXIS_NAMES.get(train).copied().unwrap_or("?")
+            );
+            let slot = gauge_text(view.act_gauge[act], rules.act_gauge_max, color);
+            let level = act_level_text(view.act_level[act], view.act_level_max, need_level, color);
+            let advice = advice_cell(
+                view.advice_slots[act],
+                view.advice_fused[act],
+                view.kensan_pending,
+                color,
+            );
+            let members = act_members(game, act, color);
+            grid.push([name, slot, level, advice, members]);
+        }
+        out.push_str(&grid.render(term::resolve_width(None)));
         out.push('\n');
-        let _ = writeln!(
-            out,
-            "【発表会】[1]{} [2]{} [3]{}  本番 {}  永久buff 友情+{}% 得意+{}(含基线) 灵感+{}% 比赛+{}%  訓練Lv {:?}",
-            check_point_name(view.check_points[0]),
-            check_point_name(view.check_points[1]),
-            check_point_name(view.check_points[2]),
+        // 発表会 / 本番结果、下次考核门槛
+        let results: Vec<String> = view
+            .check_points
+            .iter()
+            .enumerate()
+            .map(|(index, result)| {
+                let code = match result {
+                    CheckPointResult::NotReached => Some(ANSI_GRAY),
+                    CheckPointResult::Success => Some(ANSI_GREEN),
+                    CheckPointResult::GreatSuccess => Some(ANSI_BRIGHT_GREEN),
+                };
+                format!(
+                    "[{}]{}",
+                    index + 1,
+                    paint(check_point_name(*result), code, color)
+                )
+            })
+            .collect();
+        let finals = paint(
             if view.finals_done { "已" } else { "未" },
-            view.presentation_friendship,
-            view.presentation_deyilv,
-            view.presentation_hint_rate,
-            view.presentation_race_bonus,
-            view.train_level_bonus
+            if view.finals_done {
+                Some(ANSI_GREEN)
+            } else {
+                Some(ANSI_GRAY)
+            },
+            color,
         );
+        let mut line = format!("  発表会 {} · 本番 {finals}", results.join(" "));
+        if let Some((turn, level, count)) = need {
+            let reached = view.act_level.iter().filter(|lv| **lv >= level).count();
+            let last_turn = game.data.schedule.last().map_or(i32::MIN, |row| row.turn);
+            let stage = if turn == last_turn {
+                "本番"
+            } else {
+                "発表会"
+            };
+            let ok = reached >= count as usize;
+            let text =
+                format!(" · 下次{stage} T{turn} 需全演目 Lv≥{level}（达成 {reached}/{count}）");
+            line.push_str(&paint(
+                &text,
+                if ok {
+                    Some(ANSI_GREEN)
+                } else {
+                    Some(ANSI_BRIGHT_YELLOW)
+                },
+                color,
+            ));
+        }
+        let _ = writeln!(out, "{line}");
+        // 永久 buff / 助力支撑 / 追加稽古 / 训练 Lv 加成
+        let mut extras: Vec<String> = vec![paint(
+            &format!(
+                "永久buff 友情+{}% 擅长率+{} 灵感+{}% 比赛+{}%",
+                view.presentation_friendship,
+                view.presentation_deyilv,
+                view.presentation_hint_rate,
+                view.presentation_race_bonus
+            ),
+            Some(ANSI_BRIGHT_CYAN),
+            color,
+        )];
+        if view.assist_support_left > 0 {
+            extras.push(paint(
+                &format!("助力支撑 ×{}", view.assist_support_left),
+                Some(ANSI_BRIGHT_CYAN),
+                color,
+            ));
+        }
+        if view.kensan_pending {
+            extras.push(paint("追加稽古 掷中", Some(ANSI_BRIGHT_YELLOW), color));
+        }
+        if view.train_level_bonus.iter().any(|bonus| *bonus != 0) {
+            extras.push(format!("訓練Lv加成 {:?}", view.train_level_bonus));
+        }
+        let _ = writeln!(out, "  {}", extras.join(" · "));
+    }
+
+    /// 训练明细表：每训练一列（列头 = 训练名 / 排练名 + Lv），格内列出该位置全部人头
+    fn write_training(&self, game: &MatsuriGame, out: &mut String, color: bool) {
+        let view = game.view();
+        let practice = practice_acts(game);
+        let headers: Vec<String> = (0..5)
+            .map(|train| {
+                let act = act_of_train(game, train);
+                if practice[act] {
+                    paint(
+                        &format!("{} Lv{}", act_name(act), view.act_level[act]),
+                        Some(ANSI_BRIGHT_YELLOW),
+                        color,
+                    )
+                } else {
+                    format!(
+                        "{} Lv{}",
+                        AXIS_NAMES.get(train).copied().unwrap_or("?"),
+                        game.train_level(train)
+                    )
+                }
+            })
+            .collect();
+        let mut grid = Grid::new(headers);
+        let cells: Vec<String> = (0..5)
+            .map(|train| person_cell(game, train, color))
+            .collect();
+        let widest = cells
+            .iter()
+            .flat_map(|cell| cell.lines())
+            .map(term::text_width)
+            .max()
+            .unwrap_or(0);
+        let padded: Vec<String> = cells
+            .iter()
+            .map(|cell| {
+                cell.lines()
+                    .map(|line| pad_to(line, widest))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .collect();
+        grid.push(padded);
+        out.push_str("【训练】\n");
+        out.push_str(&grid.render(term::resolve_width(None)));
+        out.push('\n');
     }
 
     /// 合宿 / 友人链 / 赛程 / 编成警告
-    fn write_context(&self, game: &MatsuriGame, out: &mut String) {
+    fn write_context(&self, game: &MatsuriGame, out: &mut String, color: bool) {
         if game.plan.camp_zone {
             let year = game.plan.camp_year.unwrap_or(0);
             let total = game
@@ -416,10 +795,15 @@ impl ManualTrainer {
                 .windows
                 .get(year)
                 .map_or(0, |window| window.end - window.start + 1);
+            let level_up = if game.plan.camp_level_up {
+                format!("  {}", paint("本回合全演目+1", Some(ANSI_GREEN), color))
+            } else {
+                String::new()
+            };
             let _ = writeln!(
                 out,
-                "【合宿】第{}年 {}  已计入 {}/{} 回合{}",
-                year + 1,
+                "【合宿】第{}年 {}  已计入 {}/{} 回合{level_up}",
+                paint(&(year + 1).to_string(), Some(ANSI_BRIGHT_CYAN), color),
                 if game.plan.camp_extended {
                     "延长期"
                 } else {
@@ -427,11 +811,6 @@ impl ManualTrainer {
                 },
                 game.camp.counted,
                 total,
-                if game.plan.camp_level_up {
-                    "  本回合全演目+1"
-                } else {
-                    ""
-                }
             );
         } else {
             let _ = writeln!(out, "【合宿】非合宿回合");
@@ -453,29 +832,58 @@ impl ManualTrainer {
                     format!("（#{} {}）", event.id, event.name)
                 })
         };
+        let state = match game.friend.out_state {
+            FriendOutState::AfterUnlock => paint(
+                out_state_name(game.friend.out_state),
+                Some(ANSI_BRIGHT_CYAN),
+                color,
+            ),
+            FriendOutState::Away => paint(
+                out_state_name(game.friend.out_state),
+                Some(ANSI_GRAY),
+                color,
+            ),
+            _ => out_state_name(game.friend.out_state).to_string(),
+        };
+        let outing = paint(
+            &format!(
+                "出行 {out_used}/5{}",
+                if out_used == 5 { "（已用完）" } else { "" }
+            ),
+            Some(ANSI_BRIGHT_CYAN),
+            color,
+        );
+        // 仅在有疲劳回复时附状态；没有则不显示该项
+        let fatigue = if game.fatigue_recovery {
+            format!("  {}", paint("疲劳回复", Some(ANSI_GREEN), color))
+        } else {
+            String::new()
+        };
         let _ = writeln!(
             out,
-            "【友人】{}  出行 {}/5{}  下一段 {}{}  疲劳回复 {}",
-            out_state_name(game.friend.out_state),
-            out_used,
-            if out_used == 5 { "（已用完）" } else { "" },
-            next_step,
-            next_event,
-            if game.fatigue_recovery { "有" } else { "无" }
+            "【友人】{state}  {outing}  下一段 {next_step}{next_event}{fatigue}"
         );
-        let goals: Vec<String> = (game.turn()..=MAX_TURN)
+        let goals: Vec<i32> = (game.turn()..=MAX_TURN)
             .filter(|turn| game.uma().is_race_turn(*turn))
-            .map(|turn| format!("T{turn}"))
             .collect();
-        let _ = writeln!(
-            out,
-            "【目标赛】{}",
-            if goals.is_empty() {
-                "无后续目标赛".to_string()
-            } else {
-                goals.join(" ")
-            }
-        );
+        let goal_text = if goals.is_empty() {
+            "无后续目标赛".to_string()
+        } else {
+            goals
+                .iter()
+                .enumerate()
+                .map(|(index, turn)| {
+                    let text = format!("T{turn}");
+                    if index == 0 {
+                        paint(&text, Some(ANSI_BRIGHT_YELLOW), color)
+                    } else {
+                        text
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        let _ = writeln!(out, "【目标赛】{goal_text}");
         let races: Vec<String> = (game.turn()..=MAX_TURN)
             .filter(|turn| !game.uma().is_race_turn(*turn))
             .filter_map(|turn| {
@@ -498,78 +906,40 @@ impl ManualTrainer {
                 .deck_warnings
                 .iter()
                 .map(ToString::to_string)
-                .map(|warning| format!("⚠{warning}"))
+                .map(|warning| paint(&format!("⚠{warning}"), Some(ANSI_BRIGHT_YELLOW), color))
                 .collect();
             let _ = writeln!(out, "【编成】{}", warnings.join(" "));
         }
     }
 
-    /// 人头分布（按训练位）
-    fn write_distribution(&self, game: &MatsuriGame, out: &mut String) {
-        out.push_str("【分布】\n");
-        let distribution = game.distribution();
-        for (train, axis) in AXIS_NAMES.iter().enumerate() {
-            let members: Vec<String> = distribution
-                .get(train)
-                .map(Vec::as_slice)
-                .unwrap_or(&[])
-                .iter()
-                .filter(|index| **index >= 0)
-                .filter_map(|index| game.persons().get(*index as usize))
-                .map(|person| {
-                    let star = match person.origin {
-                        PersonOrigin::Card => "",
-                        PersonOrigin::Friend => "★",
-                        PersonOrigin::Guest => "神",
-                        PersonOrigin::Yayoi => "理",
-                        PersonOrigin::Reporter => "记",
-                    };
-                    format!(
-                        "{}{}{}(羁绊{})",
-                        star,
-                        person.short_name(),
-                        if person.hint() { "●" } else { "" },
-                        person.friendship()
-                    )
-                })
-                .collect();
-            let _ = writeln!(
-                out,
-                "  {}训练位 Lv{}(计数{})（{}人）：{}",
-                axis,
-                game.train_level(train),
-                game.base.train_level_count[train],
-                members.len(),
-                if members.is_empty() {
-                    "空".to_string()
-                } else {
-                    members.join(" ")
-                }
-            );
-        }
-        let others: Vec<String> = game
-            .persons()
-            .iter()
-            .filter(|person| matches!(person.origin, PersonOrigin::Yayoi | PersonOrigin::Reporter))
-            .map(|person| format!("{}(羁绊{})", person.short_name(), person.friendship()))
-            .collect();
-        if !others.is_empty() {
-            let _ = writeln!(out, "  其他：{}", others.join(" "));
+    /// 动作短标签（训练名 / 演目名；用于动作清单左列）
+    fn action_label(&self, action: &Action) -> String {
+        match action {
+            Action::Train(train) => format!(
+                "{}训练",
+                AXIS_NAMES.get(usize::from(*train)).copied().unwrap_or("?")
+            ),
+            Action::ActTrain(act) => format!("{}稽古", act_name(usize::from(*act))),
+            other => other.to_string(),
         }
     }
 
-    /// 单个动作的说明（训练带成功收益预览与失败率）
-    fn describe_action(&self, game: &MatsuriGame, action: &Action) -> String {
+    /// 单个动作的说明（训练带成功收益预览与失败率；失败率非 0 亮黄）
+    fn describe_action(&self, game: &MatsuriGame, action: &Action, color: bool) -> String {
         match action {
             Action::Train(train) => {
                 let train = usize::from(*train);
-                let name = AXIS_NAMES.get(train).copied().unwrap_or("?");
                 match game.preview_training(train, false) {
                     Ok(preview) => format!(
-                        "{name}训练  成功: {}  失败率 {:.1}%",
-                        preview.value, preview.failure_rate
+                        "成功: {}  失败率 {}",
+                        preview.value,
+                        paint(
+                            &format!("{:.1}%", preview.failure_rate),
+                            (preview.failure_rate > 0.0).then_some(ANSI_BRIGHT_YELLOW),
+                            color
+                        )
                     ),
-                    Err(err) => format!("{name}训练（预览失败: {err}）"),
+                    Err(err) => format!("预览失败: {err}"),
                 }
             }
             Action::ActTrain(act) => {
@@ -578,14 +948,16 @@ impl ManualTrainer {
                 let level = game.view().act_level.get(act).copied().unwrap_or(0);
                 match game.preview_training(train, true) {
                     Ok(preview) => format!(
-                        "演目{}（{}稽古 Lv{}）  成功: {}  失败率 {:.1}%",
-                        act + 1,
-                        AXIS_NAMES.get(train).copied().unwrap_or("?"),
+                        "Lv{}  成功: {}  失败率 {}",
                         level,
                         preview.value,
-                        preview.failure_rate
+                        paint(
+                            &format!("{:.1}%", preview.failure_rate),
+                            (preview.failure_rate > 0.0).then_some(ANSI_BRIGHT_YELLOW),
+                            color
+                        )
                     ),
-                    Err(err) => format!("演目{act}稽古（预览失败: {err}）"),
+                    Err(err) => format!("预览失败: {err}"),
                 }
             }
             Action::Race => {
@@ -625,8 +997,9 @@ impl ManualTrainer {
         }
     }
 
-    /// 打印局面面板 + 动作候选（纯文本）
+    /// 打印局面面板 + 动作候选
     fn show_board(&self, game: &MatsuriGame, actions: &[Action]) -> Result<String> {
+        let color = term::use_color(false);
         let mut out = String::new();
         let _ = writeln!(
             out,
@@ -643,24 +1016,40 @@ impl ManualTrainer {
             Self::turn_kind(game, actions),
         );
         self.write_new_events(game, &mut out);
-        self.write_delta(game, &mut out);
-        self.write_uma(game, &mut out);
-        self.write_acts(game, &mut out);
-        self.write_context(game, &mut out);
-        self.write_distribution(game, &mut out);
+        self.write_delta(game, &mut out, color);
+        self.write_uma(game, &mut out, color);
+        self.write_resources(game, &mut out, color);
+        self.write_training(game, &mut out, color);
+        self.write_context(game, &mut out, color);
         out.push_str("【动作】\n");
         for (idx, action) in actions.iter().enumerate() {
             let _ = writeln!(
                 out,
-                "  [{idx}] {:<6} {}",
-                action.to_string(),
-                self.describe_action(game, action)
+                "  [{idx}] {}  {}",
+                self.action_label(action),
+                self.describe_action(game, action, color)
             );
         }
-        out.push_str("（输入编号选择；q 退出）\n");
+
         // 更新面板状态：下次提示显示本步之后的变化 / 新事件
         self.last.set(Some(Snapshot::of(game)));
         Ok(out)
+    }
+
+    /// 选择动作：交互终端用 Inquire 列表；非 TTY（测试 / 管道）退回编号输入
+    fn choose_action(&self, actions: &[Action]) -> Result<usize> {
+        if !(io::stdin().is_terminal() && io::stdout().is_terminal()) {
+            return Self::read_index("> 选择动作编号: ", actions.len());
+        }
+        let options: Vec<String> = actions
+            .iter()
+            .enumerate()
+            .map(|(index, action)| format!("[{index}] {}", self.action_label(action)))
+            .collect();
+        let answer = Select::new("选择动作（↑/↓ 移动 · Enter 确认 · Esc 退出）", options)
+            .raw_prompt()
+            .map_err(|err| anyhow!("手动选择被中止: {err}"))?;
+        Ok(answer.index)
     }
 
     /// 打印事件选项组（每组 = 一个可选分支，组内是该分支的可能结果）
@@ -734,7 +1123,7 @@ impl Trainer<MatsuriGame> for ManualTrainer {
         _rng: &mut StdRng,
     ) -> Result<usize> {
         println!("{}", self.show_board(game, actions)?);
-        Self::read_index("> 选择动作编号: ", actions.len())
+        self.choose_action(actions)
     }
 
     fn select_choice(
@@ -756,5 +1145,51 @@ impl Trainer<MatsuriGame> for ManualTrainer {
     ) -> Result<usize> {
         println!("{}", Self::show_choices(Some(event), choices));
         Self::read_index("> 选择事件选项编号: ", choices.len())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_paint_respects_switch() {
+        assert_eq!(paint("x", Some(ANSI_RED), false), "x", "关闭着色应原样返回");
+        assert_eq!(paint("x", None, true), "x", "无码应原样返回");
+        let painted = paint("x", Some(ANSI_RED), true);
+        assert!(
+            painted.contains('x') && painted.contains('\x1b'),
+            "上色应保留原文: {painted:?}"
+        );
+    }
+
+    #[test]
+    fn test_pad_to_counts_display_width() {
+        assert_eq!(pad_to("ab", 4), "ab  ");
+        assert_eq!(pad_to("速度", 5), "速度 ", "CJK 按两列计宽");
+        assert_eq!(pad_to("abc", 1), "abc", "超宽原样返回");
+    }
+
+    #[test]
+    fn test_gauge_text_shape() {
+        assert_eq!(gauge_text(0, 5, false), "0/5");
+        assert_eq!(gauge_text(3, 5, false), "3/5");
+        assert_eq!(gauge_text(5, 5, false), "5/5");
+        assert_eq!(gauge_text(9, 5, false), "5/5", "越界按上限夹取");
+        assert_eq!(gauge_text(2, 0, false), "1/1", "上限为 0 时按 1 处理");
+    }
+
+    #[test]
+    fn test_advice_fallback_names() {
+        assert_eq!(advice_fallback(101), Some("牵绊"));
+        assert_eq!(advice_fallback(1001), Some("兼修"));
+        assert_eq!(advice_fallback(999), None);
+    }
+
+    #[test]
+    fn test_delta_tone() {
+        assert_eq!(delta_tone(3), Some(ANSI_GREEN));
+        assert_eq!(delta_tone(-3), Some(ANSI_RED));
+        assert_eq!(delta_tone(0), None);
     }
 }

@@ -420,6 +420,7 @@ mod tests {
     #[test]
     fn event_extra_gauge_and_debuff() {
         let mut game = sample_game();
+        game.base.turn = crate::SCENARIO_START_TURN;
         game.acts.gauge = [0; 5];
         game.acts.level = [3, 3, 1, 3, 3];
         game.uma_mut().flags.bad_trainer = true;

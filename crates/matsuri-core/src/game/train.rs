@@ -644,6 +644,7 @@ mod tests {
     #[test]
     fn gauge_gain_by_participants_with_shining() {
         let mut game = crate::testing::sample_game();
+        game.turn = crate::SCENARIO_START_TURN;
         game.acts.gauge = [0; 5];
         let shining = make_shining(&mut game, 0); // act0 担当、速类型、闪彩
         let other = person_of_act(&game, 1);

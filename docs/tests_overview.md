@@ -10,9 +10,9 @@
 
 | crate | 测试面 | 现状 |
 |---|---|---|
-| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成） | 内联单测 **97** 个 + L2 数据层 **15** 个 + 机制集成 **27** 个 |
+| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成） | 内联单测 **98** 个 + L2 数据层 **15** 个 + 机制集成 **27** 个 |
 | `matsuri-sim` | `tests/baseline.rs`（固定种子基线） | 待补 |
-| `matsuri-cli` | `tests/manual_smoke.rs`（手动档管道输入跑满整局 + 面板关键块） | **1** 个（manual 档）；策略档冒烟 / 基线待补 |
+| `matsuri-cli` | 内联（呈现件纯函数）+ `tests/manual_smoke.rs`（手动档管道输入跑满整局 + 面板关键块） | 内联 **5** 个 + 冒烟 **1** 个（manual 档）；策略档冒烟 / 基线待补 |
 | `matsuri-ai` / `matsuri-tools` | 骨架，暂无 | — |
 
 ## 2. 单元测试（内联）
@@ -24,12 +24,13 @@
 | `core/src/game/roster.rs` | `card_assign_five_speed` / `card_assign_link_pins_and_dispatches` / `card_assign_reference_deck_shape` / `guest_balance_follows_min_persons` | 担当分配五步流水线：memo 三条真机算例（5 速 / 智大和+3速+2毅 / 参考卡组形状）、余额 NPC 落点与并列规则 |
 | `core/src/game/stage.rs` | `next_chain` / `stage_ids_are_stable` / `camp_starts_only_at_window_start` / `camp_basic_window` / `camp_race_turn_extends` / `camp_race_at_window_start_extends` / `camp_forced_rest_turn_extends` / `camp_consecutive_races_keep_extending` / `camp_rest_version_only_in_original_window` / `check_point_index_matches_schedule` / `advice_window_index_matches` / `ura_race_turns` | 五阶段链 / 阶段号稳定；合宿窗口起点、基础 4 回合、比赛 / 强制休息顺延、连续顺延、合宿版休息只限原窗口；発表会 / 教诲窗口 / URA 判定 |
 | `core/src/trainer.rs` | `preferred_training_wraps` | 样例训练员轮转 |
-| `core/src/game/mod.rs` | `lowest_act_follows_three_rule_order` / `gauge_three_rule_skips_full_and_splits_ties` / `gauge_gain_capped_per_act` / `act_level_capped_and_three_rule` / `presentation_bonus_follows_latest_resolved_row` / `judge_presentation_uses_act_levels` / `keiko_period_switches_at_turn_24` / `practice_acts_camp_all_and_gauge_lit` / `train_level_bonus_raises_all_facilities` / `deck_five_types` | 三则落点 / gauge 满槽跳过与上限 / 演目 Lv 夹取 / 发布会 buff 取行与结果判定 / 稽古换档 / 排练集合 / 训练 Lv 提升 / 5 种卡条件 |
+| `core/src/game/mod.rs` | `lowest_act_follows_three_rule_order` / `gauge_three_rule_skips_full_and_splits_ties` / `gauge_gain_capped_per_act` / `scenario_resources_start_at_turn2` / `act_level_capped_and_three_rule` / `presentation_bonus_follows_latest_resolved_row` / `judge_presentation_uses_act_levels` / `keiko_period_switches_at_turn_24` / `practice_acts_camp_all_and_gauge_lit` / `train_level_bonus_raises_all_facilities` / `deck_five_types` | 三则落点 / gauge 满槽跳过与上限 / **剧本机制 turn 2 启动闸门（0–1 不入槽）** / 演目 Lv 夹取 / 发布会 buff 取行与结果判定 / 稽古换档 / 排练集合 / 训练 Lv 提升 / 5 种卡条件 |
 | `core/src/game/advice.rs` | `permutation_count_and_uniqueness` / `advice_effect_aggregation` / `slot_effect_uses_bound_act_level` / `fusion_adds_new_and_upgraded_effects` / `participant_advice_stacks_by_count` / `assignment_candidates_enumerate_and_apply` / `enforce_801_on_most_assigned_act` / `kensan_act_found_after_fusion` | 教诲：按绑定演目 Lv 取级 / 融合 = 新教诲 + 固定升级效果 / 参与人数叠加与絆平摊 / 120 排列与校验 / 401+801 硬约束 |
 | `core/src/game/distribute.rs` | `absent_weight_uses_scenario_values` / `deyilv_includes_presentation_baseline` / `distribution_locks_act_members_and_fills_friend` / `cooperate_advice_adds_split_appearance` / `finals_extra_member_only_for_edition_cards` / `practice_five_types_lights_all_card_hints` | 分布：不在率 / 得意率基线 / 亮起锁人 + 吾妻补位 + 容量 / 協力与 URA 分身 / 排练全灵感 |
 | `core/src/game/train.rs` | `upper_*`（8 条）/ `ura_training_effects` / `unyielding_drops_failure_to_zero` / `kensan_pushes_choice_event` / `kensan_triggers_on_normal_training_too` / `gauge_gain_by_participants_with_shining` / `keiko_flat_applies_to_all_five_stats` / `friend_click_pushes_first_then_click_by_probability` / `fat_zeroes_training_speed_only` / `fat_cleared_by_clinic_and_camp_rest` / `preview_matches_actual_training` | 训练上层公式 / 失败率 / 追加稽古事件化 / 训练入槽 / 全基础 +10 flat / 友人点击链（首次必发 + 40%）/ 变胖速度归零与解除 / 预览与实结算一致 |
 | `core/src/game/event.rs` | `camp_rule_suppresses_random_events` / `fixed_scenario_event_preempts_random` / `friend_unlock_event_by_probability` / `card_event_candidates_exclude_friend` / `friend_out_unlock_and_fatigue_recovery` / `event_flags_are_applied` / `fat_recovery_roll_by_rules_probability` / `event_extra_gauge_and_debuff` / `kensan_upper_event_applies_all_effects` / `evolution_hint_accounted_at_turn66` / `after_train_events_queued` / `event_records_are_logged` | S6 事件管线：合宿抑制 / 固定事件 / 友人解锁与卡事件候选 / 出行解锁与疲劳回复 / flags 结算 / 变胖解除 / 事件扩展（gauge + 解 debuff）/ 追加稽古上档完整结算 / turn 66 hint / 回合后事件入队 / 事件记录与容量上限 |
 | `core/src/game/settle.rs` | `first_check_point_great_success_applies_reward` / `check_point_success_when_one_act_short` / `finals_sets_finals_done_and_reward` / `camp_level_up_raises_all_acts` / `advice_windows_acquire_then_fuse` / `career_end_rewards_by_presentation_results` | 発表会 / 本番判定与奖励 / 合宿 +1 / 教诲窗口与融合 / 育成终了 |
+| `cli/src/manual.rs` | `test_paint_respects_switch` / `test_pad_to_counts_display_width` / `test_gauge_text_shape` / `test_advice_fallback_names` / `test_delta_tone` | 手动面板呈现件：上色开关退化 / CJK 宽度补齐 / 演目槽数字 x/y / 教诲兜底名 / 增减量色调 |
 
 ### 2.1 L2 数据层集成（`core/tests/data.rs`）
 
@@ -91,7 +92,7 @@
 | 项 | 内容 | 判定 |
 |---|---|---|
 | 冒烟 | 固定种子跑满回合、两次逐位一致 | `Result` / 非零退出 |
-| 手动档冒烟 | `manual` 管道输入（全 0）跑满 78 回合；面板关键块与 S6 关键事件回显 | 退出码 + 文本标记 |
+| 手动档冒烟 | `manual` 管道输入（全 0）跑满 78 回合（非 TTY 动作选择退回编号输入）；面板关键块（剧本资源 / T2 闸门标记 / 未分配 / 训练表 / 事件回显）、S6 关键事件回显、非 TTY 无 ANSI | 退出码 + 文本标记 |
 | 基线 | 一基线一 JSON（`input` 自持、`expect` 逐项容差、`meta` 不含路径） | 自动比对，失败返回 `Err` |
 
 - 重录命令：`<cargo ... baseline --update>`（S9 落地）
@@ -112,3 +113,6 @@
 | 2026-11-01 | S6 事件管线：固定 / 随机分布 / 合宿抑制 / 友人链 / 追加稽古事件化 / 变胖 / 通用回合后事件 | 用户 + Agent | 判定并落地：主剧本只接 `400015105` + `400015106`（其余记录 / 忽略）；友人链槽位按名字 + memo + 温泉同构核对（first `001` / click `032` 40% / out `004` / newyear `021` / 出行 `011–015` / end `023`；`022/031` 不用）；通用事件按引擎原始值全接（含 turn 48 抽签 / turn 77 育成结束）；追加稽古 50/50 作废改训练员二选一；变胖 = 训练 / 排练速度归零 + 20% 解除 + 治病 / 合宿休息解除；构造事件「大胃王」（max_time 3、33% 变胖）；四档绿（95 内联 + 15 L2 + 27 机制 = 137 测例）；冒烟 44946 / UC6、PT 7496 | 事件⑤ 未接 / 变胖解除率 / 抑制基线层 / 友人槽位映射 待真机复核（大胃王按构造口径收口） |
 
 | 2026-11-01 | S8 先行：手动核对面板（ManualTrainer） | 用户 + Agent | 面板升级：回合结构 / 五维上限 / 状态 / 演目·教诲 / 発表会·buff / 合宿 / 友人链 / 目标赛·自选赛 / 分布（设施 Lv）/ 动作预览与失败率 / 事件回显 / 选项分支 / 上一步变化；核心新增 `EventRecord`（`MatsuriView.recent_events`）+ `preview_training`；manual 档前端 `Quiet`；CLI 冒烟（管道跑满整局）；四档绿（97 内联 + 15 L2 + 27 机制 + 1 CLI = 140 测例） | S7 训练员 / S8 其余（View 字段补全 / 在线外壳 / 选择器）待做 |
+| 2026-11-01 | S8 显示升级：彩色训练明细表 + 剧本资源/advice 分配 | 用户 + Agent | 动作决策前新增剧本资源表（演目槽 · Lv · 教诲→転成 · 担当人物）与彩色训练明细表（每训练一列、排练列头为演目名、人物短名 / 未满 100 羁绊 / Hint 亮黄叹号、友人绿 · 彩圈卡亮绿 · 普通支援卡白 · NPC 灰）；発表会 · 永久 buff · 助力支撑 · 追加稽古着色；复用 `umaai-cli` 呈现原语（TTY / `NO_COLOR` 门禁）；四档绿（98 内联 + 15 L2 + 27 机制 + 5 CLI 内联 + 1 CLI 冒烟 = 146 测例） | 纯呈现层（机制 / 结算 / 随机轴不变）；S7 / S8 其余待做 |
+| 2026-11-01 | 手动面板第二轮调整 | 用户 + Agent | 动作选择改 Inquire 列表（非 TTY 退回编号输入）；演目槽改数字 x/y；训练表普通支援卡改白色；状态行仅显示已有状态（缺席项含疲劳回复不显示）；0–1 回合资源面板标「剧本机制自 T2 开始 / 担当未分配」 | 呈现辅助；S7 / S8 其余待做 |
+| 2026-11-01 | 剧本机制 T2 启动闸门 | 用户 + Agent | 用户核对确认：剧本机制自 turn 2 起，0–1 回合无担当分配、训练 / 休息 / 出行 / 事件不获取演目槽；实现 `SCENARIO_START_TURN` + `MatsuriGame::scenario_started` 在入槽入口拦截；四档绿（98 内联 + 15 L2 + 27 机制 + 5 CLI 内联 + 1 CLI 冒烟 = 146 测例）；样例训练员冒烟 44946 → 40853 / UC、PT 7496 → 6978 | 有（早期槽 / 冒烟位移；S9 前不建基线） |

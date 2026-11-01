@@ -35,6 +35,11 @@ pub use stage::{CampState, Stage, TurnPlan};
 
 use crate::data::{ActLevelEffect, CheckPointResult, MatsuriData};
 
+/// 剧本机制启动回合（0 基）：神驹加入 / 首次传授在 turn 2
+///
+/// 0–1 回合剧本系统还没开始：没有担当分配，训练 / 休息 / 出行 / 事件也都不获取演目槽等剧本资源。
+pub const SCENARIO_START_TURN: i32 = 2;
+
 /// 演目资源账本（5 条演目的 gauge 与等级）
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActLedger {
@@ -434,6 +439,14 @@ impl MatsuriGame {
         self.data.rules.act_gauge_max
     }
 
+    /// 剧本机制是否已启动（turn ≥ [`SCENARIO_START_TURN`]）
+    ///
+    /// 0–1 回合剧本系统还没开始：没有担当分配，训练 / 休息 / 出行 / 事件也都不获取演目槽等剧本资源。
+    #[must_use]
+    pub fn scenario_started(&self) -> bool {
+        self.base.turn >= SCENARIO_START_TURN
+    }
+
     /// 当前「亮起」（演目槽满）的演目集合
     pub(crate) fn lit_acts(&self) -> [bool; 5] {
         let max = self.act_gauge_max();
@@ -454,8 +467,10 @@ impl MatsuriGame {
     }
 
     /// 给单个演目加槽（满槽吃掉溢出、不叠加），返回实际增加量
+    ///
+    /// 0–1 回合（剧本机制未开始）不获取演目槽。
     pub(crate) fn gain_act_gauge(&mut self, act: usize, amount: i32) -> i32 {
-        if amount <= 0 || act >= 5 {
+        if !self.scenario_started() || amount <= 0 || act >= 5 {
             return 0;
         }
         let max = self.act_gauge_max();
@@ -474,8 +489,13 @@ impl MatsuriGame {
     }
 
     /// 三则落点逐次 +1 槽（`count` 次；满槽跳过、并列逐次分摊），返回各演目实际增加量
+    ///
+    /// 0–1 回合（剧本机制未开始）不获取演目槽。
     pub(crate) fn gain_lowest_act_gauge(&mut self, count: i32) -> [i32; 5] {
         let mut gained = [0; 5];
+        if !self.scenario_started() {
+            return gained;
+        }
         for _ in 0..count.max(0) {
             let Some(act) = self.lowest_gain_act() else {
                 break;
@@ -599,6 +619,7 @@ mod tests {
     #[test]
     fn gauge_three_rule_skips_full_and_splits_ties() {
         let mut game = crate::testing::sample_game();
+        game.turn = crate::SCENARIO_START_TURN;
         let max = game.act_gauge_max();
         game.acts.level = [1, 2, 2, 3, 4];
         game.acts.gauge = [0, max, 0, 0, 0];
@@ -613,6 +634,7 @@ mod tests {
     #[test]
     fn gauge_gain_capped_per_act() {
         let mut game = crate::testing::sample_game();
+        game.turn = crate::SCENARIO_START_TURN;
         let max = game.act_gauge_max();
         game.acts.gauge[0] = max - 1;
         assert_eq!(game.gain_act_gauge(0, 4), 1, "单演目入槽按上限夹取");
@@ -620,6 +642,25 @@ mod tests {
         // 目标赛 4 次 +1：全满时全部跳过
         game.acts.gauge = [max; 5];
         assert_eq!(game.gain_lowest_act_gauge(4), [0; 5]);
+    }
+
+    /// 剧本机制自 turn 2 起：0–1 回合无担当分配，训练等不获取演目槽
+    #[test]
+    fn scenario_resources_start_at_turn2() {
+        let mut game = crate::testing::sample_game();
+        assert!(!game.scenario_started(), "turn 0 剧本机制尚未开始");
+        assert_eq!(game.gain_act_gauge(0, 3), 0, "0–1 回合不获取演目槽");
+        assert_eq!(
+            game.gain_lowest_act_gauge(2),
+            [0; 5],
+            "0–1 回合三则落点也不入槽"
+        );
+        game.turn = 1;
+        assert!(!game.scenario_started());
+        assert_eq!(game.gain_act_gauge(0, 3), 0);
+        game.turn = crate::SCENARIO_START_TURN;
+        assert!(game.scenario_started(), "turn 2 起剧本机制启动");
+        assert_eq!(game.gain_act_gauge(0, 3), 3);
     }
 
     #[test]

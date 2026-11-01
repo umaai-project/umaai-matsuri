@@ -1,6 +1,7 @@
 # 骏大祭剧本终端前端：跑局 bin `matsuri`
 #
-# 复用 `umaai-cli` 的呈现件（样例面，pub 面不承诺稳定）。
+# 复用 `umaai-cli` 的呈现件（样例面，pub 面不承诺稳定）；手动动作选择用 inquire
+# （非 TTY 退回编号输入），仅终端交互用。
 [package]
 name = "matsuri-cli"
 version.workspace = true
@@ -19,3 +20,4 @@ umaai.workspace = true
 umaai-cli.workspace = true
 anyhow.workspace = true
 rand.workspace = true
+inquire = "0.9.4"
