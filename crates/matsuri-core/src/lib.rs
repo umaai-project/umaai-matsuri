@@ -1,7 +1,8 @@
 //! # 骏大祭剧本（`matsuri` / scenarioId 15）
 //!
 //! 「朋、史解き ―午式駿大祭―」的剧本 workspace 骨架，给出「引擎契约怎么接」的完整清单；
-//! 当前为 S1 建仓态，`do_train` / `generate_events` / `list_actions` 等留白待 S0 机制核对后填充。
+//! 当前为 S2 数据层态：剧本资产 / 配置已落地，`do_train` 走真实普通训练表；
+//! 演目 / gauge / 教え / 合宿等机制在 S3+ 落地。
 //!
 //! ## 结构（与 `umaai-onsen` 同构）
 //!

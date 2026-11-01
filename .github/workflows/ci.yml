@@ -23,7 +23,9 @@ jobs:
           components: rustfmt, clippy
       - name: fmt
         run: cargo fmt --all --check
+      - name: check
+        run: cargo check --workspace --all-targets
       - name: clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: test
         run: cargo test --release

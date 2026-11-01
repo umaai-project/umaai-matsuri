@@ -17,9 +17,9 @@ use super::{Action, MatsuriGame, Stage};
 use crate::MAX_TURN;
 
 impl TrainingValueSource for MatsuriGame {
-    /// 剧本资产里的训练表（后续实现换成自己的数值表）
+    /// 剧本资产里的普通训练表（`training.normal`：5 训练 × 等级行）
     fn training_basic_table(&self) -> &TrainingBasicTable {
-        &self.data.training_basic_value
+        &self.data.training.normal
     }
 }
 
@@ -142,7 +142,9 @@ impl Game for MatsuriGame {
     }
 
     fn train_level(&self, train: usize) -> usize {
-        (self.base.train_level_count[train] as usize / 4 + 1).clamp(1, 5)
+        let up_count = self.data.rules.train_level_up_count.max(1) as usize;
+        let max_level = self.max_normal_train_level();
+        (self.base.train_level_count[train] as usize / up_count + 1).clamp(1, max_level)
     }
 
     fn uma(&self) -> &Uma {

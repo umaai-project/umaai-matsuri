@@ -14,13 +14,16 @@
 ## 当前状态
 
 - **S1 建仓完成**：五 crate 改名、依赖路径、引擎静态数据、CI 与文档骨架已落地。
-- **S0 机制与用语文档基本收口（2026-10-31）**：`single_mode_15_*` 11 张表与 `single_mode_training_effect`
-  已解码；彩圈 +2、gauge 归属、合宿延长 / Lv+1、U18 延长回合、U33 合宿外出、友人分身、稽古基础值、
-  **训练值两层口径**、目标赛 +4、`check_point_effect 204`、10 月前半 turn 66、排练失败仍 Lv+1 均已定为口径。
-  剩余项：U02 Senior 第三档暂定、U19 延长段支援卡事件、同名双人头、成功档数值、NPC 不在率、
-  追加稽古发生率 / 上下档等，见 [`docs/plan/stubs.md`](docs/plan/stubs.md)。
-- **S2 数据层待启动**：解码结果待落成 `scenario_matsuri.json` 与 `data.rs`；资产中的
-  `sample_resource` / `sample_order` 仍为 `STUB`，见 [`docs/plan/stubs.md`](docs/plan/stubs.md)。
+- **S0 机制与用语文档基本收口（2026-10-31 / 2026-11-01 memo 复核）**：`single_mode_15_*` 11 张表与
+  `single_mode_training_effect` 已解码；彩圈 +2、gauge 归属、合宿延长 / Lv+1、U18 延长回合、U33 合宿外出、
+  友人分身、稽古基础值、**训练值两层口径（主 / 副属性拆分）**、目标赛 +4、`check_point_effect 204`、
+  10 月前半 turn 66、排练失败「完全无效」、牵绊教诲 +3 平摊等均已定为口径。
+- **S2 数据层完成（2026-11-01）**：`data/scenario_matsuri.json` 16 个顶层键（`master.mdb` 11 张表 +
+  `single_mode_training_effect` + memo 口径，映射见 [`docs/plan/intake.md`](docs/plan/intake.md) §4.1）
+  + `data/matsuri_config.toml`（融合预设）+ `data.rs` / `config.rs` 重写 + `tests/data.rs` L2；
+  四档验收绿（35 测例）。已接入 `umaai-next` 新基础：`data/events.json` 同步赛后奖励与 URA 决赛事件
+  （目标赛 `race_career` 覆写 5/72，非目标赛随机 1 项，比赛乘算统一 floor）。演目 / gauge / 教え / 合宿等
+  机制在 S3+ 落地，剩余 TBD 见 [`docs/plan/stubs.md`](docs/plan/stubs.md)。
 
 ## 结构
 
@@ -31,14 +34,15 @@
 | `crates/matsuri-core/src/game/stage.rs` | 阶段机 `Stage`（含 `StageId` 投影） |
 | `crates/matsuri-core/src/game/action.rs` | `Action` + `Display` + `ActionEnum` |
 | `crates/matsuri-core/src/game/traits.rs` | 契约 impl（`Game` / `TrainingValueSource` / `FlatSearchGame`） |
-| `crates/matsuri-core/src/{data,config}.rs` | 剧本资产 / 剧本配置段 |
+| `crates/matsuri-core/src/data.rs` | 剧本资产 schema / 载入 / 校验（`scenario_matsuri.json` 16 节） |
+| `crates/matsuri-core/src/config.rs` | 剧本配置段（融合 / 転成预设 + 覆盖层） |
 | `crates/matsuri-core/src/trainer.rs` | 样例训练员 `MatsuriTrainer` |
 | `crates/matsuri-cli/src/main.rs` | 终端前端：bin `matsuri`（跑局） |
 | `crates/matsuri-cli/src/manual.rs` | 无颜色手动训练员（机制核对） |
 | `crates/matsuri-sim` | 模拟器与基线裁判（骨架） |
 | `crates/matsuri-ai` | 在线决策核心（骨架） |
 | `crates/matsuri-tools` | 外围工具（骨架） |
-| `data/` | 引擎静态表 + 剧本资产 + 双配置默认层 |
+| `data/` | 引擎静态表 + 剧本资产 `scenario_matsuri.json` + 双配置默认层 |
 | `docs/` | 本仓文档骨架 |
 
 ## 文档
@@ -63,6 +67,7 @@ cargo run --release --bin matsuri -- random     # 引擎随机基线（对照用
 cargo run --release --bin matsuri -- manual     # 无颜色人工选择（机制核对用）
 
 cargo fmt --all --check
+cargo check --workspace --all-targets --offline
 cargo clippy --workspace --all-targets --offline -- -D warnings
 cargo test --workspace --release --offline
 ```

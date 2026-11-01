@@ -348,7 +348,7 @@
             "trigger": { "type": "Code" },
             "choices": [[{
                 "value": {
-                    "status_pt": [ 7, 7, 7, 7, 7, 67 ]
+                    "status_pt": [ 5, 5, 5, 5, 5, 72 ]
                 }
             }]]
         },
@@ -373,25 +373,28 @@
             "choices": [[
                 {
                     "value": {
-                        "status_pt": [ 3, 3, 3, 3, 3, 50 ],
+                        "status_pt": [ 0, 0, 0, 0, 0, 45 ],
                         "vital": -15
-                    }
+                    },
+                    "extra_status": { "kind": "random", "count": 1, "value": 10 }
                 }],
                 [{
                     "result": 2,
                     "prob": 33,
                     "value": {
-                        "status_pt": [ 3, 3, 3, 3, 3, 50 ],
+                        "status_pt": [ 0, 0, 0, 0, 0, 45 ],
                         "vital": -5
-                    }
+                    },
+                    "extra_status": { "kind": "random", "count": 1, "value": 10 }
                 },
                 {
                     "result": 1,
                     "prob": 66,
                     "value": {
-                        "status_pt": [ 3, 3, 3, 3, 3, 50 ],
+                        "status_pt": [ 0, 0, 0, 0, 0, 45 ],
                         "vital": -20
-                    }
+                    },
+                    "extra_status": { "kind": "random", "count": 1, "value": 10 }
                 }
             ]]
         },
@@ -403,25 +406,28 @@
             "choices": [[
                 {
                     "value": {
-                        "status_pt": [ 2, 3, 2, 3, 2, 40 ],
+                        "status_pt": [ 0, 0, 0, 0, 0, 35 ],
                         "vital": -15
-                    }
+                    },
+                    "extra_status": { "kind": "random", "count": 1, "value": 8 }
                 }],
                 [{
                     "result": 2,
                     "prob": 33,
                     "value": {
-                        "status_pt": [ 2, 3, 2, 3, 2, 40 ],
+                        "status_pt": [ 0, 0, 0, 0, 0, 35 ],
                         "vital": -5
-                    }
+                    },
+                    "extra_status": { "kind": "random", "count": 1, "value": 8 }
                 },
                 {
                     "result": 1,
                     "prob": 66,
                     "value": {
-                        "status_pt": [ 2, 3, 2, 3, 2, 40 ],
+                        "status_pt": [ 0, 0, 0, 0, 0, 35 ],
                         "vital": -20
-                    }
+                    },
+                    "extra_status": { "kind": "random", "count": 1, "value": 8 }
                 }
             ]]
         },
@@ -433,25 +439,28 @@
             "choices": [[
                 {
                     "value": {
-                        "status_pt": [ 2, 2, 2, 2, 2, 35 ],
+                        "status_pt": [ 0, 0, 0, 0, 0, 35 ],
                         "vital": -15
-                    }
+                    },
+                    "extra_status": { "kind": "random", "count": 1, "value": 8 }
                 }],
                 [{
                     "result": 2,
                     "prob": 33,
                     "value": {
-                        "status_pt": [ 2, 2, 2, 2, 2, 35 ],
+                        "status_pt": [ 0, 0, 0, 0, 0, 35 ],
                         "vital": -5
-                    }
+                    },
+                    "extra_status": { "kind": "random", "count": 1, "value": 8 }
                 },
                 {
                     "result": 1,
                     "prob": 66,
                     "value": {
-                        "status_pt": [ 2, 2, 2, 2, 2, 35 ],
+                        "status_pt": [ 0, 0, 0, 0, 0, 35 ],
                         "vital": -20
-                    }
+                    },
+                    "extra_status": { "kind": "random", "count": 1, "value": 8 }
                 }
             ]]
         },
@@ -463,27 +472,60 @@
             "choices": [[
                 {
                     "value": {
-                        "status_pt": [ 1, 2, 1, 2, 1, 25 ],
+                        "status_pt": [ 0, 0, 0, 0, 0, 30 ],
                         "vital": -15
-                    }
+                    },
+                    "extra_status": { "kind": "random", "count": 1, "value": 5 }
                 }],
                 [{
                     "result": 2,
                     "prob": 33,
                     "value": {
-                        "status_pt": [ 1, 2, 1, 2, 1, 25 ],
+                        "status_pt": [ 0, 0, 0, 0, 0, 30 ],
                         "vital": -5
-                    }
+                    },
+                    "extra_status": { "kind": "random", "count": 1, "value": 5 }
                 },
                 {
                     "result": 1,
                     "prob": 66,
                     "value": {
-                        "status_pt": [ 1, 2, 1, 2, 1, 25 ],
+                        "status_pt": [ 0, 0, 0, 0, 0, 30 ],
                         "vital": -20
-                    }
+                    },
+                    "extra_status": { "kind": "random", "count": 1, "value": 5 }
                 }
             ]]
+        },
+        "race_ura_qualifier": {
+            "id": 4105,
+            "name": "URA决赛预选",
+            "trigger": { "type": "Code" },
+            "choices": [[{
+                "value": {
+                    "status_pt": [ 10, 10, 10, 10, 10, 40 ]
+                }
+            }]]
+        },
+        "race_ura_semifinal": {
+            "id": 4106,
+            "name": "URA决赛准决胜",
+            "trigger": { "type": "Code" },
+            "choices": [[{
+                "value": {
+                    "status_pt": [ 10, 10, 10, 10, 10, 60 ]
+                }
+            }]]
+        },
+        "race_ura_final": {
+            "id": 4107,
+            "name": "URA决赛决胜",
+            "trigger": { "type": "Code" },
+            "choices": [[{
+                "value": {
+                    "status_pt": [ 10, 10, 10, 10, 10, 80 ]
+                }
+            }]]
         },
         "drop_motivation": {
             "id": 4002,

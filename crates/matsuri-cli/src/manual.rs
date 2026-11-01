@@ -49,11 +49,10 @@ impl ManualTrainer {
         let uma = game.uma();
         let mut out = String::new();
         out.push_str(&format!(
-            "回合 {}/{}  阶段 {}  剧本资源 sample_resource={}\n",
+            "回合 {}/{}  阶段 {}\n",
             game.turn(),
             game.max_turn(),
-            game.stage().get(),
-            game.view().sample_resource
+            game.stage().get()
         ));
         out.push_str(&format!(
             "体力 {}/{}  干劲 {}  技能点 {}  五维 速{} 耐{} 力{} 根{} 智{}\n",

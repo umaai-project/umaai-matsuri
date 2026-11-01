@@ -10,7 +10,7 @@ pub mod traits;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use rand::Rng;
 use rand::rngs::StdRng;
 use serde::{Deserialize, Serialize};
@@ -30,14 +30,11 @@ use crate::data::MatsuriData;
 ///
 /// 形态 A 五条纪律（见引擎仓 `docs/scenario/contracts.md`）：**单一取数口** / 只放引擎不知道的字段 /
 /// 快照语义（幂等、无副作用）/ 可演进（`non_exhaustive`）/ **不进契约 trait**。
-/// S1 留一个占位字段；S2 后替换为 5 条演目 gauge / 5 个演目 Lv / 教え槽位等。
+/// S2 清空为占位；S3 起填 5 条演目 gauge / 演目 Lv / 教え槽位 / 合宿状态等剧本自持资源。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
-pub struct MatsuriView {
-    /// S1 占位：剧本自持资源；S2 后替换为演目账本
-    pub sample_resource: i32,
-}
+pub struct MatsuriView {}
 
 /// 剧本局面
 ///
@@ -108,21 +105,21 @@ impl MatsuriGame {
     /// 取剧本资源快照（**单一取数口**；何时取由宿主决定）
     #[must_use]
     pub fn view(&self) -> MatsuriView {
-        MatsuriView {
-            sample_resource: self.data.sample_resource,
-        }
+        MatsuriView {}
     }
 
-    /// 训练结算（S1 版：按剧本资产里的表入账 + 设施计数；失败判定 / 羁绊 / hint 留给剧本作者）
+    /// 训练结算（S2 版：按真实普通训练表入账 + 设施计数；失败判定 / 羁绊 / hint 留给后续阶段）
     pub(crate) fn do_train(&mut self, train: usize, _rng: &mut impl Rng) -> Result<()> {
-        let table = self.training_basic_table();
-        let level = self.train_level(train).clamp(1, 5) - 1;
-        // 当前表档位可少于 5：等级超出即取末档（后续实现给满 5 档）
-        let row = table
+        let level = self
+            .train_level(train)
+            .clamp(1, self.max_normal_train_level())
+            - 1;
+        let row = self
+            .training_basic_table()
             .get(train)
-            .and_then(|levels| levels.get(level).or_else(|| levels.last()))
+            .and_then(|levels| levels.get(level))
             .copied()
-            .unwrap_or([0; 7]);
+            .ok_or_else(|| anyhow!("普通训练表缺行: train={train}, level={level}"))?;
         let value = ActionValue {
             status_pt: [row[0], row[1], row[2], row[3], row[4], row[5]],
             vital: row[6],
@@ -131,6 +128,11 @@ impl MatsuriGame {
         self.uma_mut().add_value(&value);
         self.base.train_level_count[train] += 1;
         Ok(())
+    }
+
+    /// 普通训练等级上限（剧本资产规则；`train_level` 的夹取来源）
+    pub(crate) fn max_normal_train_level(&self) -> usize {
+        self.data.rules.normal_train_level_max.max(1) as usize
     }
 
     /// 派生本局面自持的策略流（注入点与回合边界调用）

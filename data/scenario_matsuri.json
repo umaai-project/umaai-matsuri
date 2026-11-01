@@ -1,11 +1,1019 @@
 {
   "scenario_id": 15,
-  "sample_resource": 0,
-  "training_basic_value": [
-    [[12, 0, 2, 0, 0, 7, -20], [14, 0, 3, 0, 0, 7, -25]],
-    [[0, 11, 0, 3, 0, 7, -22], [0, 14, 0, 4, 0, 7, -27]],
-    [[0, 3, 11, 0, 0, 7, -22], [0, 4, 14, 0, 0, 7, -27]],
-    [[2, 0, 2, 12, 0, 7, -22], [2, 0, 2, 15, 0, 7, -27]],
-    [[2, 0, 0, 0, 11, 7, 5], [2, 0, 0, 0, 12, 7, 5]]
-  ]
+  "limits": {
+    "five_status_limit_base": [2200, 1850, 1800, 1700, 1800],
+    "five_status_limit_upper": [2500, 2500, 2500, 2500, 2500],
+    "support_num": 5,
+    "max_skill_point": 99999
+  },
+  "acts": [
+    {
+      "act_type": 1,
+      "command_id": 5101,
+      "train": 0,
+      "npc_chara_id": 1009
+    },
+    {
+      "act_type": 2,
+      "command_id": 5102,
+      "train": 1,
+      "npc_chara_id": 1096
+    },
+    {
+      "act_type": 3,
+      "command_id": 5103,
+      "train": 2,
+      "npc_chara_id": 1024
+    },
+    {
+      "act_type": 4,
+      "command_id": 5104,
+      "train": 3,
+      "npc_chara_id": 1029
+    },
+    {
+      "act_type": 5,
+      "command_id": 5105,
+      "train": 4,
+      "npc_chara_id": 1128
+    }
+  ],
+  "training": {
+    "normal": [
+      [
+        [12, 0, 2, 0, 0, 7, -20],
+        [13, 0, 2, 0, 0, 7, -21],
+        [14, 0, 2, 0, 0, 7, -22],
+        [15, 0, 3, 0, 0, 7, -24],
+        [16, 0, 3, 0, 0, 7, -25]
+      ],
+      [
+        [0, 10, 0, 3, 0, 7, -20],
+        [0, 11, 0, 4, 0, 7, -21],
+        [0, 12, 0, 4, 0, 7, -22],
+        [0, 13, 0, 5, 0, 7, -24],
+        [0, 14, 0, 6, 0, 7, -25]
+      ],
+      [
+        [0, 6, 9, 0, 0, 7, -21],
+        [0, 6, 10, 0, 0, 7, -22],
+        [0, 6, 11, 0, 0, 7, -23],
+        [0, 7, 12, 0, 0, 7, -25],
+        [0, 8, 13, 0, 0, 7, -25]
+      ],
+      [
+        [2, 0, 2, 12, 0, 7, -21],
+        [2, 0, 2, 13, 0, 7, -22],
+        [2, 0, 2, 14, 0, 7, -23],
+        [3, 0, 2, 15, 0, 7, -25],
+        [3, 0, 2, 16, 0, 7, -25]
+      ],
+      [
+        [2, 0, 0, 0, 8, 6, 5],
+        [2, 0, 0, 0, 9, 6, 5],
+        [2, 0, 0, 0, 10, 6, 5],
+        [3, 0, 0, 0, 11, 6, 5],
+        [3, 0, 0, 0, 12, 6, 5]
+      ]
+    ],
+    "keiko": {
+      "junior": [
+        [16, 0, 3, 0, 0, 9, -25],
+        [0, 14, 0, 6, 0, 10, -25],
+        [0, 6, 14, 0, 0, 10, -25],
+        [3, 0, 2, 15, 0, 10, -25],
+        [3, 0, 0, 0, 12, 8, 5]
+      ]
+    }
+  },
+  "act_effects": [
+    {
+      "level": 1,
+      "all_status_bonus": 10,
+      "friendship": 2,
+      "sp_training": 20,
+      "hint_event": true,
+      "all_hint": false,
+      "sp_limit": 0,
+      "status_limit": 0,
+      "sp_training_hidden": 30
+    },
+    {
+      "level": 2,
+      "all_status_bonus": 10,
+      "friendship": 3,
+      "sp_training": 25,
+      "hint_event": true,
+      "all_hint": false,
+      "sp_limit": 0,
+      "status_limit": 0,
+      "sp_training_hidden": 30
+    },
+    {
+      "level": 3,
+      "all_status_bonus": 10,
+      "friendship": 4,
+      "sp_training": 30,
+      "hint_event": true,
+      "all_hint": false,
+      "sp_limit": 0,
+      "status_limit": 0,
+      "sp_training_hidden": 30
+    },
+    {
+      "level": 4,
+      "all_status_bonus": 10,
+      "friendship": 5,
+      "sp_training": 40,
+      "hint_event": true,
+      "all_hint": true,
+      "sp_limit": 10,
+      "status_limit": 0,
+      "sp_training_hidden": 30
+    },
+    {
+      "level": 5,
+      "all_status_bonus": 10,
+      "friendship": 6,
+      "sp_training": 50,
+      "hint_event": true,
+      "all_hint": true,
+      "sp_limit": 20,
+      "status_limit": 0,
+      "sp_training_hidden": 30
+    },
+    {
+      "level": 6,
+      "all_status_bonus": 10,
+      "friendship": 7,
+      "sp_training": 60,
+      "hint_event": true,
+      "all_hint": true,
+      "sp_limit": 30,
+      "status_limit": 0,
+      "sp_training_hidden": 30
+    },
+    {
+      "level": 7,
+      "all_status_bonus": 10,
+      "friendship": 8,
+      "sp_training": 80,
+      "hint_event": true,
+      "all_hint": true,
+      "sp_limit": 50,
+      "status_limit": 0,
+      "sp_training_hidden": 30
+    },
+    {
+      "level": 8,
+      "all_status_bonus": 10,
+      "friendship": 10,
+      "sp_training": 100,
+      "hint_event": true,
+      "all_hint": true,
+      "sp_limit": 100,
+      "status_limit": 0,
+      "sp_training_hidden": 30
+    },
+    {
+      "level": 9,
+      "all_status_bonus": 10,
+      "friendship": 12,
+      "sp_training": 135,
+      "hint_event": true,
+      "all_hint": true,
+      "sp_limit": 120,
+      "status_limit": 20,
+      "sp_training_hidden": 30
+    },
+    {
+      "level": 10,
+      "all_status_bonus": 10,
+      "friendship": 15,
+      "sp_training": 170,
+      "hint_event": true,
+      "all_hint": true,
+      "sp_limit": 120,
+      "status_limit": 25,
+      "sp_training_hidden": 30
+    }
+  ],
+  "advices": [
+    {
+      "id": 101,
+      "fusion_type": 1,
+      "add_schedule_type": 1,
+      "effect": {
+        "kind": "friendship",
+        "levels": [
+          {
+            "gauge": 3,
+            "keiko_main_bonus": 3
+          },
+          {
+            "gauge": 3,
+            "keiko_main_bonus": 5
+          },
+          {
+            "gauge": 3,
+            "keiko_main_bonus": 7
+          },
+          {
+            "gauge": 3,
+            "keiko_main_bonus": 9
+          },
+          {
+            "gauge": 3,
+            "keiko_main_bonus": 10
+          },
+          {
+            "gauge": 3,
+            "keiko_main_bonus": 11
+          },
+          {
+            "gauge": 3,
+            "keiko_main_bonus": 12
+          },
+          {
+            "gauge": 3,
+            "keiko_main_bonus": 13
+          },
+          {
+            "gauge": 3,
+            "keiko_main_bonus": 14
+          },
+          {
+            "gauge": 3,
+            "keiko_main_bonus": 15
+          }
+        ]
+      }
+    },
+    {
+      "id": 201,
+      "fusion_type": 1,
+      "add_schedule_type": 1,
+      "effect": {
+        "kind": "deyilv",
+        "levels": [
+          {
+            "deyilv": 10
+          },
+          {
+            "deyilv": 13
+          },
+          {
+            "deyilv": 16
+          },
+          {
+            "deyilv": 20
+          },
+          {
+            "deyilv": 25
+          },
+          {
+            "deyilv": 30
+          },
+          {
+            "deyilv": 35
+          },
+          {
+            "deyilv": 40
+          },
+          {
+            "deyilv": 45
+          },
+          {
+            "deyilv": 50
+          }
+        ]
+      }
+    },
+    {
+      "id": 301,
+      "fusion_type": 1,
+      "add_schedule_type": 1,
+      "effect": {
+        "kind": "hint",
+        "levels": [
+          {
+            "hint_rate": 30
+          },
+          {
+            "hint_rate": 33
+          },
+          {
+            "hint_rate": 36
+          },
+          {
+            "hint_rate": 40
+          },
+          {
+            "hint_rate": 45
+          },
+          {
+            "hint_rate": 50
+          },
+          {
+            "hint_rate": 55
+          },
+          {
+            "hint_rate": 60
+          },
+          {
+            "hint_rate": 70
+          },
+          {
+            "hint_rate": 80
+          }
+        ]
+      }
+    },
+    {
+      "id": 401,
+      "fusion_type": 1,
+      "add_schedule_type": 1,
+      "effect": {
+        "kind": "assist",
+        "levels": [
+          {
+            "training_effect": 20,
+            "support_assist": true
+          },
+          {
+            "training_effect": 22,
+            "support_assist": true
+          },
+          {
+            "training_effect": 24,
+            "support_assist": true
+          },
+          {
+            "training_effect": 26,
+            "support_assist": true
+          },
+          {
+            "training_effect": 28,
+            "support_assist": true
+          },
+          {
+            "training_effect": 30,
+            "support_assist": true
+          },
+          {
+            "training_effect": 32,
+            "support_assist": true
+          },
+          {
+            "training_effect": 34,
+            "support_assist": true
+          },
+          {
+            "training_effect": 37,
+            "support_assist": true
+          },
+          {
+            "training_effect": 40,
+            "support_assist": true
+          }
+        ]
+      }
+    },
+    {
+      "id": 501,
+      "fusion_type": 1,
+      "add_schedule_type": 1,
+      "effect": {
+        "kind": "vital",
+        "levels": [
+          {
+            "keiko_vital_cost_drop": 1
+          },
+          {
+            "keiko_vital_cost_drop": 2
+          },
+          {
+            "keiko_vital_cost_drop": 3
+          },
+          {
+            "keiko_vital_cost_drop": 4
+          },
+          {
+            "keiko_vital_cost_drop": 5
+          },
+          {
+            "keiko_vital_cost_drop": 6
+          },
+          {
+            "keiko_vital_cost_drop": 8
+          },
+          {
+            "keiko_vital_cost_drop": 10
+          },
+          {
+            "keiko_vital_cost_drop": 12
+          },
+          {
+            "keiko_vital_cost_drop": 15
+          }
+        ]
+      }
+    },
+    {
+      "id": 601,
+      "fusion_type": 2,
+      "add_schedule_type": 2,
+      "effect": {
+        "kind": "special",
+        "levels": [
+          {
+            "main_gain": 5,
+            "status_limit": 5
+          },
+          {
+            "main_gain": 6,
+            "status_limit": 6
+          },
+          {
+            "main_gain": 7,
+            "status_limit": 7
+          },
+          {
+            "main_gain": 8,
+            "status_limit": 8
+          },
+          {
+            "main_gain": 9,
+            "status_limit": 9
+          },
+          {
+            "main_gain": 10,
+            "status_limit": 10
+          },
+          {
+            "main_gain": 13,
+            "status_limit": 13
+          },
+          {
+            "main_gain": 16,
+            "status_limit": 16
+          },
+          {
+            "main_gain": 20,
+            "status_limit": 20
+          },
+          {
+            "main_gain": 25,
+            "status_limit": 25
+          }
+        ]
+      }
+    },
+    {
+      "id": 701,
+      "fusion_type": 2,
+      "add_schedule_type": 2,
+      "effect": {
+        "kind": "kensan",
+        "levels": [
+          {
+            "rate": 20
+          },
+          {
+            "rate": 22
+          },
+          {
+            "rate": 24
+          },
+          {
+            "rate": 27
+          },
+          {
+            "rate": 30
+          },
+          {
+            "rate": 35
+          },
+          {
+            "rate": 40
+          },
+          {
+            "rate": 50
+          },
+          {
+            "rate": 65
+          },
+          {
+            "rate": 80
+          }
+        ]
+      }
+    },
+    {
+      "id": 801,
+      "fusion_type": 2,
+      "add_schedule_type": 3,
+      "effect": {
+        "kind": "cooperate",
+        "levels": [
+          {
+            "friendship": 1,
+            "split": 1
+          },
+          {
+            "friendship": 2,
+            "split": 1
+          },
+          {
+            "friendship": 3,
+            "split": 1
+          },
+          {
+            "friendship": 4,
+            "split": 1
+          },
+          {
+            "friendship": 5,
+            "split": 1
+          },
+          {
+            "friendship": 6,
+            "split": 1
+          },
+          {
+            "friendship": 7,
+            "split": 1
+          },
+          {
+            "friendship": 8,
+            "split": 1
+          },
+          {
+            "friendship": 9,
+            "split": 1
+          },
+          {
+            "friendship": 10,
+            "split": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": 901,
+      "fusion_type": 2,
+      "add_schedule_type": 3,
+      "effect": {
+        "kind": "unyielding",
+        "levels": [
+          {
+            "fail_vital_threshold": 45,
+            "keiko_training_effect": 0
+          },
+          {
+            "fail_vital_threshold": 40,
+            "keiko_training_effect": 0
+          },
+          {
+            "fail_vital_threshold": 35,
+            "keiko_training_effect": 0
+          },
+          {
+            "fail_vital_threshold": 30,
+            "keiko_training_effect": 0
+          },
+          {
+            "fail_vital_threshold": 25,
+            "keiko_training_effect": 0
+          },
+          {
+            "fail_vital_threshold": 20,
+            "keiko_training_effect": 0
+          },
+          {
+            "fail_vital_threshold": 15,
+            "keiko_training_effect": 0
+          },
+          {
+            "fail_vital_threshold": 10,
+            "keiko_training_effect": 1
+          },
+          {
+            "fail_vital_threshold": 5,
+            "keiko_training_effect": 3
+          },
+          {
+            "fail_vital_threshold": 0,
+            "keiko_training_effect": 5
+          }
+        ]
+      }
+    },
+    {
+      "id": 1001,
+      "fusion_type": 2,
+      "add_schedule_type": 3,
+      "effect": {
+        "kind": "dual",
+        "levels": [
+          {
+            "sub_gain": 1,
+            "keiko_training_effect": 1
+          },
+          {
+            "sub_gain": 2,
+            "keiko_training_effect": 2
+          },
+          {
+            "sub_gain": 3,
+            "keiko_training_effect": 3
+          },
+          {
+            "sub_gain": 4,
+            "keiko_training_effect": 4
+          },
+          {
+            "sub_gain": 5,
+            "keiko_training_effect": 5
+          },
+          {
+            "sub_gain": 8,
+            "keiko_training_effect": 7
+          },
+          {
+            "sub_gain": 11,
+            "keiko_training_effect": 9
+          },
+          {
+            "sub_gain": 15,
+            "keiko_training_effect": 11
+          },
+          {
+            "sub_gain": 20,
+            "keiko_training_effect": 13
+          },
+          {
+            "sub_gain": 25,
+            "keiko_training_effect": 15
+          }
+        ]
+      }
+    }
+  ],
+  "fusion": [
+    {
+      "advice_id": 101,
+      "effect": {
+        "kind": "friendship",
+        "keiko_main_bonus": 15,
+        "camp_extra_person": 1
+      }
+    },
+    {
+      "advice_id": 201,
+      "effect": {
+        "kind": "deyilv",
+        "deyilv": 50,
+        "keiko_friendship": 10
+      }
+    },
+    {
+      "advice_id": 301,
+      "effect": {
+        "kind": "hint",
+        "hint_rate": 80,
+        "hint_level": 1
+      }
+    },
+    {
+      "advice_id": 401,
+      "effect": {
+        "kind": "assist",
+        "training_effect": 20,
+        "support_assist": true
+      }
+    },
+    {
+      "advice_id": 501,
+      "effect": {
+        "kind": "vital",
+        "keiko_vital_cost_drop": 15
+      }
+    }
+  ],
+  "check_points": [
+    {
+      "schedule": 0,
+      "result": "none",
+      "friendship": 0,
+      "deyilv": 20,
+      "hint_rate": 0,
+      "race_bonus": 0
+    },
+    {
+      "schedule": 1,
+      "result": "success",
+      "friendship": 0,
+      "deyilv": 20,
+      "hint_rate": 20,
+      "race_bonus": 0
+    },
+    {
+      "schedule": 1,
+      "result": "great_success",
+      "friendship": 5,
+      "deyilv": 40,
+      "hint_rate": 50,
+      "race_bonus": 0
+    },
+    {
+      "schedule": 2,
+      "result": "success",
+      "friendship": 5,
+      "deyilv": 40,
+      "hint_rate": 50,
+      "race_bonus": 0
+    },
+    {
+      "schedule": 2,
+      "result": "great_success",
+      "friendship": 10,
+      "deyilv": 60,
+      "hint_rate": 100,
+      "race_bonus": 0
+    },
+    {
+      "schedule": 3,
+      "result": "success",
+      "friendship": 10,
+      "deyilv": 60,
+      "hint_rate": 100,
+      "race_bonus": 30
+    },
+    {
+      "schedule": 3,
+      "result": "great_success",
+      "friendship": 20,
+      "deyilv": 80,
+      "hint_rate": 150,
+      "race_bonus": 100
+    }
+  ],
+  "check_point_rewards": [
+    {
+      "schedule": 1,
+      "result": "success",
+      "status": 3,
+      "skill_pt": 100,
+      "vital": 0,
+      "motivation": 0,
+      "training_level_up": 0,
+      "president_friendship": 0,
+      "act_member_add": 0,
+      "hints": [],
+      "hints_all_great": []
+    },
+    {
+      "schedule": 1,
+      "result": "great_success",
+      "status": 5,
+      "skill_pt": 200,
+      "vital": 0,
+      "motivation": 0,
+      "training_level_up": 1,
+      "president_friendship": 15,
+      "act_member_add": 0,
+      "hints": [],
+      "hints_all_great": []
+    },
+    {
+      "schedule": 2,
+      "result": "success",
+      "status": 5,
+      "skill_pt": 150,
+      "vital": 0,
+      "motivation": 0,
+      "training_level_up": 0,
+      "president_friendship": 0,
+      "act_member_add": 0,
+      "hints": [],
+      "hints_all_great": []
+    },
+    {
+      "schedule": 2,
+      "result": "great_success",
+      "status": 10,
+      "skill_pt": 300,
+      "vital": 0,
+      "motivation": 0,
+      "training_level_up": 1,
+      "president_friendship": 15,
+      "act_member_add": 1,
+      "hints": [
+        {
+          "skill": "全身全霊",
+          "level": 1
+        }
+      ],
+      "hints_all_great": []
+    },
+    {
+      "schedule": 3,
+      "result": "success",
+      "status": 10,
+      "skill_pt": 200,
+      "vital": 0,
+      "motivation": 0,
+      "training_level_up": 0,
+      "president_friendship": 0,
+      "act_member_add": 0,
+      "hints": [
+        {
+          "skill": "序盤巧者",
+          "level": 1
+        },
+        {
+          "skill": "彼方の呼び声",
+          "level": 1
+        }
+      ],
+      "hints_all_great": []
+    },
+    {
+      "schedule": 3,
+      "result": "great_success",
+      "status": 15,
+      "skill_pt": 400,
+      "vital": 30,
+      "motivation": 1,
+      "training_level_up": 0,
+      "president_friendship": 15,
+      "act_member_add": 0,
+      "hints": [
+        {
+          "skill": "機先の勝負",
+          "level": 2
+        },
+        {
+          "skill": "彼方の呼び声",
+          "level": 3
+        }
+      ],
+      "hints_all_great": [
+        {
+          "skill": "ハヤテ一文字",
+          "level": 2
+        }
+      ]
+    }
+  ],
+  "career_end_rewards": [
+    {
+      "result": "success",
+      "status": 15,
+      "skill_pt": 150,
+      "vital": 0,
+      "motivation": 0,
+      "training_level_up": 0,
+      "president_friendship": 0,
+      "act_member_add": 0,
+      "hints": [
+        {
+          "skill": "彼方の呼び声",
+          "level": 3
+        }
+      ],
+      "hints_all_great": []
+    },
+    {
+      "result": "great_success",
+      "status": 30,
+      "skill_pt": 350,
+      "vital": 0,
+      "motivation": 0,
+      "training_level_up": 0,
+      "president_friendship": 0,
+      "act_member_add": 0,
+      "hints": [
+        {
+          "skill": "名にし負う夢",
+          "level": 2
+        }
+      ],
+      "hints_all_great": []
+    }
+  ],
+  "finals_act": {
+    "vital": 30,
+    "motivation": 1,
+    "fail_rate_drop": 100,
+    "extra_member": 1
+  },
+  "outing": [
+    {
+      "card_id": 30323,
+      "story_step": 1,
+      "add_level": 1
+    },
+    {
+      "card_id": 30323,
+      "story_step": 2,
+      "add_level": 1
+    },
+    {
+      "card_id": 30323,
+      "story_step": 3,
+      "add_level": 1
+    },
+    {
+      "card_id": 30323,
+      "story_step": 4,
+      "add_level": 1
+    },
+    {
+      "card_id": 30323,
+      "story_step": 5,
+      "add_level": 1
+    },
+    {
+      "card_id": 10149,
+      "story_step": 1,
+      "add_level": 1
+    },
+    {
+      "card_id": 10149,
+      "story_step": 2,
+      "add_level": 1
+    },
+    {
+      "card_id": 10149,
+      "story_step": 3,
+      "add_level": 1
+    },
+    {
+      "card_id": 10149,
+      "story_step": 4,
+      "add_level": 1
+    },
+    {
+      "card_id": 10149,
+      "story_step": 5,
+      "add_level": 1
+    }
+  ],
+  "schedule": [
+    {
+      "turn": 23,
+      "need_act_num": 5,
+      "need_act_level": 3
+    },
+    {
+      "turn": 47,
+      "need_act_num": 5,
+      "need_act_level": 5
+    },
+    {
+      "turn": 67,
+      "need_act_num": 5,
+      "need_act_level": 6
+    }
+  ],
+  "advice_windows": [2, 11, 23, 35, 47, 59],
+  "camp": {
+    "windows": [
+      {
+        "start": 12,
+        "end": 15
+      },
+      {
+        "start": 36,
+        "end": 39
+      },
+      {
+        "start": 60,
+        "end": 63
+      }
+    ],
+    "level_up_turns": [15, 39, 63]
+  },
+  "rules": {
+    "act_gauge_max": 5,
+    "act_gauge_gain": {
+      "member": 1,
+      "friendship": 2,
+      "target_race": 4,
+      "other": 1
+    },
+    "train_level_up_count": 4,
+    "normal_train_level_max": 5,
+    "act_level_max": 6,
+    "act_level_max_with_friend": 10,
+    "friendship_gain": {
+      "friend": 4,
+      "card": 7,
+      "absent": 0,
+      "lesson": 3,
+      "charm": 2
+    }
+  }
 }
