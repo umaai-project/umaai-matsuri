@@ -1439,6 +1439,15 @@ fn gauge_gains_from_training_participants() -> Result<()> {
     game.run_stage(&trainer, &mut decision)?;
     assert!(game.next(), "Distribute → Train");
     let distribution = game.distribution()[0].clone();
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Train(0),
+            choice: 0,
+        },
+    )?;
+    // 槽入账发生在训练后处理（羁绊结算）**之后** ⇒ 闪彩判定按结算时的羁绊算，
+    // 不能用回合开始前的羁绊快照（有人正好在这一回合跨过 80 门槛）
     let mut expect = [0; 5];
     for index in &distribution {
         if *index < 0 {
@@ -1451,13 +1460,6 @@ fn gauge_gains_from_training_participants() -> Result<()> {
         let shining = game.is_shining_at(*index as usize, 0);
         expect[act] += if shining { 2 } else { 1 };
     }
-    finish_turn(
-        &mut game,
-        &ScriptedTrainer {
-            action: Action::Train(0),
-            choice: 0,
-        },
-    )?;
     assert_eq!(
         game.view().act_gauge,
         expect,

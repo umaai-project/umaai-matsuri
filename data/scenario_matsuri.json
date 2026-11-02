@@ -1074,6 +1074,7 @@
       "count": 3,
       "effect": 5
     },
-    "fat_recovery_prob": 20
+    "fat_recovery_prob": 20,
+    "status_soft_cap": 1200
   }
 }

@@ -612,7 +612,10 @@ dependencies = [
  "anyhow",
  "inquire",
  "matsuri-core",
+ "matsuri-sim",
  "rand",
+ "serde",
+ "serde_json",
  "umaai",
  "umaai-cli",
  "umaai-core",
@@ -635,6 +638,9 @@ dependencies = [
 [[package]]
 name = "matsuri-sim"
 version = "0.1.0"
+dependencies = [
+ "rand",
+]
 
 [[package]]
 name = "matsuri-tools"

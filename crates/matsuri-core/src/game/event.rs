@@ -23,6 +23,17 @@ pub(crate) const KENSAN_EVENT_ID: u32 = 400015106;
 /// 友人（吾妻）出行解锁事件 ID（`809052004` 求むるは、新たな書）
 pub(crate) const FRIEND_OUT_EVENT_ID: u32 = 809052004;
 
+/// 赛后奖励事件 id（生涯 4001 / 自选 G1–OP 4101–4104 / URA 决赛 4105–4107）
+///
+/// 这些事件的五维收益吃 **1200 软上限**（见 [`softcap`](super::softcap)）；
+/// 脚本事件的属性收益**不在**已实证范围内 ⇒ 不套上限。
+pub(crate) const RACE_REWARD_EVENT_IDS: [u32; 8] = [4001, 4101, 4102, 4103, 4104, 4105, 4106, 4107];
+
+/// 是否赛后奖励事件（吃属性软上限）
+pub(crate) fn is_race_reward_event(id: u32) -> bool {
+    RACE_REWARD_EVENT_IDS.contains(&id)
+}
+
 impl MatsuriGame {
     /// 回合开始事件链（引擎契约 `Game::generate_events` 的剧本实现）
     ///

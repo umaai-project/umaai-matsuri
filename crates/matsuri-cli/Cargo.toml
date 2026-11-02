@@ -12,12 +12,23 @@ publish.workspace = true
 name = "matsuri"
 path = "src/main.rs"
 
+[[bin]]
+name = "matsuri-dist"
+path = "src/dist.rs"
+
+[[bin]]
+name = "matsuri-gate"
+path = "src/gate.rs"
+
 [dependencies]
 matsuri-core.workspace = true
+matsuri-sim.workspace = true
 umaai-core.workspace = true
 umasim.workspace = true
 umaai.workspace = true
 umaai-cli.workspace = true
 anyhow.workspace = true
 rand.workspace = true
+serde_json.workspace = true
+serde.workspace = true
 inquire = "0.9.4"

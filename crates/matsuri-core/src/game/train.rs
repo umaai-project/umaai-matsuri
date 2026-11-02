@@ -144,6 +144,12 @@ impl MatsuriGame {
         if self.is_fat() {
             value.status_pt[0] = 0;
         }
+        // 1200 软上限（剧本 15；报文实证）：五维增量过线部分减半，技能点不受影响
+        super::softcap::apply_soft_cap(
+            self.data.rules.status_soft_cap,
+            &self.uma().five_status,
+            &mut value,
+        );
         self.uma_mut().add_value(&value);
         if !keiko {
             self.base.train_level_count[train] += 1;

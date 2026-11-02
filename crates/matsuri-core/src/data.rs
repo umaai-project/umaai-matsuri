@@ -523,6 +523,9 @@ pub struct Rules {
     pub assist_support: AssistSupportRule,
     /// 【变胖】每回合解除概率 %（剧本自持暂定值 20；STUB 待真机）
     pub fat_recovery_prob: i32,
+    /// 属性软上限：五维增量中**超出该值的部分**减半（剧本 15「1200 软上限」；报文实证）
+    /// 0 = 关闭
+    pub status_soft_cap: i32,
 }
 
 /// 助力支撑数值（`memo` 2026-10-31：3 次内 +5%，再次获得重置次数）

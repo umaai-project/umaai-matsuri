@@ -184,8 +184,23 @@ impl Game for MatsuriGame {
     }
 
     fn apply_event(&mut self, event: &EventData, choice: usize, rng: &mut impl Rng) -> Result<()> {
+        // 赛后奖励吃 1200 软上限（剧本 15；报文实证）：入账前留一份赛前值，
+        // 入账后按「过线部分减半」回填。脚本事件的属性收益不在已实证范围内 ⇒ 不套上限。
+        let before = self.uma().five_status;
         // ① 引擎底座负责通用数值结算（含友人卡事件加成、ExtraStatus）
         let result = self.base.apply_event(event, choice, rng);
+        if super::event::is_race_reward_event(event.id) {
+            let after = self.uma().five_status;
+            let mut gained: umaai_core::Array5 = [0; 5];
+            for i in 0..5 {
+                gained[i] = after[i] - before[i];
+            }
+            let capped =
+                super::softcap::capped_gain(self.data.rules.status_soft_cap, &before, &gained);
+            for i in 0..5 {
+                self.uma_mut().five_status[i] = before[i] + capped[i];
+            }
+        }
         if let Some(result) = &result {
             // ② 引擎 `BaseEvent::apply_event` 不结算 add/remove_flags，剧本侧补齐（变胖等状态）
             self.base.uma.update_flags(result);
@@ -295,7 +310,14 @@ impl Game for MatsuriGame {
         }
     }
 
-    /// 人头得意率：卡面效果 + 剧本加成（発表会 deyilv / 该卡担当演目的教え得意率 / 転成）
+    /// 人头得意率（引擎底座当「自身格权重」用）：**固定权重** + 剧本加成（発表会 / 教え 得意率 / 転成）
+    ///
+    /// ⚠️ 卡面 `deYiLv` 数值**不参与**落位：真机报文显示它与「卡参与自己类型训练的比例」**无剂量关系**
+    /// （`deYiLv` = 10 / 43 / 60 / 75 → 58.0 / 65.8 / 61.5 / 47.1%，无单调性），
+    /// 落位是「按卡种站位」的分类效应 ⇒ 给与卡种无关的固定权重
+    /// （[`SELF_SLOT_P`](super::distribute::SELF_SLOT_P) = 0.977，对标报文实测 73.1%）。
+    ///
+    /// 用卡面数值当权重会把卡**反向**偏置（实测落位指标 31.2%，低于 35.6% 的零假设）。
     fn deyilv(&mut self, person_index: i32) -> f32 {
         if person_index < 0 {
             return 0.0;
@@ -305,8 +327,7 @@ impl Game for MatsuriGame {
         if index >= self.base.deck.len() {
             return 0.0;
         }
-        let card_deyilv = self.base.deck[index].calc_training_effect(self, 0).deyilv;
-        card_deyilv + self.scenario_deyilv(index) as f32
+        super::distribute::self_slot_weight() + self.scenario_deyilv(index) as f32
     }
 
     /// 重新分配所有人头（S5 剧本口径：亮起锁担当 / NPC 不在率 / 吾妻补位 / 分身）

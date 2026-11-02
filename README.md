@@ -115,8 +115,12 @@
 | `crates/matsuri-core/src/config.rs` | 剧本配置段（融合 / 転成预设 + 覆盖层） |
 | `crates/matsuri-core/src/trainer.rs` | 样例训练员 `MatsuriTrainer` |
 | `crates/matsuri-cli/src/main.rs` | 终端前端：bin `matsuri`（跑局；`matsuri` / `random` / `manual` 训练员选择） |
+| `crates/matsuri-cli/src/dist.rs` | 终局分布采样：bin `matsuri-dist`（配对门禁的采样侧；`MC_DUMP` 落逐样本明细） |
+| `crates/matsuri-cli/src/gate.rs` | 配对门禁判官：bin `matsuri-gate`（CRN 同种子逐局配对，只认五维和 / 五维分 / PT） |
+| `crates/matsuri-core/src/game/softcap.rs` | 属性软上限（剧本 15「1200 软上限」）：过线部分减半 |
+| `crates/matsuri-sim/src/bench.rs` | 配对门禁统计内核（bootstrap 区间 + 符号翻转置换检验，无 IO） |
 | `crates/matsuri-cli/src/manual.rs` | 手动核对面板（S8）：育成配置 + 彩色训练明细表（人物着色 / Hint 叹号 / 羁绊）+ 剧本资源与教诲分配结果 + 合宿（仅合宿回合）·友人链·赛程 + 动作槽增量预览 + Inquire 动作 / 事件选择 |
-| `crates/matsuri-sim` | 模拟器与基线裁判（骨架） |
+| `crates/matsuri-sim` | 模拟器与基线裁判（配对门禁统计内核已落） |
 | `crates/matsuri-ai` | 在线决策核心（骨架） |
 | `crates/matsuri-tools` | 外围工具（骨架） |
 | `data/` | 引擎静态表 + 剧本资产 `scenario_matsuri.json` + 双配置默认层 |
@@ -142,6 +146,14 @@
 cargo run --release --bin matsuri --            # 样例训练员
 cargo run --release --bin matsuri -- random     # 引擎随机基线（对照用）
 cargo run --release --bin matsuri -- manual     # 手动核对面板（动作 Inquire；Esc 退出，非 TTY 退回编号输入）
+
+# 配对门禁：改动前后各出一份样本明细（同 MC_SEED ⇒ 随机流对齐 ⇒ 可逐局配对）
+$env:MC_N=4000; $env:MC_SEED=0; $env:MC_DUMP="out/_dump_a.jsonl"
+cargo run --release --bin matsuri-dist -- out/_dist_a.json
+$env:MC_DUMP="out/_dump_b.jsonl"
+cargo run --release --bin matsuri-dist -- out/_dist_b.json
+cargo run --release --bin matsuri-gate -- --a out/_dump_a.jsonl --b out/_dump_b.jsonl `
+  --five 1998,1470,1656,1344,1573 --pt 8339 --stat-score 42201
 
 cargo fmt --all --check
 cargo check --workspace --all-targets --offline

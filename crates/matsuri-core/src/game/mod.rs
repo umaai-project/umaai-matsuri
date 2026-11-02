@@ -12,6 +12,7 @@ pub mod event;
 pub mod person;
 pub mod roster;
 pub mod settle;
+pub mod softcap;
 pub mod stage;
 pub mod train;
 pub mod traits;

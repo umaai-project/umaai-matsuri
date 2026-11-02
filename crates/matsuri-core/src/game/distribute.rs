@@ -22,6 +22,25 @@ use super::person::PersonOrigin;
 /// 每个训练位的人数上限（引擎通用口径）
 const TRAIN_CAP: usize = 5;
 
+/// 卡参与「自己类型」训练的比例（真机报文实测 **73.1%**；零假设 35.6%，z=+15.9）
+///
+/// 真机的落位偏置是「按卡种站位」这一**分类效应**，与卡面的 `deYiLv` 数值**无剂量关系**
+/// （报文 413 条训练命令实测：`deYiLv` = 10 / 43 / 60 / 75 的卡参与自己类型训练的比例
+/// 58.0 / 65.8 / 61.5 / 47.1%，无单调性）。所以这里给**与卡种无关的固定权重**。
+///
+/// 引擎底座把 `deyilv` 当「自身格权重」用（`weights[train_type] += deyilv`，
+/// 五格基础权重各 100），于是 `P(自身格) = (100 + w) / (500 + w)`；
+/// 取 `w` 使该比值 = `SELF_SLOT_P` 即反解出 [`self_slot_weight`]。
+///
+/// ⚠️ 报文**没有逐格布局**（角色在 `training_partner_array` 里的位置是分散的），
+/// 所以「卡落在自己那一格」不可直接测，只能测「训练 t 的参与者里有没有 t 类卡」。
+pub const SELF_SLOT_P: f64 = 0.977;
+
+/// `SELF_SLOT_P` 反解出的自身格权重
+pub(crate) fn self_slot_weight() -> f32 {
+    ((500.0 * SELF_SLOT_P - 100.0) / (1.0 - SELF_SLOT_P)) as f32
+}
+
 impl MatsuriGame {
     /// 本回合是否需要分布（比赛 / 强制休息回合不训练，不分布）
     pub(crate) fn needs_distribution(&self) -> bool {
@@ -285,9 +304,12 @@ mod tests {
     #[test]
     fn deyilv_includes_presentation_baseline() {
         let mut game = crate::testing::sample_game();
-        let card_deyilv = game.deck()[0].calc_training_effect(&game, 0).deyilv;
         let got = game.deyilv(0);
-        assert_eq!(got, card_deyilv + 20.0, "得意率 = 卡面 + 发布会基线 +20");
+        assert_eq!(
+            got,
+            self_slot_weight() + 20.0,
+            "得意率 = 固定自身格权重 + 发布会基线 +20"
+        );
     }
 
     #[test]

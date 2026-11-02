@@ -68,6 +68,12 @@ impl MatsuriGame {
         value.status_pt[5] += reward.skill_pt;
         value.vital += reward.vital;
         value.motivation += reward.motivation;
+        // 1200 软上限（剧本 15；报文实证）：发表会的全能力奖励过线部分减半
+        super::softcap::apply_soft_cap(
+            self.data.rules.status_soft_cap,
+            &self.uma().five_status,
+            &mut value,
+        );
         self.uma_mut().add_value(&value);
         if reward.training_level_up > 0 {
             for bonus in &mut self.train_level_bonus {

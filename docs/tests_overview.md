@@ -30,6 +30,7 @@
 | `core/src/game/train.rs` | `upper_*`（8 条）/ `ura_training_effects` / `unyielding_drops_failure_to_zero` / `kensan_pushes_choice_event` / `kensan_triggers_on_normal_training_too` / `gauge_gain_by_participants_with_shining` / `preview_action_resources_matches_actual` / `keiko_flat_applies_to_all_five_stats` / `friend_click_pushes_first_then_click_by_probability` / `fat_zeroes_training_speed_only` / `fat_cleared_by_clinic_and_camp_rest` / `preview_matches_actual_training` | 训练上层公式 / 失败率 / 追加稽古事件化 / 训练入槽 / **动作资源预览（槽 / Lv）与实结算一致、不改原局面** / 全基础 +10 flat / 友人点击链（首次必发 + 40%）/ 变胖速度归零与解除 / 预览与实结算一致 |
 | `core/src/game/event.rs` | `camp_rule_suppresses_random_events` / `fixed_scenario_event_preempts_random` / `friend_unlock_event_by_probability` / `card_event_candidates_exclude_friend` / `friend_out_unlock_and_fatigue_recovery` / `event_flags_are_applied` / `fat_recovery_roll_by_rules_probability` / `event_extra_gauge_and_debuff` / `kensan_upper_event_applies_all_effects` / `evolution_hint_accounted_at_turn66` / `after_train_events_queued` / `event_records_are_logged` | S6 事件管线：合宿抑制 / 固定事件 / 友人解锁与卡事件候选 / 出行解锁与疲劳回复 / flags 结算 / 变胖解除 / 事件扩展（gauge + 解 debuff）/ 追加稽古上档完整结算 / turn 66 hint / 回合后事件入队 / 事件记录与容量上限 |
 | `core/src/game/settle.rs` | `first_check_point_great_success_applies_reward` / `check_point_success_when_one_act_short` / `finals_sets_finals_done_and_reward` / `camp_level_up_raises_all_acts` / `advice_window_zero_does_not_acquire_at_end` / `advice_fusion_after_begin_acquire` / `career_end_rewards_by_presentation_results` | 発表会 / 本番判定与奖励 / 合宿 +1 / **T2 首发在 Begin、End 窗口 0 不重复授予** / 教诲融合 / 育成终了 |
+| `core/src/game/softcap.rs` | `soft_cap_partial_halving` / `soft_cap_above_and_below_cap` / `soft_cap_disabled_returns_gain` / `apply_soft_cap_keeps_skill_point` | 1200 软上限：报文算例（pre=1195 名义 30 → 17 / pre=1300 名义 7 → 3 / 未过线全额）、关闭开关、技能点不受影响 |
 | `cli/src/manual.rs` | `test_paint_respects_switch` / `test_pad_to_counts_display_width` / `test_gauge_text_shape` / `test_advice_fallback_names` / `test_delta_tone` | 手动面板呈现件：上色开关退化 / CJK 宽度补齐 / 演目槽数字 x/y / 教诲兜底名 / 增减量色调 |
 
 ### 2.1 L2 数据层集成（`core/tests/data.rs`）
@@ -86,6 +87,8 @@
 | `scenario_fixed_event_at_turn11` | turn 11 行动前教え見直し事件结算（体力 +15 / 干劲 +1） | §5.3 / §5.4 |
 | `s6_event_chain_over_full_run` | 整局事件链：通用固定（马娘登场 / 新年 / 继承 / 抽签 / 育成结束）、教え見直し ×3、友人链（first+click+out+newyear+end）、随机分布、大胃王 ≤3、旧出行占位不再结算 | §5.4 |
 | `unresolved_events_drained_each_turn` | 78 回合每回合 `AfterTrain` / `End` 后无待结算事件泄漏 | §1 |
+| `arrangement_metric_matches_packet_observation`（`core/tests/arrangement.rs`） | 训练位排列指标 = **卡参与「自己类型」训练 73.1%**（真机报文 413 条训练命令实测；零假设 35.6%）；锁在 ±2 个点 | §2.1 |
+| `arrangement_metric_is_stable_across_seeds`（`core/tests/arrangement.rs`） | 换 3 个种子指标不漂（±3 个点）——不是某条抽样序列碰巧跑出来的 | §2.1 |
 
 ## 4. 冒烟与基线
 
@@ -94,9 +97,22 @@
 | 冒烟 | 固定种子跑满回合、两次逐位一致 | `Result` / 非零退出 |
 | 手动档冒烟 | `manual` 管道输入（全 0）跑满 78 回合（非 TTY 动作选择退回编号输入）；面板关键块（剧本资源 / T2 闸门标记 / 未分配 / 训练表 / 事件回显）、S6 关键事件回显、非 TTY 无 ANSI | 退出码 + 文本标记 |
 | 基线 | 一基线一 JSON（`input` 自持、`expect` 逐项容差、`meta` 不含路径） | 自动比对，失败返回 `Err` |
+| 配对门禁判官 | `cli/tests/gate_cli.rs`：同一 dump 自比 ⇒ 「无显著差异」；B 更靠近真值 ⇒ 「显著更近」；两臂样本号集合不一致 ⇒ 退出码 2 | 退出码 + 表格判定词 |
 
 - 重录命令：`<cargo ... baseline --update>`（S9 落地）
 - 数值占位替换后必须重录，并在 `glossary.md` 记影响面。
+
+### 4.1 配对门禁（`matsuri-gate`）
+
+- **守门对象**：机制改动的**可判定性**（CRN 同种子逐局配对），不是「绝对分数对不对」。
+- **采样侧零改动**：`matsuri-dist` 的采样种子按样本号派生、引擎随机流按回合派生
+  ⇒ 同 `MC_SEED` 下两批样本逐号对齐 ⇒ 配对差只来自机制改动。
+- **判读**：贴近幅度 `e_i = |a_i − 真值| − |b_i − 真值|` 的 95% 区间——下界 >0 显著更近、
+  上界 <0 显著更远、跨 0 无显著差异（留档，不转正）。区间用 bootstrap 百分位，
+  p 值用符号翻转置换检验，两者固定种子。
+- **只用三分量**：五维和 / 五维分 / PT；**不含任何拟合系数**。退出码恒 0（只出报告）。
+- 用法：`MC_N=4000 MC_SEED=0 MC_DUMP=a.jsonl matsuri-dist out/a.json`（改动前后各一份）→
+  `matsuri-gate --a a.jsonl --b b.jsonl --five … --pt … --stat-score …`。
 
 ## 5. 对话核对记录（前期主验证方式）
 
