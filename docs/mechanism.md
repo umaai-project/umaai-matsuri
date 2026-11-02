@@ -215,6 +215,11 @@
 
 - 普通训练 **Lv1** 如上表（= `master.mdb`）；**Lv2–5** 见 [`plan/intake.md`](plan/intake.md) §3.2
   （`memo` 2026-10-31，已入资产 `training.normal`）。
+- **训练Lv 口径（2026-11-03 核对）**：每种普通训练**成功**执行 4 次 → 该训练位基础 Lv +1
+  （`train_level = floor(成功次数 / 4) + 1`，等价 `count/4+1`）；**発表会大成功的一次性 +1**
+  （第 1 / 第 2 回各 +1）记独立 `train_level_bonus`，**与计数等级相加**后夹剧本资产上限 **5**；
+  **演目稽古（含合宿排练）不计基础训练计数**，训练失败也不计数（引擎基础局同型）。面板 / View 的
+  `board.train_levels` 即此最终等级；公式落点 `traits.rs::train_level`，计数落点 `train.rs::settle_training`。
 
 **计算公式（`memo` 2026-10-31，主 / 副属性拆分，上段）**
 

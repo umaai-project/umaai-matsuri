@@ -771,6 +771,44 @@ mod tests {
         }
     }
 
+    /// 普通训练 Lv：每种**成功**普通训练 4 次 +1 级；与剧本结算的 `train_level_bonus` 叠加并夹上限
+    #[test]
+    fn train_level_counts_successful_normal_training_and_stacks_bonus() {
+        let mut game = crate::testing::sample_game();
+        // URA 期失败率 0，保证普通训练成功（计数只认成功；失败 / 稽古不计）
+        game.turn = crate::URA_START_TURN;
+        game.finals_done = true;
+        game.base.distribution = vec![vec![], vec![], vec![], vec![], vec![]];
+        let mut rng = StdRng::seed_from_u64(7);
+        for expected in 1i32..=4 {
+            game.do_train(0, &mut rng).expect("普通训练结算");
+            assert_eq!(
+                game.base.train_level_count[0], expected,
+                "第 {expected} 次成功普通训练计数"
+            );
+        }
+        assert_eq!(game.train_level(0), 2, "4 次成功普通训练 +1 级（1→2）");
+        // 稽古不计入基础训练计数
+        game.acts.gauge[0] = game.act_gauge_max();
+        game.do_act_train(0, &mut rng).expect("演目稽古结算");
+        assert_eq!(
+            game.base.train_level_count[0], 4,
+            "演目稽古不增加基础训练计数"
+        );
+        // 剧本结算（発表会大成功）的 +1 与计数等级叠加：2 + 1 = 3
+        game.train_level_bonus = [1; 5];
+        assert_eq!(game.train_level(0), 3, "计数 2 级 + 発表会大成功 +1 = 3 级");
+        // 上限仍为剧本资产上限（5）
+        game.base.train_level_count = [20; 5];
+        game.train_level_bonus = [0; 5];
+        assert_eq!(
+            game.max_normal_train_level(),
+            5,
+            "剧本资产：普通训练 Lv 上限 5"
+        );
+        assert_eq!(game.train_level(0), 5, "计数等级夹到上限 5");
+    }
+
     #[test]
     fn unyielding_drops_failure_to_zero() {
         let mut game = crate::testing::sample_game();

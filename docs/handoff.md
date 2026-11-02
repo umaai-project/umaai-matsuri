@@ -81,7 +81,8 @@
    新增测试 `event_hint_level_is_counted_in_ura_window`（URA 窗口事件 hint_level 计入 `total_hints` + View 同步）。
 7. **72–77 动作限制确认**：不可友人出行 / 自选比赛；72/74/76 可训练 / 稽古 / 休息 / 普通出行 / 治病，
    73/75/77 只有比赛（引擎规则已有，`action_set_by_turn_type` 补守门）。
-8. 测试 **169 测例**（core 内联 117 / L2 15 / 机制 30 / diag 1 / CLI 内联 5 / 冒烟 1）；整局冒烟
+8. 测试 **170 测例**（core 内联 118 / L2 15 / 机制 30 / diag 1 / CLI 内联 5 / 冒烟 1；含训练Lv 计数叠加
+   守门 `train_level_counts_successful_normal_training_and_stacks_bonus`）；整局冒烟
    54683 / UB9、PT 9024 → **53083 / UB7、PT 8858**（68–71 不再吃 URA 加成；S9 前不建基线）。
 
 ### S7 手写训练员（2026-11-02，已提交）
