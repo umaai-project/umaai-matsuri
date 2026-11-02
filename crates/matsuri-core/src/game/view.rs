@@ -166,6 +166,12 @@ pub struct ResourceView {
     pub assist_support_left: i32,
     /// 本回合研鑽「追加の稽古」是否掷中（未点对应训练则作废）
     pub kensan_pending: bool,
+    /// 研鑽（追加稽古）绑定演目（未获得 / 未転成时为 `None`）
+    pub kensan_act: Option<usize>,
+    /// 追加稽古当前发生率 %（研鑽绑定演目的 Lv 档；无研鑽时 0）
+    pub kensan_rate: i32,
+    /// 助力支撑触发演目（该演目担当参与稽古成功时获得 / 重置；无助力教え为 `None`）
+    pub assist_act: Option<usize>,
     /// 発表会大成功累计的普通训练 Lv 提升
     pub train_level_bonus: Array5,
     /// 発表会 / 本番永久友情 buff %（累计；开局 0）
@@ -338,6 +344,10 @@ impl MatsuriGame {
     pub fn view(&self) -> MatsuriView {
         let turn = self.turn();
         let presentation = self.presentation_bonus();
+        // 教诲派生：研鑽（追加稽古）绑定演目与发生率、助力支撑触发演目（纯只读）
+        let kensan_act = self.kensan_act();
+        let kensan_rate = kensan_act.map_or(0, |act| self.advice_slot_effect(act).kensan_rate);
+        let assist_act = (0..5).find(|act| self.advice_slot_effect(*act).support_assist);
         MatsuriView {
             turn: TurnView {
                 turn,
@@ -369,6 +379,9 @@ impl MatsuriGame {
                 advice_acquired: self.advice.acquired,
                 assist_support_left: self.assist_support_left,
                 kensan_pending: self.kensan_pending,
+                kensan_act,
+                kensan_rate,
+                assist_act,
                 train_level_bonus: self.train_level_bonus,
                 presentation_friendship: presentation.friendship,
                 presentation_deyilv: presentation.deyilv,
@@ -608,6 +621,13 @@ mod tests {
         assert_eq!(view.resources.advice_slots, game.advice.slots);
         assert_eq!(view.resources.advice_fused, game.advice.fused);
         assert!(view.resources.advice_acquired);
+        assert_eq!(view.resources.kensan_act, None, "未転成 701 时无研鑽演目");
+        assert_eq!(view.resources.kensan_rate, 0);
+        assert_eq!(
+            view.resources.assist_act,
+            Some(3),
+            "助力教え（401）绑定演目 3"
+        );
         assert_eq!(
             view.resources.act_trains,
             std::array::from_fn(|act| game.data.acts[act].train)
@@ -674,6 +694,26 @@ mod tests {
         // 事件 / 编成
         assert_eq!(view.deck_warnings, game.deck_warnings);
         assert_eq!(view.recent_events, game.event_log);
+    }
+
+    /// 研鑽 / 助力支撑的派生演目跟随教诲槽与転成（视图只读）
+    #[test]
+    fn view_exposes_kensan_and_assist_acts() {
+        let mut game = crate::testing::sample_game();
+        game.acquire_advice();
+        game.advice.fused = [0, 701, 0, 0, 0];
+        game.acts.level = [3, 7, 3, 3, 3];
+        game.kensan_pending = true;
+        let view = game.view();
+        assert_eq!(view.resources.kensan_act, Some(1), "701 転成在演目 1");
+        assert_eq!(view.resources.kensan_rate, 40, "研鑽 Lv7 发生率 40%");
+        assert_eq!(view.resources.assist_act, Some(3), "401 助力绑定演目 3");
+        // 未获得教诲：两类演目均为 None
+        let fresh = crate::testing::sample_game();
+        let fresh_view = fresh.view();
+        assert_eq!(fresh_view.resources.kensan_act, None);
+        assert_eq!(fresh_view.resources.assist_act, None);
+        assert_eq!(fresh_view.resources.kensan_rate, 0);
     }
 
     /// 视图是纯只读快照：连续调用相等，且不改动局面

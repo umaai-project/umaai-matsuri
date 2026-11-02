@@ -334,6 +334,14 @@ impl MatsuriGame {
                 self.settle_advice_window(trainer, decision)?;
                 // turn 66（Senior 10 月前半行动后）进化技能：只记 hint_level + 1
                 self.apply_evolution_hint();
+                // 研鑽「追加の稽古」：本回合掷中但未点到含绑定演目担当的训练 → 作废
+                if self.kensan_pending {
+                    diag!(
+                        "【追加稽古】T{} 掷中未兑现（未选择追加稽古训练）",
+                        self.base.turn
+                    );
+                    self.kensan_pending = false;
+                }
             }
         }
         Ok(())

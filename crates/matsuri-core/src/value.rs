@@ -563,7 +563,10 @@ impl<'a> Model<'a> {
         value
     }
 
-    /// 兑现「追加稽古」掷中的额外价值（该演目担当参与本次训练）
+    /// 兑现「追加稽古」掷中的额外价值（该训练位参与者含研鑽绑定演目担当）
+    ///
+    /// 判定与 `train.rs::try_kensan` 同口径：普通训练与稽古都按**训练位占位**里的
+    /// 「担当 = 研鑽绑定演目」判断，不能只比较稽古下标（稽古位与担当归属不一致）。
     fn kensan_bonus(&self, action: &Action) -> f64 {
         if !self.game.kensan_pending {
             return 0.0;
@@ -571,25 +574,26 @@ impl<'a> Model<'a> {
         let Some(kensan_act) = self.game.kensan_act() else {
             return 0.0;
         };
-        let hit = match action {
-            Action::Train(train) => self
+        let train = match action {
+            Action::Train(train) => usize::from(*train),
+            Action::ActTrain(act) => self
                 .game
-                .base
-                .distribution
-                .get(usize::from(*train))
-                .is_some_and(|slot| {
-                    slot.iter().any(|index| {
-                        *index >= 0
-                            && self
-                                .game
-                                .persons
-                                .get(*index as usize)
-                                .is_some_and(|person| person.act == Some(kensan_act))
-                    })
-                }),
-            Action::ActTrain(act) => usize::from(*act) == kensan_act,
-            _ => false,
+                .data
+                .acts
+                .get(usize::from(*act))
+                .map_or(usize::from(*act), |row| row.train),
+            _ => return 0.0,
         };
+        let hit = self.game.base.distribution.get(train).is_some_and(|slot| {
+            slot.iter().any(|index| {
+                *index >= 0
+                    && self
+                        .game
+                        .persons
+                        .get(*index as usize)
+                        .is_some_and(|person| person.act == Some(kensan_act))
+            })
+        });
         if hit { KENSAN_TRIGGER_BONUS } else { 0.0 }
     }
 
@@ -834,6 +838,38 @@ mod tests {
         let low_small = model.event_choice_value(5010, 0, &event.choices[0]);
         let low_big = model.event_choice_value(5010, 1, &event.choices[1]);
         assert!(low_big > low_small, "体力见底时吃大份");
+    }
+
+    /// 追加稽古兑现判断：稽古也按「训练位参与者」判定（与 `try_kensan` 同口径）
+    #[test]
+    fn kensan_bonus_uses_participants_for_keiko() {
+        let mut game = sample_game();
+        game.acquire_advice();
+        game.advice.fused = [701, 0, 0, 0, 0];
+        game.acts.level = [5; 5];
+        game.kensan_pending = true;
+        let person = game
+            .persons
+            .iter()
+            .position(|person| person.act == Some(0))
+            .expect("演目 0 应有担当");
+        // 研鑽担当放在训练位 2（非它自己的演目位）
+        game.base.distribution = vec![vec![], vec![], vec![person as i32], vec![], vec![]];
+        let model = Model::new(&game, &game.config.trainer).expect("模型");
+        assert!(
+            model.kensan_bonus(&Action::ActTrain(2)) > 0.0,
+            "稽古训练位的参与者含研鑽担当 → 应兑现追加稽古"
+        );
+        assert_eq!(
+            model.kensan_bonus(&Action::ActTrain(0)),
+            0.0,
+            "研鑽演目自己的稽古位没有担当 → 不应兑现"
+        );
+        assert!(
+            model.kensan_bonus(&Action::Train(2)) > 0.0,
+            "普通训练与稽古同口径"
+        );
+        assert_eq!(model.kensan_bonus(&Action::Race), 0.0);
     }
 
     /// 教诲分配：价值矩阵会把 801 槽放到担当数最多的演目（与 apply_assignment 硬约束同口径）

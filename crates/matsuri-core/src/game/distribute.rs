@@ -30,15 +30,25 @@ impl MatsuriGame {
     }
 
     /// 本回合分布入口（`Distribute` 阶段调用）
+    ///
+    /// 顺序（2026-11-05 修正）：锁位 →（有排练时）吾妻补位 → 其余人头 →（无排练时）吾妻通用落位 →
+    /// 分身。吾妻先于其余人头补位，保证「有稽古就必定登场」；理事长 / 记者只落非稽古位。
     pub(crate) fn distribute_round(&mut self, rng: &mut impl Rng) -> Result<()> {
         self.reset_distribution();
         if !self.needs_distribution() {
             return Ok(());
         }
         let practice = self.practice_acts();
+        let practice_train = self.practice_train_mask(&practice);
         self.place_locked(&practice);
-        self.distribute_others(&practice, rng)?;
-        self.place_friend_filler(&practice, rng)?;
+        let practice_any = practice_train.iter().any(|lit| *lit);
+        if practice_any {
+            self.place_friend_filler(&practice_train, rng)?;
+        }
+        self.distribute_others(&practice, &practice_train, rng)?;
+        if !practice_any {
+            self.place_friend_filler(&practice_train, rng)?;
+        }
         self.place_splits(&practice, rng)?;
         let counts: Vec<usize> = (0..5)
             .map(|train| self.base.distribution[train].len())
@@ -46,6 +56,11 @@ impl MatsuriGame {
         let shining: Vec<usize> = (0..5).map(|train| self.shining_count(train)).collect();
         diag!("【分布】T{} 人数 {counts:?} 闪{shining:?}", self.turn());
         Ok(())
+    }
+
+    /// 本回合按稽古处理的训练位（由练习演目反查训练位；合宿 / URA 全真）
+    fn practice_train_mask(&self, practice: &[bool; 5]) -> [bool; 5] {
+        std::array::from_fn(|train| practice[self.act_of_train(train)])
     }
 
     /// 亮起演目的担当（卡 / 神驹）强制锁位（不判不在）
@@ -77,7 +92,15 @@ impl MatsuriGame {
     }
 
     /// 其余人头按引擎分配顺序落位（理事长 → 记者 → 支援卡 → 神驹；友人另走补位）
-    fn distribute_others(&mut self, practice: &[bool; 5], rng: &mut impl Rng) -> Result<()> {
+    ///
+    /// 理事长 / 记者（user 2026-11-05 修正）：**只落非稽古训练位**；全稽古回合（合宿 / URA /
+    /// 全槽满）无普通位 → 本回合完全不出现。
+    fn distribute_others(
+        &mut self,
+        practice: &[bool; 5],
+        practice_train: &[bool; 5],
+        rng: &mut impl Rng,
+    ) -> Result<()> {
         let sequence = [
             PersonType::Yayoi,
             PersonType::Reporter,
@@ -85,6 +108,7 @@ impl MatsuriGame {
             PersonType::Npc,
         ];
         let friend_index = self.friend_person_index();
+        let mut guests_hidden = 0;
         for ty in sequence {
             for person_index in 0..self.persons.len() {
                 if self.persons[person_index].person_type() != ty {
@@ -102,26 +126,74 @@ impl MatsuriGame {
                 {
                     continue;
                 }
+                if matches!(ty, PersonType::Yayoi | PersonType::Reporter) {
+                    if !self.place_guest_outside_practice(person_index, practice_train, rng) {
+                        guests_hidden += 1;
+                    }
+                    continue;
+                }
                 // 神驹按剧本口径也有不在率（STUB：absent_weight = 50，U29）；其余走各自权重
                 Game::distribute_person(self, person_index as i32, true, rng)?;
             }
         }
+        if guests_hidden > 0 {
+            diag!(
+                "【分布】T{} 全稽古回合：理事长 / 记者不出现（{} 人）",
+                self.turn(),
+                guests_hidden
+            );
+        }
         Ok(())
     }
 
-    /// 吾妻：排练回合必补一个未满排练位；普通回合走通用不在判定
-    fn place_friend_filler(&mut self, practice: &[bool; 5], rng: &mut impl Rng) -> Result<()> {
+    /// 理事长 / 记者落位：只在非稽古训练位里按引擎同型规则（先判不在、再均匀随机）落位
+    ///
+    /// 返回 `false` = 本回合没有非稽古空位（全稽古回合），该人头不出现、不消耗随机。
+    fn place_guest_outside_practice(
+        &mut self,
+        person_index: usize,
+        practice_train: &[bool; 5],
+        rng: &mut impl Rng,
+    ) -> bool {
+        let allowed: Vec<usize> = (0..5)
+            .filter(|train| {
+                !practice_train[*train]
+                    && self.base.distribution[*train].len() < TRAIN_CAP
+                    && !self.base.distribution[*train].contains(&(person_index as i32))
+            })
+            .collect();
+        if allowed.is_empty() {
+            return false;
+        }
+        // 与引擎 `distribute_person` 同口径：先判不在（理事长 / 记者 absent_weight = 200）
+        let absent = self.absent_weight(person_index);
+        if absent > 0 && rng.random_bool(f64::from(absent) / f64::from(500 + absent)) {
+            return true;
+        }
+        let pick = rng.random_range(0..allowed.len());
+        self.base.distribution[allowed[pick]].push(person_index as i32);
+        true
+    }
+
+    /// 吾妻：有稽古训练时必补一个未满 5 人的稽古位（不判不在、不去普通位）；
+    /// 无稽古的普通回合走通用不在判定。
+    ///
+    /// 唯一稽古位且未满 5 人时必定落在该位（候选只有 1 个）；有多个候选时随机取一。
+    fn place_friend_filler(
+        &mut self,
+        practice_train: &[bool; 5],
+        rng: &mut impl Rng,
+    ) -> Result<()> {
         let Some(friend_index) = self.friend_person_index() else {
             return Ok(());
         };
         if !self.person_is_available(friend_index) {
             return Ok(());
         }
-        let practice_any = practice.iter().any(|lit| *lit);
-        if practice_any {
+        if practice_train.iter().any(|lit| *lit) {
             let mut empty: Vec<usize> = (0..5)
                 .filter(|train| {
-                    practice[*train]
+                    practice_train[*train]
                         && self.base.distribution[*train].len() < TRAIN_CAP
                         && !self.base.distribution[*train].contains(&(friend_index as i32))
                 })
@@ -345,6 +417,99 @@ mod tests {
                 assert!(seen.insert(*index), "同一训练位不应重复人头");
             }
         }
+    }
+
+    /// 理事长 / 记者：稽古回合只落非稽古位；全稽古回合（合宿）完全不出现
+    #[test]
+    fn yayoi_and_reporter_never_on_practice_positions() {
+        // 日常：1 个演目亮起（稽古位），理事长 / 记者只可能出现在其余普通位
+        let mut game = crate::testing::sample_game();
+        game.turn = 20;
+        game.acts.gauge[2] = game.act_gauge_max();
+        let mut rng = StdRng::seed_from_u64(7);
+        game.distribute_round(&mut rng).expect("分布失败");
+        let practice_train = game.train_of_act(2);
+        for index in 0..game.persons.len() {
+            let ty = game.persons[index].person_type();
+            if !matches!(ty, PersonType::Yayoi | PersonType::Reporter) {
+                continue;
+            }
+            for (train, slot) in game.distribution().iter().enumerate() {
+                if slot.contains(&(index as i32)) {
+                    assert_ne!(train, practice_train, "理事长 / 记者不应出现在稽古位");
+                }
+            }
+        }
+        // 合宿（全稽古）：理事长 / 记者完全不出现
+        let mut camp = crate::testing::sample_game();
+        camp.turn = 12;
+        camp.plan = crate::TurnPlan {
+            camp_zone: true,
+            camp_year: Some(0),
+            camp_regular: true,
+            ..crate::TurnPlan::default()
+        };
+        let mut rng = StdRng::seed_from_u64(8);
+        camp.distribute_round(&mut rng).expect("分布失败");
+        for index in 0..camp.persons.len() {
+            let ty = camp.persons[index].person_type();
+            if matches!(ty, PersonType::Yayoi | PersonType::Reporter) {
+                assert!(
+                    camp.distribution()
+                        .iter()
+                        .all(|slot| !slot.contains(&(index as i32))),
+                    "合宿全稽古回合：理事长 / 记者不应出现"
+                );
+            }
+        }
+    }
+
+    /// 吾妻：只要有稽古位就必补该位（不判不在、不去普通位）；唯一稽古位必定命中
+    #[test]
+    fn friend_fills_practice_position_when_any() {
+        let mut game = crate::testing::sample_game();
+        game.turn = 20;
+        game.acts.gauge[2] = game.act_gauge_max();
+        let friend = game.friend_person_index().expect("带友人卡");
+        let practice_train = game.train_of_act(2);
+        for seed in 0..50u64 {
+            let mut probe = game.clone();
+            probe.acts.gauge[2] = probe.act_gauge_max();
+            let mut rng = StdRng::seed_from_u64(seed);
+            probe.distribute_round(&mut rng).expect("分布失败");
+            let positions: Vec<usize> = probe
+                .distribution()
+                .iter()
+                .enumerate()
+                .filter(|(_, slot)| slot.contains(&(friend as i32)))
+                .map(|(train, _)| train)
+                .collect();
+            assert_eq!(
+                positions,
+                vec![practice_train],
+                "seed {seed}: 吾妻只应出现在唯一稽古位"
+            );
+        }
+        // 合宿全稽古：吾妻恰好出现 1 处（不可分身），且在某稽古位
+        let mut camp = crate::testing::sample_game();
+        camp.turn = 12;
+        camp.plan = crate::TurnPlan {
+            camp_zone: true,
+            camp_year: Some(0),
+            camp_regular: true,
+            ..crate::TurnPlan::default()
+        };
+        let friend = camp.friend_person_index().expect("带友人卡");
+        let mut rng = StdRng::seed_from_u64(9);
+        camp.distribute_round(&mut rng).expect("分布失败");
+        let positions: Vec<usize> = camp
+            .distribution()
+            .iter()
+            .enumerate()
+            .filter(|(_, slot)| slot.contains(&(friend as i32)))
+            .map(|(train, _)| train)
+            .collect();
+        assert_eq!(positions.len(), 1, "合宿中吾妻应恰好出现 1 处（不可分身）");
     }
 
     #[test]

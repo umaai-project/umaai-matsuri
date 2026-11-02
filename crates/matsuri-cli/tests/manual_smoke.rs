@@ -47,6 +47,9 @@ fn manual_mode_runs_full_game_with_scripted_input() {
         "[NPC]",
         "【动作】",
         "【目标赛】",
+        "【演目槽】",
+        "←101 牵绊",
+        "配色：",
         "评分",
     ] {
         assert!(
@@ -68,7 +71,12 @@ fn manual_mode_runs_full_game_with_scripted_input() {
         stdout.len()
     );
     // 事件回显覆盖 S6 关键链
-    for event in ["马娘登场", "求むるは、新たな書", "追加の稽古"] {
+    for event in [
+        "马娘登场",
+        "求むるは、新たな書",
+        "駿大祭合宿の申し出",
+        "追加の稽古",
+    ] {
         assert!(
             stdout.contains(event) || stderr.contains(event),
             "手动档应回显事件 `{event}`"

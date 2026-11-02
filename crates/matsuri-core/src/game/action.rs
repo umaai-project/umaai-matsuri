@@ -86,6 +86,26 @@ impl ActionEnum for Action {
 }
 
 impl MatsuriGame {
+    /// 诊断：演目槽入账行（`label` = 动作名；`before` = 入账前槽位；无入账不输出）
+    fn diag_gauge_gain(&self, label: &str, before: &[i32; 5]) {
+        let parts: Vec<String> = self
+            .acts
+            .gauge
+            .iter()
+            .zip(before.iter())
+            .enumerate()
+            .filter(|(_, (after, before))| after != before)
+            .map(|(act, (after, before))| format!("演目{act}槽{before}→{after}"))
+            .collect();
+        if !parts.is_empty() {
+            diag!(
+                "【演目槽】T{} {label} 入槽 {}",
+                self.turn(),
+                parts.join(" ")
+            );
+        }
+    }
+
     /// 比赛结算：目标赛 / URA 决赛 / 自选比赛统一走 [`BaseGame::push_race_event`]
     ///
     /// `scale = (100 + 支援卡赛后加成 + 発表会 / 本番永久比赛加成) / 100`；取整（floor）在引擎。
@@ -100,7 +120,6 @@ impl MatsuriGame {
         } else {
             self.data.rules.act_gauge_gain.other
         };
-        self.gain_lowest_act_gauge(gain);
         let kind = if self.plan.ura_race {
             "URA决赛"
         } else if goal {
@@ -108,6 +127,8 @@ impl MatsuriGame {
         } else {
             "自选比赛"
         };
+        self.gain_lowest_act_gauge(gain);
+        self.diag_gauge_gain(kind, &before.gauge);
         diag!(
             "【动作】T{} {kind} 加成×{scale:.2}｜变化 {}",
             self.turn(),
@@ -126,6 +147,14 @@ impl MatsuriGame {
             self.uma_mut().flags.ill.remove(umaai_core::Ill::FAT);
         }
         self.gain_lowest_act_gauge(self.data.rules.act_gauge_gain.other);
+        self.diag_gauge_gain(
+            if self.plan.camp_rest {
+                "合宿版休息"
+            } else {
+                "休息"
+            },
+            &before.gauge,
+        );
         diag!(
             "【动作】T{} 休息（{}）｜变化 {}",
             self.turn(),
@@ -144,6 +173,7 @@ impl MatsuriGame {
         let before = self.key_state();
         BaseAction::do_normal_outing(&mut self.base, rng)?;
         self.gain_lowest_act_gauge(self.data.rules.act_gauge_gain.other);
+        self.diag_gauge_gain("普通出行", &before.gauge);
         diag!(
             "【动作】T{} 普通出行｜变化 {}",
             self.turn(),
@@ -191,6 +221,7 @@ impl MatsuriGame {
         self.base.friend.out_used[step] = true;
         self.add_lowest_act_level(add_level);
         self.gain_lowest_act_gauge(self.data.rules.act_gauge_gain.other);
+        self.diag_gauge_gain(&format!("友人出行第{}段", step + 1), &before.gauge);
         // 本段真实卡面事件（吾妻 809052011–015，memo 基础值）
         let key = (step + 1).to_string();
         let event = Data::get()?

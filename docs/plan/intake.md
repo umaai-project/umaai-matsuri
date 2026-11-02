@@ -548,7 +548,7 @@
 | `rules` | 数据 / user 口径 | gauge 上限 5、入账 1/2/4/1、训练 Lv 每 4 次 +1、普通训练 5 级、演目 Lv 上限 6/10、羁绊基础值；**S5 扩**：`training_upper_cap`(100) / `assist_support`(3×5%) / `kensan`(上下档数值 + 50% STUB) |
 | `data/events.json`（赛后奖励，2026-11-01 接入） | `memo` 2026-10-29 定稿 / user 2026-11-01 / `umaai-next` 新基础 | **不再进剧本资产**（原 `race_rewards` 已移除）：目标赛 `race_career` 覆写 5×+5 / SP72；非目标赛 `race_g1–g4` 用引擎 `extra_status.random`（GI 10 / GII·GIII 8 / OP 5）；URA 决赛 `race_ura_{qualifier,semifinal,final}` 五维 +10 / SP 40·60·80；引擎 `push_race_event` 统一 floor |
 | `data/events.json`（吾妻友人链，S6 接入） | `mdb` `single_mode_story_data`（id / 标题 / 卡归属）+ `memo` 2026-10-27（数值，中可信度） | `friend_events`：`first`=`809052001`、`click`=`809052032`（点击 40%）、`out`=`809052004`（出行解锁上/下）、`newyear`=`809052021`、`1..5`=`809052011–015`（外出 5 段，第 3 段上/下）、`end`=`809052023`（结局，固定 5 次档）；基础值入库 + 引擎叠卡面加成；槽位映射 user 2026-11-01 核对（`022` 未满 5 段结局变体 / `031` 随机友人卡事件 不用） |
-| `data/scenario_matsuri.json`（剧本固定事件，S6 接入） | user 2026-11-01 事件范围核对 + `memo` | `scenario_events`：`400015105`（教え見直し，Fixed 11/35/59，体力+15/干劲+1，STUB 待实测）、`400015106`（追加の稽古，Code，训练员上/下二选一）；`event_extras`：`(400015106, 0)` → 最低演目 gauge+1 + 解一个 debuff |
+| `data/scenario_matsuri.json`（剧本固定事件，S6 接入；2026-11-05 改挂 104） | user 2026-11-01 事件范围核对 + `memo`；user 2026-11-05「改为 104 事件」 | `scenario_events`：`400015104`（駿大祭合宿の申し出，Fixed 11/35/59，体力+15/干劲+1，数值 STUB 待实测）、`400015106`（追加の稽古，Code，训练员上/下二选一）；`event_extras`：`(400015106, 0)` → 最低演目 gauge+1 + 解一个 debuff |
 | `data/events.json`（构造事件「大胃王」，S6） | user 2026-11-01 | 马娘事件 `5010`：Random max_time 3；选项 1 体力+10/PT+5，选项 2 体力+30/PT+10 + 33% 变胖 |
 
 - **S5 机制已建模（2026-11-01）**：本接入包中标注「S5」的机制全部落地——gauge 入账 / 消费、

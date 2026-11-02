@@ -359,12 +359,12 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(1);
         let events = game.begin_events(&mut rng);
         assert_eq!(events.len(), 1, "turn 11 应只有固定事件");
-        assert_eq!(events[0].id, 400015105, "教え見直し事件");
+        assert_eq!(events[0].id, 400015104, "駿大祭合宿の申し出事件");
 
         game.base.turn = 12;
         let events = game.begin_events(&mut rng);
         assert!(
-            events.iter().all(|event| event.id != 400015105),
+            events.iter().all(|event| event.id != 400015104),
             "非固定回合不应再出现固定事件"
         );
     }

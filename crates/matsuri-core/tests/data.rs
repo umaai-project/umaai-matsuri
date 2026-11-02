@@ -458,7 +458,7 @@ fn engine_events_big_eater() -> Result<()> {
     Ok(())
 }
 
-/// 剧本固定事件（`scenario_matsuri.json`）：`400015105` / `400015106` + 事件额外效果
+/// 剧本固定事件（`scenario_matsuri.json`）：`400015104` / `400015106` + 事件额外效果
 #[test]
 fn scenario_events_asset() -> Result<()> {
     use umaai_core::gamedata::TriggerType;
@@ -468,8 +468,9 @@ fn scenario_events_asset() -> Result<()> {
     let review = data
         .scenario_events
         .iter()
-        .find(|event| event.id == 400015105)
-        .expect("应有教え見直し事件");
+        .find(|event| event.id == 400015104)
+        .expect("应有駿大祭合宿の申し出事件");
+    assert_eq!(review.name, "駿大祭合宿の申し出", "合宿直前友人事件名");
     assert!(matches!(review.trigger, TriggerType::Fixed { ref turns } if turns == &[11, 35, 59]));
     assert_eq!(review.choices[0][0].value.vital, 15);
     assert_eq!(review.choices[0][0].value.motivation, 1);
@@ -502,7 +503,7 @@ fn scenario_events_asset() -> Result<()> {
     assert_eq!((extra.event_id, extra.choice), (400015106, 0));
     assert_eq!(extra.act_gauge_lowest, 1);
     assert!(extra.clear_debuff);
-    println!("剧本固定事件：教え見直し + 追加稽古（上下档 + 事件扩展）");
+    println!("剧本固定事件：駿大祭合宿の申し出 + 追加稽古（上下档 + 事件扩展）");
     Ok(())
 }
 

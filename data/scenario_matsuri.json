@@ -988,8 +988,8 @@
   "advice_windows": [2, 11, 23, 35, 47, 59],
   "scenario_events": [
     {
-      "id": 400015105,
-      "name": "教えの見直し",
+      "id": 400015104,
+      "name": "駿大祭合宿の申し出",
       "trigger": { "type": "Fixed", "turns": [11, 35, 59] },
       "choices": [[{
         "value": {

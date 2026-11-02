@@ -76,8 +76,9 @@ pub struct MatsuriData {
     pub advice_windows: Vec<i32>,
     /// 剧本固定事件（S6 事件链；`TriggerType::Fixed` 按 0 基回合触发）
     ///
-    /// 目前只有 `400015105`（教え見直し）与 `400015106`（追加の稽古，代码触发）；
-    /// 主剧本其余事件为过场说明、无数值，不入资产（口径见 `docs/plan/scenario_dev_plan.md`）。
+    /// 目前只有 `400015104`（駿大祭合宿の申し出，合宿直前 11/35/59）与 `400015106`
+    /// （追加の稽古，代码触发）；主剧本其余事件为过场说明、无数值，不入资产
+    /// （口径见 `docs/plan/scenario_dev_plan.md`）。
     pub scenario_events: Vec<EventData>,
     /// 事件额外效果（引擎 `ActionValue` 表达不了的部分：演目 gauge / 解 debuff）
     pub event_extras: Vec<EventExtra>,

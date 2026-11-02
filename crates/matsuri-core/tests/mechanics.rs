@@ -14,7 +14,8 @@ use matsuri_core::game::deck::inspect_deck;
 use matsuri_core::testing::data_dir;
 use matsuri_core::{
     Action, DeckError, DeckReport, DeckWarning, MAX_TURN, MatsuriConfig, MatsuriData, MatsuriGame,
-    MatsuriPerson, MatsuriTrainer, MatsuriView, MatsuriYear, PersonOrigin, SelfRace, TurnPlan,
+    MatsuriPerson, MatsuriTrainer, MatsuriView, MatsuriYear, PersonOrigin, SelfRace, Stage,
+    TurnPlan,
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -1823,7 +1824,7 @@ fn s5_mechanism_chain_over_full_run() -> Result<()> {
     Ok(())
 }
 
-/// S6 事件链：剧本固定事件「教え見直し」在 turn 11 行动前结算（体力 +15 / 干劲 +1）
+/// S6 事件链：剧本固定事件「駿大祭合宿の申し出」在 turn 11 行动前结算（体力 +15 / 干劲 +1）
 #[test]
 fn scenario_fixed_event_at_turn11() -> Result<()> {
     let repo = Repo::load()?;
@@ -1844,13 +1845,13 @@ fn scenario_fixed_event_at_turn11() -> Result<()> {
     let mut decision = StdRng::seed_from_u64(3);
     game.run_stage(&trainer, &mut decision)?;
     assert_eq!(
-        event_count(&game, 400015105),
+        event_count(&game, 400015104),
         1,
-        "教え見直し事件应结算 1 次"
+        "駿大祭合宿の申し出事件应结算 1 次"
     );
     assert_eq!(game.uma().vital, 65, "行动前体力 +15");
     assert_eq!(game.uma().motivation, 3, "行动前干劲 +1");
-    println!("S6：turn 11 教え見直し事件（体力+15 / 干劲+1）");
+    println!("S6：turn 11 駿大祭合宿の申し出事件（体力+15 / 干劲+1）");
     Ok(())
 }
 
@@ -1873,8 +1874,8 @@ fn s6_event_chain_over_full_run() -> Result<()> {
     // 引擎通用「回合后」事件（B2/Q9 按引擎接）
     assert_eq!(count(4011), 1, "turn 48 新年抽签");
     assert_eq!(count(5011), 1, "turn 77 育成结束事件");
-    // 剧本固定事件：教え見直し ×3（turn 11 / 35 / 59）
-    assert_eq!(count(400015105), 3, "教え見直し事件按 3 个窗口结算");
+    // 剧本固定事件：駿大祭合宿の申し出 ×3（turn 11 / 35 / 59）
+    assert_eq!(count(400015104), 3, "合宿直前友人事件按 3 个窗口结算");
     // 友人链：首次事件 / 训练后事件（40%）/ 出行解锁 / 正月 / 结局
     assert!(count(809052001) >= 1, "首次点击事件应发生");
     assert!(count(809052032) >= 1, "训练后点击事件应发生");
@@ -1891,11 +1892,99 @@ fn s6_event_chain_over_full_run() -> Result<()> {
     let big_eater = count(5010);
     assert!(big_eater <= 3, "大胃王最多 3 次");
     println!(
-        "S6 整局事件链：通用固定 ✓ / 教え見直し ×{} / 友人链 first+click+out+newyear+end ✓ / 随机≥{} / 大胃王 {} 次",
-        count(400015105),
+        "S6 整局事件链：通用固定 ✓ / 合宿直前友人 ×{} / 友人链 first+click+out+newyear+end ✓ / 随机≥{} / 大胃王 {} 次",
+        count(400015104),
         random_events,
         big_eater
     );
+    Ok(())
+}
+
+/// 固定动作下标 + 记录事件选项的训练员（追加稽古端到端用）
+struct KensanRecorder {
+    /// `select_action` 固定返回的动作下标
+    action_index: usize,
+    /// Trainer 被询问过的事件 id（按顺序）
+    seen_events: RefCell<Vec<u32>>,
+}
+
+impl Trainer<MatsuriGame> for KensanRecorder {
+    fn select_action(
+        &self,
+        _game: &MatsuriGame,
+        actions: &[Action],
+        _rng: &mut StdRng,
+    ) -> Result<usize> {
+        Ok(self.action_index.min(actions.len().saturating_sub(1)))
+    }
+
+    fn select_choice(
+        &self,
+        _game: &MatsuriGame,
+        _choices: &[Vec<EventChoice>],
+        _rng: &mut StdRng,
+    ) -> Result<usize> {
+        Ok(0)
+    }
+
+    fn select_event_choice(
+        &self,
+        _game: &MatsuriGame,
+        event: &umaai_core::gamedata::EventData,
+        _choices: &[Vec<EventChoice>],
+        _rng: &mut StdRng,
+    ) -> Result<usize> {
+        self.seen_events.borrow_mut().push(event.id);
+        Ok(0)
+    }
+}
+
+/// 追加稽古端到端：训练成功且绑定演目担当参与 → Turn 末尾由 Trainer 选择 400015106
+#[test]
+fn kensan_event_presented_to_trainer_at_turn_end() -> Result<()> {
+    let repo = Repo::load()?;
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    // 构造：T20 普通回合、研鑽（701）转成在演目 0、体力拉满保证训练成功
+    game.base.turn = 20;
+    game.plan = TurnPlan::default();
+    game.advice.acquired = true;
+    game.advice.slots = [101, 201, 301, 401, 501];
+    game.advice.fused = [701, 0, 0, 0, 0];
+    game.acts.level = [3; 5];
+    game.uma_mut().vital = 100;
+    game.uma_mut().max_vital = 100;
+    let person = game
+        .persons
+        .iter()
+        .position(|person| person.act == Some(0))
+        .expect("演目 0 应有担当");
+    game.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
+    game.kensan_pending = true;
+    // Train 阶段：选训练 0（参与者含研鑽担当）
+    game.stage = Stage::Train;
+    let trainer = KensanRecorder {
+        action_index: 0,
+        seen_events: RefCell::new(Vec::new()),
+    };
+    let mut decision = StdRng::seed_from_u64(5);
+    game.run_stage(&trainer, &mut decision)?;
+    assert!(!game.kensan_pending, "成功训练且担当参与 → 追加稽古兑现");
+    assert!(
+        game.unresolved_events
+            .iter()
+            .any(|event| event.id == 400015106),
+        "追加稽古事件应在训练后入队"
+    );
+    // AfterTrain 阶段：事件必须交给 Trainer 选择并结算
+    game.stage = Stage::AfterTrain;
+    game.run_stage(&trainer, &mut decision)?;
+    assert!(
+        trainer.seen_events.borrow().contains(&400015106),
+        "AfterTrain 应向 Trainer 呈递追加稽古事件：{:?}",
+        trainer.seen_events.borrow()
+    );
+    assert_eq!(event_count(&game, 400015106), 1, "选择后追加稽古应完成结算");
+    println!("追加稽古端到端：训练后入队 → AfterTrain 由 Trainer 选择上/下档");
     Ok(())
 }
 

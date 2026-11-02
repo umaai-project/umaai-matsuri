@@ -62,6 +62,10 @@ const ANSI_BRIGHT_GREEN: &str = "92";
 const ANSI_BRIGHT_CYAN: &str = "96";
 /// ANSI 前景色：事件名
 const ANSI_BRIGHT_BLUE: &str = "94";
+/// ANSI 前景色：研鑽（追加稽古）担当（非彩圈时）
+const ANSI_BRIGHT_MAGENTA: &str = "95";
+/// ANSI 前景色：助力担当（稽古触发助力支撑）
+const ANSI_YELLOW: &str = "33";
 /// ANSI 前景色：Hint 叹号 / 提醒
 const ANSI_BRIGHT_YELLOW: &str = "93";
 /// ANSI 前景色：NPC / 无数据
@@ -127,6 +131,39 @@ fn advice_name(id: i32) -> String {
     text_name("463", &id.to_string())
         .map(|name| name.trim_end_matches("教诲").to_string())
         .unwrap_or_else(|| advice_fallback(id).map_or_else(|| format!("#{id}"), str::to_string))
+}
+
+/// 显示属性压缩：>1200 的部分显示时减半向下取整（计分仍用原始值）
+///
+/// 例：原始 1600 → 显示 1400；原始上限 3179 → 显示 2189。
+fn display_status(value: i32) -> i32 {
+    if value <= 1200 {
+        value
+    } else {
+        1200 + (value - 1200) / 2
+    }
+}
+
+/// 训练表人物颜色：彩圈亮绿 > 助力黄 > 研鑽紫 > 类型底色
+fn member_color(
+    origin: PersonOrigin,
+    shining: bool,
+    kensan_bound: bool,
+    assist_bound: bool,
+) -> Option<&'static str> {
+    if origin == PersonOrigin::Card && shining {
+        Some(ANSI_BRIGHT_GREEN)
+    } else if assist_bound {
+        Some(ANSI_YELLOW)
+    } else if kensan_bound {
+        Some(ANSI_BRIGHT_MAGENTA)
+    } else {
+        match origin {
+            PersonOrigin::Card => Some(ANSI_WHITE),
+            PersonOrigin::Friend => Some(ANSI_GREEN),
+            PersonOrigin::Guest | PersonOrigin::Yayoi | PersonOrigin::Reporter => Some(ANSI_GRAY),
+        }
+    }
 }
 
 /// 增减量色调：正绿 / 负红 / 零默认
@@ -265,11 +302,14 @@ fn act_members(view: &MatsuriView, act: usize, color: bool) -> String {
     }
 }
 
-/// 单个人头在训练位的显示（类型着色 + Hint 亮黄叹号 + 未满 100 的羁绊）
+/// 单个人头在训练位的显示（类型 / 研鑽 / 助力着色 + Hint 亮黄叹号 + 未满 100 的羁绊）
+///
+/// `keiko` = 该训练位本回合是否按稽古处理（助力支撑只在稽古成功时触发）。
 fn person_label(
     view: &MatsuriView,
     person_index: usize,
     shining: bool,
+    keiko: bool,
     color: bool,
 ) -> Option<String> {
     let person = view.board.persons.get(person_index)?;
@@ -280,20 +320,14 @@ fn person_label(
     } else {
         name
     };
-    let body = match person.origin {
-        PersonOrigin::Card => {
-            let code = if shining {
-                Some(ANSI_BRIGHT_GREEN)
-            } else {
-                Some(ANSI_WHITE)
-            };
-            paint(&body, code, color)
-        }
-        PersonOrigin::Friend => paint(&body, Some(ANSI_GREEN), color),
-        PersonOrigin::Guest | PersonOrigin::Yayoi | PersonOrigin::Reporter => {
-            paint(&body, Some(ANSI_GRAY), color)
-        }
-    };
+    // 教诲绑定：研鑽（追加稽古）全表标记；助力只在稽古位标记
+    let kensan_bound = person.act.is_some() && person.act == view.resources.kensan_act;
+    let assist_bound = keiko && person.act.is_some() && person.act == view.resources.assist_act;
+    let body = paint(
+        &body,
+        member_color(person.origin, shining, kensan_bound, assist_bound),
+        color,
+    );
     Some(if person.hint {
         format!("{}{body}", paint("!", Some(ANSI_BRIGHT_YELLOW), color))
     } else {
@@ -303,13 +337,16 @@ fn person_label(
 
 /// 一个训练位的全部人头（一格内多行；无人显示 —）
 fn person_cell(view: &MatsuriView, train: usize, color: bool) -> String {
+    // 该列是否按稽古处理（合宿 / URA 全列；日常仅槽满列）：助力支撑只在稽古成功时触发
+    let act = act_of_train(view, train);
+    let keiko = view.turn.practice.get(act).copied().unwrap_or(false);
     let members: Vec<String> = view
         .board
         .distribution
         .get(train)
         .map_or(&[][..], Vec::as_slice)
         .iter()
-        .filter_map(|member| person_label(view, member.person, member.shining, color))
+        .filter_map(|member| person_label(view, member.person, member.shining, keiko, color))
         .collect();
     if members.is_empty() {
         "—".to_string()
@@ -476,6 +513,8 @@ struct Snapshot {
     total_hints: i32,
     vital: i32,
     motivation: i32,
+    /// 演目槽（比赛 +4 / 休息·出行 +1 / 训练参与 / 稽古清槽的落点可核对）
+    act_gauge: [i32; 5],
     act_level: [i32; 5],
 }
 
@@ -488,6 +527,7 @@ impl Snapshot {
             total_hints: view.uma.total_hints,
             vital: view.uma.vital,
             motivation: view.uma.motivation,
+            act_gauge: view.resources.act_gauge,
             act_level: view.resources.act_level,
         }
     }
@@ -605,6 +645,7 @@ impl ManualTrainer {
 
     /// 事件回显：打印「自上次提示以来」新结算的事件
     fn write_new_events(&self, view: &MatsuriView, out: &mut String) {
+        let color = term::use_color(false);
         let last_seq = self.last_event_seq.get();
         let fresh: Vec<_> = view
             .recent_events
@@ -624,7 +665,11 @@ impl ManualTrainer {
             let _ = writeln!(
                 out,
                 "  · T{} #{} {}（选项{}）{}",
-                record.turn, record.id, record.name, record.choice, detail
+                record.turn,
+                record.id,
+                paint(&record.name, Some(ANSI_BRIGHT_BLUE), color),
+                record.choice,
+                detail
             );
         }
         self.last_event_seq.set(max_seq);
@@ -700,6 +745,34 @@ impl ManualTrainer {
         if !levels.is_empty() {
             let _ = writeln!(out, "【演目Lv】{}", levels.join(" "));
         }
+        // 演目槽变化：比赛 / 休息 / 出行 / 训练参与 / 稽古清槽的落点
+        let gauges: Vec<String> = (0..5)
+            .filter(|act| now.act_gauge[*act] != last.act_gauge[*act])
+            .map(|act| {
+                // 稽古成功清槽（归零）与普通增减分开表述 / 着色
+                if now.act_gauge[act] == 0 {
+                    paint(
+                        &format!("{}清空", act_short(act)),
+                        Some(ANSI_BRIGHT_YELLOW),
+                        color,
+                    )
+                } else {
+                    paint(
+                        &format!(
+                            "{} {}→{}",
+                            act_short(act),
+                            last.act_gauge[act],
+                            now.act_gauge[act]
+                        ),
+                        delta_tone(now.act_gauge[act] - last.act_gauge[act]),
+                        color,
+                    )
+                }
+            })
+            .collect();
+        if !gauges.is_empty() {
+            let _ = writeln!(out, "【演目槽】{}", gauges.join(" "));
+        }
     }
 
     /// 五维 / 体力 / 状态
@@ -742,13 +815,16 @@ impl ManualTrainer {
             motivation_code,
             color,
         );
+        // 显示值按游戏口径压缩（>1200 的部分减半），计分仍用原始值
         let axes: Vec<String> = (0..5)
             .map(|axis| {
                 let near_limit = uma.five_status_limit[axis] > 0
                     && uma.five_status[axis] * 10 >= uma.five_status_limit[axis] * 9;
                 let text = format!(
                     "{} {}/{}",
-                    AXIS_NAMES[axis], uma.five_status[axis], uma.five_status_limit[axis]
+                    AXIS_NAMES[axis],
+                    display_status(uma.five_status[axis]),
+                    display_status(uma.five_status_limit[axis])
                 );
                 paint(&text, near_limit.then_some(ANSI_BRIGHT_YELLOW), color)
             })
@@ -943,15 +1019,26 @@ impl ManualTrainer {
             Some(ANSI_BRIGHT_CYAN),
             color,
         )];
-        if res.assist_support_left > 0 {
-            extras.push(paint(
-                &format!("助力支撑 ×{}", res.assist_support_left),
-                Some(ANSI_BRIGHT_CYAN),
-                color,
-            ));
+        // 助力支撑：剩余次数 + 触发演目（该演目担当参与稽古成功时获得 / 重置）
+        if let Some(act) = res.assist_act {
+            let text = if res.assist_support_left > 0 {
+                format!(
+                    "助力支撑 ×{}（触发 {}）",
+                    res.assist_support_left,
+                    act_short(act)
+                )
+            } else {
+                format!("助力支撑 0（{}担当稽古→+3）", act_short(act))
+            };
+            extras.push(paint(&text, Some(ANSI_BRIGHT_CYAN), color));
         }
+        // 追加稽古：掷中 + 研鑽绑定演目 / 发生率（未点含该演目担当的训练则作废）
         if res.kensan_pending {
-            extras.push(paint("追加稽古 掷中", Some(ANSI_BRIGHT_YELLOW), color));
+            let text = match res.kensan_act {
+                Some(act) => format!("追加稽古 掷中·{}({}%)", act_short(act), res.kensan_rate),
+                None => "追加稽古 掷中".to_string(),
+            };
+            extras.push(paint(&text, Some(ANSI_BRIGHT_YELLOW), color));
         }
         if res.train_level_bonus.iter().any(|bonus| *bonus != 0) {
             extras.push(format!("訓練Lv加成 {:?}", res.train_level_bonus));
@@ -1002,6 +1089,21 @@ impl ManualTrainer {
         out.push_str("【训练】\n");
         out.push_str(&grid.render(term::resolve_width(None)));
         out.push('\n');
+        // 人物配色图例（只列本局存在的教诲来源）
+        let mut legend: Vec<String> = Vec::new();
+        if view.resources.kensan_act.is_some() {
+            legend.push(paint(
+                "亮紫=研鑽担当（追加稽古）",
+                Some(ANSI_BRIGHT_MAGENTA),
+                color,
+            ));
+        }
+        if view.resources.assist_act.is_some() {
+            legend.push(paint("黄=助力担当（稽古触发）", Some(ANSI_YELLOW), color));
+        }
+        if !legend.is_empty() {
+            let _ = writeln!(out, "  配色：{}", legend.join("  "));
+        }
     }
 
     /// 合宿 / 友人链 / 赛程 / 编成警告
@@ -1038,7 +1140,13 @@ impl ManualTrainer {
                     data.events
                         .friend_events
                         .get(&(step + 1).to_string())
-                        .map(|event| format!("（#{} {}）", event.id, event.name))
+                        .map(|event| {
+                            format!(
+                                "（#{} {}）",
+                                event.id,
+                                paint(&event.name, Some(ANSI_BRIGHT_BLUE), color)
+                            )
+                        })
                 })
             })
             .unwrap_or_default();
@@ -1127,6 +1235,46 @@ impl ManualTrainer {
         }
     }
 
+    /// 动作会触发的剧本资源标记：`(追加稽古, 助力支撑)`
+    ///
+    /// 判定与结算同口径：追加稽古看该训练位参与者是否含研鑽绑定演目担当；
+    /// 助力支撑只在稽古位且参与者含助力绑定演目担当时成立。
+    fn action_marks(view: &MatsuriView, action: &Action) -> (bool, bool) {
+        let (train, keiko) = match action {
+            Action::Train(train) => (usize::from(*train), false),
+            Action::ActTrain(act) => {
+                let act = usize::from(*act);
+                let train = view.resources.act_trains.get(act).copied().unwrap_or(act);
+                let keiko = view.turn.practice.get(act).copied().unwrap_or(false);
+                (train, keiko)
+            }
+            _ => return (false, false),
+        };
+        let res = &view.resources;
+        let mut kensan = false;
+        let mut assist = false;
+        for member in view
+            .board
+            .distribution
+            .get(train)
+            .map_or(&[][..], Vec::as_slice)
+        {
+            let Some(person) = view.board.persons.get(member.person) else {
+                continue;
+            };
+            let Some(act) = person.act else {
+                continue;
+            };
+            if res.kensan_pending && Some(act) == res.kensan_act {
+                kensan = true;
+            }
+            if keiko && Some(act) == res.assist_act {
+                assist = true;
+            }
+        }
+        (kensan, assist)
+    }
+
     /// 单个动作的说明（训练带成功收益预览与失败率；末尾附剧本资源增量）
     fn describe_action(
         &self,
@@ -1188,18 +1336,23 @@ impl ManualTrainer {
             Action::NormalOuting => "普通出行（随机出行事件：体力 / 属性 / 干劲）".to_string(),
             Action::FriendOuting => {
                 let step = view.friend.next_step.map_or(0, |step| step + 1);
-                let name = view
-                    .friend
-                    .next_step
-                    .and_then(|step| {
-                        Data::get().ok().and_then(|data| {
-                            data.events
-                                .friend_events
-                                .get(&(step + 1).to_string())
-                                .map(|event| format!("：#{} {}", event.id, event.name))
+                let name =
+                    view.friend
+                        .next_step
+                        .and_then(|step| {
+                            Data::get().ok().and_then(|data| {
+                                data.events.friend_events.get(&(step + 1).to_string()).map(
+                                    |event| {
+                                        format!(
+                                            "：#{} {}",
+                                            event.id,
+                                            paint(&event.name, Some(ANSI_BRIGHT_BLUE), color)
+                                        )
+                                    },
+                                )
+                            })
                         })
-                    })
-                    .unwrap_or_default();
+                        .unwrap_or_default();
                 format!("友人出行第 {step} 段{name}（最低演目槽 Lv+1 + 段事件）")
             }
             Action::Clinic => "治病（体力 +20；清空生病位与不擅长训练）".to_string(),
@@ -1208,7 +1361,15 @@ impl ManualTrainer {
                 assign.slots().map(|slot| slot.to_string()).join(" ")
             ),
         };
-        format!("{body}{}", gauge_suffix(game, action, color))
+        let mut suffix = gauge_suffix(game, action, color);
+        let (kensan, assist) = Self::action_marks(view, action);
+        if kensan {
+            suffix.push_str(&paint("  追稽✓", Some(ANSI_BRIGHT_YELLOW), color));
+        }
+        if assist {
+            suffix.push_str(&paint("  助力支撑✓", Some(ANSI_YELLOW), color));
+        }
+        format!("{body}{suffix}")
     }
 
     /// 打印局面面板 + 动作候选
@@ -1270,9 +1431,13 @@ impl ManualTrainer {
             .zip(res.advice_fused.iter())
             .enumerate()
         {
-            let mut text = format!("{}←{}", act_short(act), base);
+            let mut text = if *base == 0 {
+                format!("{}←—", act_short(act))
+            } else {
+                format!("{}←{} {}", act_short(act), base, advice_name(*base))
+            };
             if *fused != 0 {
-                text.push_str(&format!("→{fused}"));
+                text.push_str(&format!("→{} {}", fused, advice_name(*fused)));
             }
             cells.push(paint(&text, Some(ANSI_BRIGHT_CYAN), color));
         }
@@ -1479,5 +1644,46 @@ mod tests {
         assert_eq!(delta_tone(3), Some(ANSI_GREEN));
         assert_eq!(delta_tone(-3), Some(ANSI_RED));
         assert_eq!(delta_tone(0), None);
+    }
+
+    #[test]
+    fn test_display_status_compression() {
+        assert_eq!(display_status(0), 0);
+        assert_eq!(display_status(1199), 1199, "1200 以下不变");
+        assert_eq!(display_status(1200), 1200);
+        assert_eq!(display_status(1201), 1200, "超出部分向下取整");
+        assert_eq!(display_status(1600), 1400, "1600 显示 1400");
+        assert_eq!(display_status(3179), 2189, "上限 3179 显示 2189");
+    }
+
+    #[test]
+    fn test_member_color_priority() {
+        // 彩圈最高：即使命中研鑽 / 助力也保持亮绿
+        assert_eq!(
+            member_color(PersonOrigin::Card, true, true, true),
+            Some(ANSI_BRIGHT_GREEN)
+        );
+        // 助力黄 > 研鑽紫 > 类型底色
+        assert_eq!(
+            member_color(PersonOrigin::Card, false, true, true),
+            Some(ANSI_YELLOW)
+        );
+        assert_eq!(
+            member_color(PersonOrigin::Guest, false, true, false),
+            Some(ANSI_BRIGHT_MAGENTA),
+            "NPC 研鑽担当也标亮紫"
+        );
+        assert_eq!(
+            member_color(PersonOrigin::Card, false, false, false),
+            Some(ANSI_WHITE)
+        );
+        assert_eq!(
+            member_color(PersonOrigin::Friend, false, false, false),
+            Some(ANSI_GREEN)
+        );
+        assert_eq!(
+            member_color(PersonOrigin::Guest, false, false, false),
+            Some(ANSI_GRAY)
+        );
     }
 }

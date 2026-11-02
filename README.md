@@ -59,7 +59,7 @@
   四档绿（**81 内联 + 13 L2 + 25 机制 = 119 测例**）；整局冒烟（样例训练员）**34368 分 / UE9、
   PT 6128、390 阶段**（random 基线 19516 分 / SS+、PT 3985）。
 - **S6 事件管线（2026-11-01）**：回合开始事件链落地——①**固定事件**（引擎通用 `story_events` +
-  剧本固定 `scenario_events`：`400015105` 教え見直し turn 11/35/59、`400015106` 追加の稽古代码触发）；
+  剧本固定 `scenario_events`：`400015104` 駿大祭合宿の申し出 turn 11/35/59、`400015106` 追加の稽古代码触发）；
   ②**随机分布**（支援卡连续事件 / 马娘事件 / 掉心情，分布与数值按引擎 `constants.json` / `events.json`
   原始值；支援卡事件候选只取可用支援卡人头，友人 / 团队不计入）；③**合宿抑制**合并为单一判定
   （第 1 年合宿允许、第 2/3 年常规与延长段抑制随机事件；非合宿回合沿用引擎 `no_event_turns` 基线，
@@ -72,6 +72,22 @@
   与继承特殊结算。四档绿（**95 内联 + 15 L2 + 27 机制 = 137 测例**）；整局冒烟（样例训练员）
   **44946 分 / UC6、PT 7496、390 阶段**（S6 事件收益接入后的预期位移；S9 前不建基线）。
   策略训练员（S7）已于 2026-11-02 落地；搜索（M2）、技能灵感与粉丝不建模（TBD）留后续。
+- **手动面板显示第五轮 + 追加稽古 / 助力支撑显示与判定（2026-11-05）**：①**教诲选择提示补名称**
+  （`流镝←101 牵绊`）；②**追加稽古 / 助力支撑可视化**——`ResourceView` 增 `kensan_act` / `kensan_rate` /
+  `assist_act` 只读派生字段；资源行标「追加稽古 掷中·演目(概率)」「助力支撑 ×N（触发 演目）」；动作候选
+  可兑现时标 `追稽✓ / 助力支撑✓`；训练表加配色图例；掷中未兑现诊断「未选择追加稽古训练」；
+  ③**演目槽落点显示**：面板「变化」区新增 `【演目槽】演目 x→y / 清空`，手写档比赛 / 休息 / 出行 /
+  友人出行入槽各出 `【演目槽】… 入槽` diag；④**合宿直前事件改挂 `400015104 駿大祭合宿の申し出`**
+  （体力+15 / 干劲+1，数值沿用 STUB）；⑤**五维显示值按 >1200 减半**（值与上限都压缩；评分 / 收益 /
+  变化量仍用原始值）；⑥**所有事件名亮蓝**；⑦**训练表人物配色**：非彩圈研鑽担当（含 NPC）亮紫、
+  稽古列助力担当黄。另修 `value.rs::kensan_bonus` 稽古分支改为参与者口径（与 `try_kensan` 一致）。
+  **另修友人 / 理事长记者落位**：⑧**理事长 / 记者不会出现在稽古训练位**（有稽古位时只落非稽古位；
+  全稽古回合 = 合宿 / URA / 5 槽全满时本回合完全不出现）；⑨**吾妻只要有稽古训练就必补到某个未满 5 人的
+  稽古位**（补位顺序改到锁位后、其余人头前；不判不在、不去普通位；唯一稽古位必定命中），无稽古回合走
+  通用不在判定（实现 `practice_train_mask` / `place_guest_outside_practice` + 2 个守门测试）。
+  四档绿（**123 内联 + 15 L2 + 31 机制 + 1 diag + 7 CLI 内联 + 1 CLI 冒烟 = 178 测例**）。
+  **基准种子改为 61444**（原 42；落位修正后单 seed 波动过大，换参考 seed）：整局冒烟
+  **56210 / UA1、PT 9131**（旧 seed 42：49587 / UB2、PT 8433；S9 前不建基线）。
 - **S7 手写训练员（2026-11-02）**：`MatsuriTrainer` 换成手写策略——①**目标口径 = pt_favor**
   （官方评分 `五维查表 + PT×pt_score_rate`，再乘 `pt_favor_rate × PT`；`1.0` = 官方评分，默认 `2.0`）；
   ②**策略旋钮进剧本配置** `MatsuriConfig [trainer]`（pt_favor / 休息阈值 / 発表会达标保护 /
@@ -140,7 +156,7 @@
 | `crates/matsuri-core/src/game/person.rs` | 剧本人头 `MatsuriPerson` + 来源 `PersonOrigin`（与引擎 `PersonType` 分工见文档） |
 | `crates/matsuri-core/src/game/roster.rs` | 建局人头名单 + 担当分配（link 钉位 / 外派链 / NPC 余额） |
 | `crates/matsuri-core/src/game/deck.rs` | 编成检测：禁止项 / 警告项（`DeckError` / `DeckWarning` / `DeckReport`） |
-| `crates/matsuri-core/src/game/distribute.rs` | 人头分布（亮起锁担当 / 不在率 / 吾妻补位 / 分身）+ 得意率 / 灵感分配 |
+| `crates/matsuri-core/src/game/distribute.rs` | 人头分布（亮起锁担当 / 不在率 / 吾妻补位 / 分身）+ 得意率 / 灵感分配；**理事长·记者不落稽古位（全稽古回合不出现）；吾妻有稽古必补未满稽古位** |
 | `crates/matsuri-core/src/game/event.rs` | 事件管线：回合开始事件链（固定 / 随机分布 / 合宿抑制 / 友人解锁）/ 友人链事件扩展 / 追加稽古事件 / 疲劳回复与变胖 / turn 66 hint 记账 |
 | `crates/matsuri-core/src/game/train.rs` | 训练结算：下层引擎公式 + 上层剧本乘区 / 封顶 + 失败率 + 训练后处理（羁绊 / 灵感 / 加练 / 追加稽古事件 / 友人点击 / 变胖速度归零） |
 | `crates/matsuri-core/src/game/advice.rs` | 教诲：槽效果聚合（按绑定演目 Lv × 参与人数）/ 融合 / 分配接口 |
@@ -151,7 +167,7 @@
 | `crates/matsuri-core/src/config.rs` | 剧本配置段（融合 / 転成预设 + 覆盖层） |
 | `crates/matsuri-core/src/trainer.rs` | 样例训练员 `MatsuriTrainer` |
 | `crates/matsuri-cli/src/main.rs` | 终端前端：bin `matsuri`（跑局；`matsuri` / `random` / `manual` 训练员选择） |
-| `crates/matsuri-cli/src/manual.rs` | 手动核对面板（S8）：状态全部从 `MatsuriView` 取（纯呈现）；育成配置 + 彩色训练明细表（人物着色 / Hint 叹号 / 羁绊）+ 剧本资源与教诲分配结果 + 合宿（仅合宿回合）·友人链·赛程 + 动作槽增量预览 + Inquire 动作 / 事件选择 |
+| `crates/matsuri-cli/src/manual.rs` | 手动核对面板（S8）：状态全部从 `MatsuriView` 取（纯呈现）；育成配置 + 彩色训练明细表（人物着色：彩圈 / 研鑽紫 / 助力黄 / Hint 叹号 / 羁绊）+ 剧本资源与教诲分配结果（含教诲名称）+ 合宿（仅合宿回合）·友人链·赛程 + 五维与上限显示压缩（>1200 减半）+ 动作槽增量 / 追稽 / 助力支撑标记 + 演目槽变化行 + 事件名亮蓝 + Inquire 动作 / 事件选择 |
 | `crates/matsuri-cli/src/logging.rs` | stderr 日志器：消费 `[output] log_level`，承接引擎 / 剧本 `diag!` 记录（默认 `info`、`off` 静默） |
 | `crates/matsuri-sim` | 模拟器与基线裁判（骨架） |
 | `crates/matsuri-ai` | 在线决策核心（骨架） |
