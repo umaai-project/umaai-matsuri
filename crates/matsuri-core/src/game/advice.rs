@@ -94,22 +94,50 @@ pub(crate) struct ParticipantAdvice {
     pub participant_count: i32,
 }
 
-/// 教诲分配方案：`assign[act]` = 把「当前第几号教诲槽」分给该演目
+/// 教诲分配方案：`assign[act]` = 把「当前第几号教诲槽」分给该演目（0–4 的排列）
 ///
-/// S7 决策接口（用户 2026-11-01 拍板：S5 只落接口、不自动择优），当前暂无调用方。
-#[allow(dead_code)]
-pub(crate) type AdviceAssignment = [usize; 5];
+/// 决策接口：每个窗口把 120 个排列交给 `Trainer` 选（S7，用户拍板「合并 120 候选」）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AdviceAssignment(pub [u8; 5]);
+
+impl AdviceAssignment {
+    /// 展开成槽位下标数组（`[u8; 5]` → `[usize; 5]`）
+    #[must_use]
+    pub fn slots(self) -> [usize; 5] {
+        self.0.map(usize::from)
+    }
+}
+
+impl std::fmt::Display for AdviceAssignment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for slot in self.0 {
+            write!(f, "{}", char::from(b'0' + slot))?;
+        }
+        Ok(())
+    }
+}
 
 impl MatsuriGame {
     /// 某演目槽位的聚合效果（已按绑定演目 Lv 取级；未融合时 = 基础教诲效果）
     pub(crate) fn advice_slot_effect(&self, act: usize) -> AdviceSlotEffect {
+        if act >= 5 {
+            return AdviceSlotEffect::default();
+        }
+        let level = self.acts.level[act].clamp(1, 10) as usize;
+        self.advice_effect_of(act, level)
+    }
+
+    /// 任意槽位（`source` = 第几号槽）在指定「绑定演目 Lv」下的聚合效果
+    ///
+    /// 教诲分配估值用：槽内容与槽目前落在哪个演目无关，只看 `slots/fused` 与目标 Lv。
+    pub(crate) fn advice_effect_of(&self, source: usize, level: usize) -> AdviceSlotEffect {
         let mut out = AdviceSlotEffect::default();
-        if !self.advice.acquired || act >= 5 {
+        if !self.advice.acquired || source >= 5 {
             return out;
         }
-        let base = self.advice.slots[act];
-        let fused = self.advice.fused[act];
-        let level = self.acts.level[act].clamp(1, 10) as usize;
+        let level = level.clamp(1, 10);
+        let base = self.advice.slots[source];
+        let fused = self.advice.fused[source];
         if fused != 0 {
             if let Some(advice) = self.data.advices.iter().find(|advice| advice.id == fused) {
                 apply_advice(&mut out, &advice.effect, level);
@@ -207,10 +235,9 @@ impl MatsuriGame {
         self.advice.fused.swap(a, b);
     }
 
-    /// 枚举当前 5 个教诲槽在 5 个演目上的**全排列**（5! = 120；S7 训练员可按估值取 top-K）
+    /// 枚举当前 5 个教诲槽在 5 个演目上的**全排列**（5! = 120；首个 = 保持现状）
     ///
-    /// S7 决策接口（S5 只落接口、不自动择优），当前暂无调用方。
-    #[allow(dead_code)]
+    /// S7 决策接口：每个窗口把这 120 个候选交给 `Trainer`（合并一次决策）。
     pub(crate) fn assignment_candidates(&self) -> Vec<AdviceAssignment> {
         let mut out = Vec::with_capacity(120);
         let mut order = [0usize, 1, 2, 3, 4];
@@ -219,27 +246,44 @@ impl MatsuriGame {
     }
 
     /// 应用一个分配方案（`assign[act]` = 当前第几号教诲槽；必须是 0–4 的排列）
-    ///
-    /// S7 决策接口（S5 只落接口、不自动择优），当前暂无调用方。
-    #[allow(dead_code)]
     pub(crate) fn apply_assignment(&mut self, assign: &AdviceAssignment) -> Result<()> {
         let mut seen = [false; 5];
-        for source in assign {
-            if *source >= 5 {
+        for source in assign.slots() {
+            if source >= 5 {
                 bail!("分配方案槽位越界: {source}（应为 0–4）");
             }
-            if std::mem::replace(&mut seen[*source], true) {
+            if std::mem::replace(&mut seen[source], true) {
                 bail!("分配方案槽位重复: {source}");
             }
         }
         let slots = self.advice.slots;
         let fused = self.advice.fused;
-        for (act, source) in assign.iter().enumerate() {
-            self.advice.slots[act] = slots[*source];
-            self.advice.fused[act] = fused[*source];
+        for (act, source) in assign.slots().into_iter().enumerate() {
+            self.advice.slots[act] = slots[source];
+            self.advice.fused[act] = fused[source];
         }
         self.enforce_advice_constraints();
         Ok(())
+    }
+
+    /// 教诲分配决策：把 120 个候选交给 `Trainer`，应用选中方案（S7）
+    ///
+    /// 决策只走决策流（`decision`），不消耗结算随机；`Trainer` 确定性选择时回放可复现。
+    pub(crate) fn decide_advice_assignment<T: umasim::game::Trainer<Self>>(
+        &mut self,
+        trainer: &T,
+        decision: &mut rand::rngs::StdRng,
+    ) -> Result<()> {
+        let candidates = self.assignment_candidates();
+        let actions: Vec<super::Action> = candidates
+            .iter()
+            .map(|assign| super::Action::AssignAdvice(*assign))
+            .collect();
+        let index = trainer.select_action(self, &actions, decision)?;
+        let Some(super::Action::AssignAdvice(assign)) = actions.get(index) else {
+            bail!("教诲分配决策返回了下标 {index}，但候选不是分配方案");
+        };
+        self.apply_assignment(assign)
     }
 
     /// 找「研鑽（701）」当前所在演目（至多一个）
@@ -347,10 +391,9 @@ fn apply_fusion(out: &mut AdviceSlotEffect, effect: &FusionEffectKind) {
 }
 
 /// 生成 `order` 从 `k` 起的全排列（5! = 120；由 `assignment_candidates` 使用）
-#[allow(dead_code)]
 fn permute(order: &mut [usize; 5], k: usize, out: &mut Vec<AdviceAssignment>) {
     if k == order.len() {
-        out.push(*order);
+        out.push(AdviceAssignment(order.map(|slot| slot as u8)));
         return;
     }
     for i in k..order.len() {
@@ -374,8 +417,8 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.len(), 120, "120 个排列应互不相同");
-        assert!(out.contains(&[0, 1, 2, 3, 4]));
-        assert!(out.contains(&[4, 3, 2, 1, 0]));
+        assert!(out.contains(&AdviceAssignment([0, 1, 2, 3, 4])));
+        assert!(out.contains(&AdviceAssignment([4, 3, 2, 1, 0])));
     }
 
     /// 找一个人头下标（按担当演目 + 来源过滤）
@@ -472,10 +515,16 @@ mod tests {
         game.advice.fused = [0; 5];
         let candidates = game.assignment_candidates();
         assert_eq!(candidates.len(), 120, "5 槽全排列 120");
-        assert_eq!(candidates[0], [0, 1, 2, 3, 4], "首个排列 = 保持现状");
-        game.apply_assignment(&[4, 3, 2, 1, 0]).expect("合法排列");
+        assert_eq!(
+            candidates[0],
+            AdviceAssignment([0, 1, 2, 3, 4]),
+            "首个排列 = 保持现状"
+        );
+        game.apply_assignment(&AdviceAssignment([4, 3, 2, 1, 0]))
+            .expect("合法排列");
         assert!(
-            game.apply_assignment(&[0, 0, 1, 2, 3]).is_err(),
+            game.apply_assignment(&AdviceAssignment([0, 0, 1, 2, 3]))
+                .is_err(),
             "重复槽位应报错"
         );
         assert_eq!(game.advice.slots, [501, 401, 301, 201, 101]);

@@ -265,6 +265,8 @@ impl MatsuriGame {
                 // 教诲效果须从本回合的分布 / 训练起生效（memo §4）。
                 if self.base.turn == crate::SCENARIO_START_TURN {
                     self.acquire_advice();
+                    // S7：首次分配也交给 Trainer（合并 120 候选；确定性、不耗结算随机）
+                    self.decide_advice_assignment(trainer, decision)?;
                 }
                 // 研鑽「追加の稽古」：回合开始用策略流预掷（掷中后未点对应训练则作废）
                 self.roll_kensan(strategy);
@@ -298,8 +300,10 @@ impl MatsuriGame {
                 // 合宿计数：比赛 / 强制休息回合不计入，计满窗口长度后本次合宿结束。
                 let counted = self.plan.camp_zone && !self.plan.race && !self.forced_rest;
                 self.camp.end_turn(counted, &self.data.camp.windows);
-                // 剧本结算：発表会 / 本番 → 合宿结束全演目 Lv+1 → 教诲窗口（含 turn 23/47 転成）
+                // 剧本结算：発表会 / 本番 → 合宿结束全演目 Lv+1
                 self.settle_turn_end()?;
+                // 教诲窗口：先应用融合（配置预设），再把 120 个分配候选交给 Trainer（S7）
+                self.settle_advice_window(trainer, decision)?;
                 // turn 66（Senior 10 月前半行动后）进化技能：只记 hint_level + 1
                 self.apply_evolution_hint();
             }

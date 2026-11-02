@@ -30,6 +30,7 @@ pub mod data;
 pub mod game;
 pub mod testing;
 pub mod trainer;
+mod value;
 
 pub use config::MatsuriConfig;
 pub use data::MatsuriData;

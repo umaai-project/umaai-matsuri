@@ -5,10 +5,12 @@
 //! 一次性奖励直接在 `End` 入账（技能灵感不建模，登记 TBD）。
 
 use anyhow::Result;
+use rand::rngs::StdRng;
 use umaai_core::gamedata::ActionValue;
-use umasim::game::{Game, PersonType};
+use umasim::game::{Game, PersonType, Trainer};
 
 use super::MatsuriGame;
+use crate::config::FusionPair;
 use crate::data::{CheckPointResult, Reward, RewardResult};
 
 impl MatsuriGame {
@@ -23,10 +25,6 @@ impl MatsuriGame {
             for act in 0..5 {
                 self.add_act_level(act, 1);
             }
-        }
-        // 3) 教诲窗口（turn 2 / 11 / 23 / 35 / 47 / 59 的 End，剧本结算之后）
-        if let Some(window) = self.plan.advice_window {
-            self.settle_advice_window(window)?;
         }
         Ok(())
     }
@@ -85,26 +83,36 @@ impl MatsuriGame {
         let _ = reward.act_member_add;
     }
 
-    /// 教诲窗口：首次授予 / 融合 / 调整（默认只做机械操作，不做策略择优；S7 接管）
-    fn settle_advice_window(&mut self, window: usize) -> Result<()> {
-        match window {
-            // turn 2 的首次授予在 Begin 阶段完成（NPC / 友人加入后立即；见 stage.rs），
-            // End 的窗口 0 不再重复授予。
-            0 => {}
-            // turn 23：第 2 年融合（2 组）+ 槽位重排（默认保持）
-            2 => {
-                let pairs = self.config.fusion.year2.clone();
-                self.apply_fusion_pairs(&pairs)?;
-            }
-            // turn 47：第 3 年融合（剩余 3 组）+ 槽位重排（默认保持）
-            4 => {
-                let pairs = self.config.fusion.year3.clone();
-                self.apply_fusion_pairs(&pairs)?;
-            }
-            // turn 11 / 35 / 59：可改派窗口；默认保持现有排列
-            _ => {}
+    /// 教诲窗口（`End` 阶段、剧本结算之后）：融合（配置预设）→ 分配（交给 Trainer）
+    ///
+    /// 窗口表 = turn 2 / 11 / 23 / 35 / 47 / 59；turn 2 的首次授予与分配在 `Begin`
+    /// （`stage.rs`），End 的窗口 0 不再重复处理。
+    pub(crate) fn settle_advice_window<T: Trainer<Self>>(
+        &mut self,
+        trainer: &T,
+        decision: &mut StdRng,
+    ) -> Result<()> {
+        let Some(window) = self.plan.advice_window else {
+            return Ok(());
+        };
+        if window == 0 {
+            return Ok(());
         }
-        Ok(())
+        // 先融合（turn 23 / 47），再让 Trainer 选 5 槽分配；其他窗口只做分配
+        let pairs = self.fusion_plan(window);
+        if !pairs.is_empty() {
+            self.apply_fusion_pairs(&pairs)?;
+        }
+        self.decide_advice_assignment(trainer, decision)
+    }
+
+    /// 本窗口的融合配对来源（**当前 = 配置预设**；将来若交给 Trainer，只改这一个函数）
+    fn fusion_plan(&self, window: usize) -> Vec<FusionPair> {
+        match window {
+            2 => self.config.fusion.year2.clone(),
+            4 => self.config.fusion.year3.clone(),
+            _ => Vec::new(),
+        }
     }
 
     /// 育成终了奖励（`on_simulation_end`）：三场全大成功 → 大成功档，否则成功档
@@ -141,9 +149,34 @@ fn reward_result(result: CheckPointResult) -> Option<RewardResult> {
 
 #[cfg(test)]
 mod tests {
-    use umasim::game::{Game, Person, PersonType};
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+    use umasim::game::{Game, Person, PersonType, Trainer};
 
     use super::*;
+
+    /// 保持现状的训练员（教诲分配返回 0 = 恒等排列）
+    struct KeepTrainer;
+
+    impl Trainer<MatsuriGame> for KeepTrainer {
+        fn select_action(
+            &self,
+            _game: &MatsuriGame,
+            _actions: &[crate::game::Action],
+            _rng: &mut StdRng,
+        ) -> Result<usize> {
+            Ok(0)
+        }
+
+        fn select_choice(
+            &self,
+            _game: &MatsuriGame,
+            _choices: &[Vec<umaai_core::gamedata::EventChoice>],
+            _rng: &mut StdRng,
+        ) -> Result<usize> {
+            Ok(0)
+        }
+    }
 
     #[test]
     fn first_check_point_great_success_applies_reward() {
@@ -222,12 +255,14 @@ mod tests {
         assert_eq!(game.acts.level, [2, 3, 4, 5, 6], "合宿结束全演目 Lv+1");
     }
 
-    /// turn 2 的首次授予在 Begin 阶段完成，End 的窗口 0 不再授予
+    /// turn 2 的首次授予在 Begin 阶段完成，End 的窗口 0 不再授予（保持训练员 = 不重排）
     #[test]
     fn advice_window_zero_does_not_acquire_at_end() {
         let mut game = crate::testing::sample_game();
         game.plan.advice_window = Some(0);
-        game.settle_turn_end().expect("结算失败");
+        let mut decision = StdRng::seed_from_u64(3);
+        game.settle_advice_window(&KeepTrainer, &mut decision)
+            .expect("结算失败");
         assert!(!game.advice.acquired, "T2 首次授予在 Begin，End 不再授予");
     }
 
@@ -240,13 +275,16 @@ mod tests {
         assert_eq!(game.advice.slots, [101, 201, 301, 401, 501]);
         assert_eq!(game.advice.fused, [0; 5]);
 
+        let mut decision = StdRng::seed_from_u64(3);
         game.plan.advice_window = Some(2);
-        game.settle_turn_end().expect("结算失败");
+        game.settle_advice_window(&KeepTrainer, &mut decision)
+            .expect("结算失败");
         assert_eq!(game.advice.fused[0], 601, "第 2 年融合 101 → 601");
         assert_eq!(game.advice.fused[1], 701, "第 2 年融合 201 → 701");
 
         game.plan.advice_window = Some(4);
-        game.settle_turn_end().expect("结算失败");
+        game.settle_advice_window(&KeepTrainer, &mut decision)
+            .expect("结算失败");
         assert!(
             game.advice.fused.iter().all(|fused| *fused != 0),
             "第 3 年全部融合"

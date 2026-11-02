@@ -48,7 +48,8 @@
 | `crates/matsuri-core/src/game/action.rs` | `Action` + `Display` + `ActionEnum` + 动作结算入口 |
 | `crates/matsuri-core/src/game/traits.rs` | 契约 impl（`Game` / `TrainingValueSource` / `FlatSearchGame`） |
 | `crates/matsuri-core/src/{data,config}.rs` | 剧本资产 schema / 剧本配置段 |
-| `crates/matsuri-core/src/trainer.rs` | 样例训练员（真实剧本换成自己的手写 / 搜索训练员） |
+| `crates/matsuri-core/src/trainer.rs` | 手写训练员（守门链 + 打分表 + 事件选项 + 教诲分配择优；搜索训练员 M2 另加） |
+| `crates/matsuri-core/src/value.rs` | 训练员估值层（官方评分边际 + pt_favor + 动作 / 事件 / 教诲分配折算；私有模块） |
 | `crates/matsuri-core/src/testing.rs` | 测试定位件（仓根 / 数据根） |
 | `crates/matsuri-sim` | 离线模拟：跑一局 / 批量跑局 / 基线裁判 / 测卡；只出 lib |
 | `crates/matsuri-ai` | 在线决策：帧段解析 / Session 接线 / 决策循环；只出 lib |

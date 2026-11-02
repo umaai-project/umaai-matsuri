@@ -4,6 +4,7 @@
 //! 训练员用样例 `MatsuriTrainer`：本阶段只关心回合边界，不关心具体选了什么动作。
 //! 数据根统一经 `matsuri_core::testing::data_dir()` 取仓根 `data/`（引擎静态表 + 剧本资产）。
 
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -764,6 +765,13 @@ impl Trainer<MatsuriGame> for ScriptedTrainer {
         actions: &[Action],
         _rng: &mut StdRng,
     ) -> Result<usize> {
+        // 教诲分配决策点：脚本训练员统一保持现状（恒等排列），不影响动作脚本
+        if actions
+            .iter()
+            .all(|action| matches!(action, Action::AssignAdvice(_)))
+        {
+            return Ok(0);
+        }
         actions
             .iter()
             .position(|action| action == &self.action)
@@ -1190,6 +1198,8 @@ fn outing_actions() -> Result<()> {
     let mut game = repo.game(repo.cfg.sim.uma)?;
     drive_to_turn(&mut game, 27)?;
     game.base.friend.out_state = FriendOutState::AfterUnlock;
+    // 新训练员可能已在前面回合用掉部分友人出行；本用例从 5 段全未用开始，保持测例意图
+    game.base.friend.out_used = vec![false; 5];
     let friend_index = game
         .persons()
         .iter()
@@ -1199,6 +1209,21 @@ fn outing_actions() -> Result<()> {
     let before = Stats::of(&game);
     let level_before = game.view().act_level;
     let gauge_before = game.view().act_gauge;
+    // 段事件计数（前面回合可能已被新训练员用过友人出行；这里只看这 5 段的增量）
+    let segment_ids: Vec<u32> = (1..=5)
+        .map(|key| -> Result<u32> {
+            Ok(Data::get()?
+                .events
+                .friend_events
+                .get(&key.to_string())
+                .context("友人出行段事件应存在")?
+                .id)
+        })
+        .collect::<Result<Vec<u32>>>()?;
+    let segment_before: Vec<u32> = segment_ids
+        .iter()
+        .map(|id| event_count(&game, *id))
+        .collect();
     for step in 0..5 {
         assert!(
             game.list_actions()?.contains(&Action::FriendOuting),
@@ -1227,15 +1252,14 @@ fn outing_actions() -> Result<()> {
         (friendship_before + 25).min(100),
         "5 段各 +5 羁绊（封顶 100）"
     );
-    // 5 段段事件（809052011–015）各结算 1 次
-    for key in 1..=5 {
-        let id = Data::get()?
-            .events
-            .friend_events
-            .get(&key.to_string())
-            .context("友人出行段事件应存在")?
-            .id;
-        assert_eq!(event_count(&game, id), 1, "出行第 {key} 段事件应结算 1 次");
+    // 5 段段事件（809052011–015）各结算 1 次（只看这 5 段的增量）
+    for (index, id) in segment_ids.iter().enumerate() {
+        assert_eq!(
+            event_count(&game, *id) - segment_before[index],
+            1,
+            "出行第 {} 段事件应结算 1 次",
+            index + 1
+        );
     }
     let after = Stats::of(&game);
     // 第 3 段取上档（无属性），其余各段属性合计（memo 基础值）：速 10 / 耐 5 / 力 5 / 毅 20 / 智 20 / SP 45。
@@ -1588,6 +1612,141 @@ fn s6_event_chain_over_full_run() -> Result<()> {
         count(400015105),
         random_events,
         big_eater
+    );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// S7：手写训练员决策点覆盖 / 确定性
+// ---------------------------------------------------------------------------
+
+/// 统计决策点的训练员：包一层手写训练员，只记录教诲分配与事件选项的调用
+struct DecisionRecorder {
+    inner: MatsuriTrainer,
+    advice_calls: Cell<usize>,
+    advice_turns: RefCell<Vec<i32>>,
+    event_calls: Cell<usize>,
+}
+
+impl DecisionRecorder {
+    fn new(config: MatsuriConfig) -> Self {
+        Self {
+            inner: MatsuriTrainer::new(config),
+            advice_calls: Cell::new(0),
+            advice_turns: RefCell::new(Vec::new()),
+            event_calls: Cell::new(0),
+        }
+    }
+}
+
+impl Trainer<MatsuriGame> for DecisionRecorder {
+    fn select_action(
+        &self,
+        game: &MatsuriGame,
+        actions: &[Action],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        if actions
+            .iter()
+            .all(|action| matches!(action, Action::AssignAdvice(_)))
+        {
+            self.advice_calls.set(self.advice_calls.get() + 1);
+            self.advice_turns.borrow_mut().push(game.turn());
+        }
+        self.inner.select_action(game, actions, rng)
+    }
+
+    fn select_choice(
+        &self,
+        game: &MatsuriGame,
+        choices: &[Vec<EventChoice>],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        if choices.len() > 1 {
+            self.event_calls.set(self.event_calls.get() + 1);
+        }
+        self.inner.select_choice(game, choices, rng)
+    }
+
+    fn select_event_choice(
+        &self,
+        game: &MatsuriGame,
+        event: &umaai_core::gamedata::EventData,
+        choices: &[Vec<EventChoice>],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        if choices.len() > 1 {
+            self.event_calls.set(self.event_calls.get() + 1);
+        }
+        self.inner.select_event_choice(game, event, choices, rng)
+    }
+}
+
+/// 用给定训练员跑满一局（每阶段 `run_stage` + `next`）
+fn drive_full_game(
+    mut game: MatsuriGame,
+    trainer: &impl Trainer<MatsuriGame>,
+) -> Result<MatsuriGame> {
+    let mut decision = StdRng::seed_from_u64(42);
+    loop {
+        game.run_stage(trainer, &mut decision)?;
+        if !game.next() {
+            break;
+        }
+    }
+    Ok(game)
+}
+
+#[test]
+fn handwritten_trainer_covers_all_decision_points() -> Result<()> {
+    let repo = Repo::load()?;
+    let game = repo.game(repo.cfg.sim.uma)?;
+    let recorder = DecisionRecorder::new(MatsuriConfig::default());
+    let game = drive_full_game(game, &recorder)?;
+
+    assert_eq!(
+        recorder.advice_calls.get(),
+        6,
+        "教诲分配决策应为 6 次（T2 Begin + 11/23/35/47/59 End）"
+    );
+    assert_eq!(
+        *recorder.advice_turns.borrow(),
+        vec![2, 11, 23, 35, 47, 59],
+        "教诲分配决策的回合序列"
+    );
+    assert!(game.advice.acquired, "T2 已获得 5 个基础教诲");
+    assert!(
+        game.advice.fused.iter().any(|fused| *fused != 0),
+        "turn 23 / 47 融合已应用"
+    );
+    assert!(recorder.event_calls.get() > 0, "事件选项决策应被调用");
+    println!(
+        "决策覆盖：教诲分配 6 次（T2/11/23/35/47/59）、事件选项 {} 次",
+        recorder.event_calls.get()
+    );
+    Ok(())
+}
+
+#[test]
+fn handwritten_trainer_is_deterministic() -> Result<()> {
+    let repo = Repo::load()?;
+    let trainer = MatsuriTrainer::new(MatsuriConfig::default());
+
+    let first = drive_full_game(repo.game(repo.cfg.sim.uma)?, &trainer)?;
+    let second = drive_full_game(repo.game(repo.cfg.sim.uma)?, &trainer)?;
+    assert_eq!(
+        first.uma().five_status,
+        second.uma().five_status,
+        "同种子同配置两次跑局五维应逐位一致"
+    );
+    assert_eq!(first.uma().skill_pt, second.uma().skill_pt, "PT 一致");
+    assert_eq!(first.acts, second.acts, "演目账本一致");
+    assert_eq!(first.check_points, second.check_points, "発表会结果一致");
+    let score = first.uma().calc_score()?;
+    println!(
+        "手写训练员确定性 OK：评分 {score} / PT {} / 阶段 {}",
+        first.uma().skill_pt,
+        first.turn().max(0)
     );
     Ok(())
 }

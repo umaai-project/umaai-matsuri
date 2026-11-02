@@ -1185,6 +1185,10 @@ impl ManualTrainer {
                 format!("友人出行第 {step} 段{name}（最低演目槽 Lv+1 + 段事件）")
             }
             Action::Clinic => "治病（体力 +20；清空生病位与不擅长训练）".to_string(),
+            Action::AssignAdvice(assign) => format!(
+                "教诲分配方案（各演目 → 第几号槽）：{}",
+                assign.slots().map(|slot| slot.to_string()).join(" ")
+            ),
         };
         format!("{body}{}", gauge_suffix(game, action, color))
     }
@@ -1227,6 +1231,43 @@ impl ManualTrainer {
         // 更新面板状态：下次提示显示本步之后的变化 / 新事件
         self.last.set(Some(Snapshot::of(game)));
         Ok(out)
+    }
+
+    /// 教诲分配决策：面板只显示当前槽位分配 + 保持现状（本档不择优；策略档见 `matsuri`）
+    fn choose_advice(&self, game: &MatsuriGame, actions: &[Action]) -> Result<usize> {
+        let color = term::use_color(false);
+        let view = game.view();
+        let mut out = String::new();
+        let _ = writeln!(
+            out,
+            "──────── 教诲分配（T{}，{} 个候选）────────",
+            game.turn(),
+            actions.len()
+        );
+        let mut cells = Vec::new();
+        for (act, (base, fused)) in view
+            .advice_slots
+            .iter()
+            .zip(view.advice_fused.iter())
+            .enumerate()
+        {
+            let mut text = format!("{}←{}", act_short(act), base);
+            if *fused != 0 {
+                text.push_str(&format!("→{fused}"));
+            }
+            cells.push(paint(&text, Some(ANSI_BRIGHT_CYAN), color));
+        }
+        let _ = writeln!(out, "【当前】{}", cells.join("  "));
+        let _ = writeln!(out, "  [0] 保持现状（手动档不择优）");
+        print!("{out}");
+        if interactive() {
+            let options = vec!["保持现状".to_string()];
+            let answer = Select::new("教诲分配（手动档只支持保持现状）", options)
+                .raw_prompt()
+                .map_err(|err| anyhow!("教诲分配选择被中止: {err}"))?;
+            return Ok(answer.index);
+        }
+        Ok(0)
     }
 
     /// 选择动作：交互终端用 Inquire 列表；非 TTY（测试 / 管道）退回编号输入
@@ -1347,6 +1388,10 @@ impl Trainer<MatsuriGame> for ManualTrainer {
         actions: &[Action],
         _rng: &mut StdRng,
     ) -> Result<usize> {
+        // 教诲分配决策点：候选全是分配方案，用独立的一行提示（不刷整块面板 / 120 行列表）
+        if matches!(actions.first(), Some(Action::AssignAdvice(_))) {
+            return self.choose_advice(game, actions);
+        }
         println!("{}", self.show_board(game, actions)?);
         self.choose_action(actions)
     }

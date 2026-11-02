@@ -10,7 +10,7 @@
 
 | crate | 测试面 | 现状 |
 |---|---|---|
-| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成） | 内联单测 **100** 个 + L2 数据层 **15** 个 + 机制集成 **27** 个 |
+| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成） | 内联单测 **107** 个 + L2 数据层 **15** 个 + 机制集成 **29** 个 |
 | `matsuri-sim` | `tests/baseline.rs`（固定种子基线） | 待补 |
 | `matsuri-cli` | 内联（呈现件纯函数）+ `tests/manual_smoke.rs`（手动档管道输入跑满整局 + 面板关键块） | 内联 **5** 个 + 冒烟 **1** 个（manual 档）；策略档冒烟 / 基线待补 |
 | `matsuri-ai` / `matsuri-tools` | 骨架，暂无 | — |
@@ -20,10 +20,11 @@
 | 文件 | 用例 | 守门内容 |
 |---|---|---|
 | `core/src/data.rs` | `parse_repo_data_ok` / `unknown_field_rejected` / `bad_row_width_rejected` / `wrong_act_count_rejected` / `act_effects_regression_rejected` / `advice_level_count_rejected` / `advice_kind_mismatch_rejected` / `fusion_kind_mismatch_rejected` / `check_point_buff_regression_rejected` / `reward_schedule_order_rejected` / `career_end_reward_with_schedule_rejected` / `keiko_classic_row_count_rejected` / `schedule_order_rejected` / `camp_settlement_point_rejected` / `limits_order_rejected` | 资产解析 / 未知字段 / 行宽 / 演目与教诲 id 对齐 / 等级表单调 / 场次顺序 / 合宿结算点 / 稽古两档行数 |
-| `core/src/config.rs` | `parse_repo_default` / `unknown_key_rejected` / `overlay_replaces_year2_only` / `duplicate_base_rejected` / `wrong_target_rejected` / `wrong_count_rejected` | 默认层 / 覆盖层 / 未知键 / 融合配对校验（2+3、base 不重复、target 年份内唯一） |
+| `core/src/config.rs` | `parse_repo_default` / `unknown_key_rejected` / `overlay_replaces_year2_only` / `duplicate_base_rejected` / `wrong_target_rejected` / `wrong_count_rejected` / `trainer_overlay_requires_full_section` / `trainer_overlay_replaces_whole_section` / `trainer_bad_values_rejected` | 默认层 / 覆盖层 / 未知键 / 融合配对校验（2+3、base 不重复、target 年份内唯一）/ **`[trainer]` 段整段替换与范围校验** |
 | `core/src/game/roster.rs` | `card_assign_five_speed` / `card_assign_link_pins_and_dispatches` / `card_assign_reference_deck_shape` / `guest_balance_follows_min_persons` | 担当分配五步流水线：memo 三条真机算例（5 速 / 智大和+3速+2毅 / 参考卡组形状）、余额 NPC 落点与并列规则 |
 | `core/src/game/stage.rs` | `next_chain` / `stage_ids_are_stable` / `camp_starts_only_at_window_start` / `camp_basic_window` / `camp_race_turn_extends` / `camp_race_at_window_start_extends` / `camp_forced_rest_turn_extends` / `camp_consecutive_races_keep_extending` / `camp_rest_version_only_in_original_window` / `check_point_index_matches_schedule` / `advice_window_index_matches` / `ura_race_turns` | 五阶段链 / 阶段号稳定；合宿窗口起点、基础 4 回合、比赛 / 强制休息顺延、连续顺延、合宿版休息只限原窗口；発表会 / 教诲窗口 / URA 判定 |
-| `core/src/trainer.rs` | `preferred_training_wraps` | 样例训练员轮转 |
+| `core/src/trainer.rs` | `trainer_prefers_heal_when_bad_trainer` / `trainer_reads_trainer_knobs` | 手写训练员守门链：不擅长优先治病；配置旋钮读取 |
+| `core/src/value.rs` | `big_eater_choice_follows_vital` / `assignment_puts_801_on_most_assigned_act` / `status_marginal_saturates_at_limit` | 估值层：事件选项按体力取舍（大胃王）/ 教诲分配 801 硬约束同口径 / 五维边际到上限归零 |
 | `core/src/game/mod.rs` | `lowest_act_follows_three_rule_order` / `gauge_three_rule_skips_full_and_splits_ties` / `gauge_gain_capped_per_act` / `scenario_resources_start_at_turn2` / `act_level_capped_and_three_rule` / `presentation_bonus_follows_latest_resolved_row` / `judge_presentation_uses_act_levels` / `keiko_period_switches_at_turn_24` / `practice_acts_camp_all_and_gauge_lit` / `train_level_bonus_raises_all_facilities` / `deck_five_types` | 三则落点 / gauge 满槽跳过与上限 / **剧本机制 turn 2 启动闸门（0–1 不入槽）** / 演目 Lv 夹取 / 发布会 buff 取行与结果判定 / 稽古换档 / 排练集合 / 训练 Lv 提升 / 5 种卡条件 |
 | `core/src/game/advice.rs` | `permutation_count_and_uniqueness` / `advice_effect_aggregation` / `slot_effect_uses_bound_act_level` / `fusion_adds_new_and_upgraded_effects` / `participant_advice_stacks_by_count` / `assignment_candidates_enumerate_and_apply` / `enforce_801_on_most_assigned_act` / `kensan_act_found_after_fusion` | 教诲：按绑定演目 Lv 取级 / 融合 = 新教诲 + 固定升级效果 / 参与人数叠加与絆平摊 / 120 排列与校验 / 401+801 硬约束 |
 | `core/src/game/distribute.rs` | `absent_weight_uses_scenario_values` / `deyilv_includes_presentation_baseline` / `distribution_locks_act_members_and_fills_friend` / `cooperate_advice_adds_split_appearance` / `finals_extra_member_only_for_edition_cards` / `practice_five_types_lights_all_card_hints` | 分布：不在率 / 得意率基线 / 亮起锁人 + 吾妻补位 + 容量 / 協力与 URA 分身 / 排练全灵感 |
@@ -86,6 +87,8 @@
 | `scenario_fixed_event_at_turn11` | turn 11 行动前教え見直し事件结算（体力 +15 / 干劲 +1） | §5.3 / §5.4 |
 | `s6_event_chain_over_full_run` | 整局事件链：通用固定（马娘登场 / 新年 / 继承 / 抽签 / 育成结束）、教え見直し ×3、友人链（first+click+out+newyear+end）、随机分布、大胃王 ≤3、旧出行占位不再结算 | §5.4 |
 | `unresolved_events_drained_each_turn` | 78 回合每回合 `AfterTrain` / `End` 后无待结算事件泄漏 | §1 |
+| `handwritten_trainer_covers_all_decision_points` | 整局：教诲分配决策恰好 6 次（T2 Begin + 11/23/35/47/59 End）、融合已应用、事件选项决策被调用 | §6 / §6.2 |
+| `handwritten_trainer_is_deterministic` | 同种子同配置两次跑局：五维 / PT / 演目账本 / 発表会结果逐位一致 | §6.2 |
 
 ## 4. 冒烟与基线
 
@@ -117,4 +120,5 @@
 | 2026-11-01 | 手动面板第二轮调整 | 用户 + Agent | 动作选择改 Inquire 列表（非 TTY 退回编号输入）；演目槽改数字 x/y；训练表普通支援卡改白色；状态行仅显示已有状态（缺席项含疲劳回复不显示）；0–1 回合资源面板标「剧本机制自 T2 开始 / 担当未分配」 | 呈现辅助；S7 / S8 其余待做 |
 | 2026-11-01 | 剧本机制 T2 启动闸门 | 用户 + Agent | 用户核对确认：剧本机制自 turn 2 起，0–1 回合无担当分配、训练 / 休息 / 出行 / 事件不获取演目槽；实现 `SCENARIO_START_TURN` + `MatsuriGame::scenario_started` 在入槽入口拦截；四档绿（98 内联 + 15 L2 + 27 机制 + 5 CLI 内联 + 1 CLI 冒烟 = 146 测例）；样例训练员冒烟 44946 → 40853 / UC、PT 7496 → 6978 | 有（早期槽 / 冒烟位移；S9 前不建基线） |
 | 2026-11-01 | 手动面板第三 / 四轮：育成配置 / NPC 短名 / 动作资源预览 / 演目短名 / 教诲结果 / 事件 Inquire | 用户 + Agent | 开局育成配置（马娘 / 卡组 / 继承）；`[嘉宾]`→`[NPC]` 且 NPC 用角色名前两字；动作预览在成功收益后附演目槽增量（核心新增 `preview_action_resources` / `ResourcePreview`，克隆局面只读）；「上一步后变化」增演目 Lv 行；事件选项改 Inquire 且事件名亮蓝；演目名紧凑位置改 2 字短名；教诲窗口后列分配结果（首次传授 / 転成 / 改派·保持）并紧跟刷新后的剧本资源表；非合宿回合不再显示合宿状态；四档绿（100 内联 + 15 L2 + 27 机制 + 5 CLI 内联 + 1 CLI 冒烟 = 148 测例） | 纯呈现 + 只读预览；S7 / S8 其余待做 |
+| 2026-11-02 | S7 手写训练员：目标口径 / 旋钮 / 守门链 / 事件选项 / 教诲分配走 Trainer | 用户 + Agent | `[trainer]` 配置段（pt_favor=2.0、阈值、权重、教诲分配权重；覆盖层整段替换 + 范围校验）；守门链 + 官方评分边际打分表；事件选项通用期望值（17 个 player_select 全走）；教诲分配 T2 + 5 窗口合并 120 候选交 Trainer（确定性、不耗决策随机）；融合仍配置预设（`fusion_plan` 留替换点）；四档绿（107 内联 + 15 L2 + 29 机制 + 5 CLI 内联 + 1 CLI 冒烟 = 157 测例）；整局冒烟 54683 / UB9、PT 9024（旧样例 40899 / UC、PT 6982），同种子两次逐位一致 | 融合配对 A/B（3 套）/ 训练员旋钮扫参 / M2 搜索 待做（S9 前不建基线） |
 | 2026-11-01 | 教诲首次授予提前到 turn 2 Begin | 用户 + Agent | 用户核对「NPC / 友人在 T2 开始时加入后立即分配」「教诲效果要对 T2 训练生效」；`stage.rs` Begin（事件链后、分布 / 训练前）调 `acquire_advice`；`settle.rs` End 窗口 0 改空操作；机制链新增「T2 Begin 已授予 / T1 前为零」断言；四档绿（148 测例）；样例训练员冒烟 40853 → 40899 / UC、PT 6978 → 6982 | 有（数值位移；S9 前不建基线） |

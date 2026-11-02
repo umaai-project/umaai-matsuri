@@ -115,3 +115,4 @@ const SAMPLE_RATE: i32 = 100;
 | `400015105` 教え見直し数值 | 体力 +15 / 干劲 +1（turn 11/35/59） | memo（中可信）；user 2026-11-01「需实测」 | `scenario_matsuri.json` `scenario_events` | 真机实测后替换；mdb 3 行疑似 3 选项不建模 | 会位移 | STUB |
 | turn 66 进化技能 | 只记 `hint_level + 1`（不建事件、不占回合） | user 2026-10-30 / 2026-11-01（B9） | `game/event.rs` `apply_evolution_hint` | 金技能 / 具体灵感 Lv 不建模；按「进化 = 该灵感升 1 级」记账 | 会位移（PT） | RESOLVED（记账）/ TBD（真机） |
 | 马娘特殊事件（非 T65） | 先不管（只登记凯斯奇迹 T65） | user 2026-11-01（A9） | `game/stage.rs` 临时表 | 引擎「马娘特殊事件记录」改造后统一迁移 | 会位移 | TBD |
+| 训练员策略旋钮默认值 | 攻略 / memo 方向的首档（pt_favor 2.0、休息阈值 45、达标保护 3 回合、Senior 合宿前 Lv8、权重默认等） | user 2026-11-02「先按攻略设计旋钮、后续扫参」 | `data/matsuri_config.toml` `[trainer]` / `config.rs` `TrainerConfig::default` | 后续用配置覆盖层扫参（与融合配对 A/B 一起；S9 前只记录冒烟位移） | 会位移（全部决策质量） | STUB（策略参数，待扫参） |

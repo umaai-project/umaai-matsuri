@@ -13,6 +13,7 @@ use umasim::game::base::BaseAction;
 use umasim::game::{ActionEnum, Game};
 
 use super::MatsuriGame;
+use super::advice::AdviceAssignment;
 
 /// 剧本动作
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +32,11 @@ pub enum Action {
     FriendOuting,
     /// 治病
     Clinic,
+    /// 教诲分配方案（**只作为剧本决策点的候选出现**，不在 `list_actions` 动作集里）
+    ///
+    /// 每个教诲窗口由 `stage_body` 构造 120 个候选、交给 `Trainer::select_action` 选；
+    /// 应用时只做槽位重排，不消耗随机流。
+    AssignAdvice(AdviceAssignment),
 }
 
 impl Display for Action {
@@ -43,6 +49,7 @@ impl Display for Action {
             Self::NormalOuting => write!(f, "普通出行"),
             Self::FriendOuting => write!(f, "友人出行"),
             Self::Clinic => write!(f, "治病"),
+            Self::AssignAdvice(assign) => write!(f, "教诲分配{assign}"),
         }
     }
 }
@@ -59,6 +66,7 @@ impl ActionEnum for Action {
             Self::NormalOuting => game.do_normal_outing(rng),
             Self::FriendOuting => game.do_friend_outing(rng),
             Self::Clinic => game.do_clinic(rng),
+            Self::AssignAdvice(assign) => game.apply_assignment(assign),
         }
     }
 
@@ -70,8 +78,8 @@ impl ActionEnum for Action {
             Self::NormalOuting => Some(BaseAction::NormalOuting),
             Self::FriendOuting => Some(BaseAction::FriendOuting),
             Self::Clinic => Some(BaseAction::Clinic),
-            // 演目稽古没有等价的基础动作（基础库没有演目概念）
-            Self::ActTrain(_) => None,
+            // 演目稽古 / 教诲分配没有等价的基础动作
+            Self::ActTrain(_) | Self::AssignAdvice(_) => None,
         }
     }
 }

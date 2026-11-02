@@ -98,7 +98,7 @@ impl MatsuriGame {
                 }
                 probe.gain_lowest_act_gauge(probe.data.rules.act_gauge_gain.other);
             }
-            Action::Clinic => {}
+            Action::Clinic | Action::AssignAdvice(_) => {}
         }
         let mut preview = ResourcePreview::default();
         for act in 0..5 {
