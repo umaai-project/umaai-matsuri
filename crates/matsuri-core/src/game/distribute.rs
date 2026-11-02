@@ -18,6 +18,7 @@ use umasim::game::{Game, Person, PersonType};
 
 use super::MatsuriGame;
 use super::person::PersonOrigin;
+use crate::diag;
 
 /// 每个训练位的人数上限（引擎通用口径）
 const TRAIN_CAP: usize = 5;
@@ -39,11 +40,17 @@ impl MatsuriGame {
         self.distribute_others(&practice, rng)?;
         self.place_friend_filler(&practice, rng)?;
         self.place_splits(&practice, rng)?;
+        let counts: Vec<usize> = (0..5)
+            .map(|train| self.base.distribution[train].len())
+            .collect();
+        let shining: Vec<usize> = (0..5).map(|train| self.shining_count(train)).collect();
+        diag!("【分布】T{} 人数 {counts:?} 闪{shining:?}", self.turn());
         Ok(())
     }
 
     /// 亮起演目的担当（卡 / 神驹）强制锁位（不判不在）
     fn place_locked(&mut self, practice: &[bool; 5]) {
+        let mut locked = 0;
         for (act, lit) in practice.iter().enumerate() {
             if !*lit {
                 continue;
@@ -55,8 +62,17 @@ impl MatsuriGame {
                 {
                     continue;
                 }
-                self.push_to_train(train, person_index);
+                if self.push_to_train(train, person_index) {
+                    locked += 1;
+                }
             }
+        }
+        if locked > 0 {
+            let acts: Vec<usize> = (0..5).filter(|act| practice[*act]).collect();
+            diag!(
+                "【分布】T{} 锁定担当 {locked} 人（排练演目 {acts:?}）",
+                self.turn()
+            );
         }
     }
 
@@ -116,6 +132,7 @@ impl MatsuriGame {
             let pick = rng.random_range(0..empty.len());
             let train = empty.swap_remove(pick);
             self.base.distribution[train].push(friend_index as i32);
+            diag!("【分布】T{} 吾妻补位 → 训练位{}", self.turn(), train);
         } else {
             Game::distribute_person(self, friend_index as i32, true, rng)?;
         }
@@ -188,6 +205,12 @@ impl MatsuriGame {
         let pick = rng.random_range(0..candidates.len());
         let train = candidates.swap_remove(pick);
         self.base.distribution[train].push(person_index as i32);
+        diag!(
+            "【分布】T{} 分身 人头{} → 训练位{}",
+            self.turn(),
+            person_index,
+            train
+        );
     }
 
     /// 往训练位追加一个人头（容量 / 同位置去重）；放不下返回 false

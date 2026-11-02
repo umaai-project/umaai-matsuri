@@ -9,9 +9,11 @@
 //! 自动择优（留 S7 训练员）；默认行为 = 顺序分配、不变更现有排列、融合就地、401+801 硬约束。
 
 use anyhow::{Result, bail};
+use umasim::game::Game;
 
 use crate::config::FusionPair;
 use crate::data::{AdviceEffect, FusionEffectKind};
+use crate::diag;
 use crate::game::MatsuriGame;
 
 /// 单槽聚合后的教诲数值（已按绑定演目 Lv 取级；尚未按参与人数加权）
@@ -190,6 +192,11 @@ impl MatsuriGame {
         self.advice.acquired = true;
         self.advice.slots = [101, 201, 301, 401, 501];
         self.advice.fused = [0; 5];
+        diag!(
+            "【教诲】T{} 首次授予 5 槽初始化 slots={:?}",
+            self.turn(),
+            self.advice.slots
+        );
     }
 
     /// 融合（転成）就地生效：把 `base` 所在槽的教诲换成 `target`，保留基础 id 供升级效果查表
@@ -205,6 +212,13 @@ impl MatsuriGame {
                 bail!("融合失败：演目 {act} 的槽位已融合过");
             }
             self.advice.fused[act] = pair.target;
+            diag!(
+                "【教诲】T{} 融合 演目{}: {}→{}",
+                self.turn(),
+                act,
+                pair.base,
+                pair.target
+            );
         }
         self.enforce_advice_constraints();
         Ok(())
@@ -226,6 +240,10 @@ impl MatsuriGame {
         };
         if target != source {
             self.swap_advice_slots(source, target);
+            diag!(
+                "【教诲】T{} 401+801 硬约束 交换演目 {source}↔{target}",
+                self.turn()
+            );
         }
     }
 
@@ -263,6 +281,12 @@ impl MatsuriGame {
             self.advice.fused[act] = fused[source];
         }
         self.enforce_advice_constraints();
+        diag!(
+            "【教诲】T{} 分配 slots={:?} fused={:?}",
+            self.turn(),
+            self.advice.slots,
+            self.advice.fused
+        );
         Ok(())
     }
 
@@ -283,6 +307,11 @@ impl MatsuriGame {
         let Some(super::Action::AssignAdvice(assign)) = actions.get(index) else {
             bail!("教诲分配决策返回了下标 {index}，但候选不是分配方案");
         };
+        diag!(
+            "【教诲】T{} 分配决策 方案 {}",
+            self.turn(),
+            assign.slots().map(|slot| slot.to_string()).join("")
+        );
         self.apply_assignment(assign)
     }
 
@@ -303,6 +332,10 @@ impl MatsuriGame {
         let rate = self.advice_slot_effect(act).kensan_rate;
         if rate > 0 {
             self.kensan_pending = rng.random_bool(rate as f64 / 100.0);
+            // 只记掷中（未中是每回合例行判定，记了反而埋没关键变化）
+            if self.kensan_pending {
+                diag!("【追加稽古】T{} 演目{} 掷中（{}%）", self.turn(), act, rate);
+            }
         }
     }
 }

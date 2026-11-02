@@ -13,7 +13,9 @@ use umasim::game::base::RuleStreams;
 use umasim::game::{Game, StageId, Trainer};
 
 use super::MatsuriGame;
+use super::view::MatsuriYear;
 use crate::data::{CampWindow, CheckPointSchedule};
+use crate::diag;
 
 /// 剧本阶段
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -250,6 +252,12 @@ impl MatsuriGame {
                 // 目标赛回合仍按赛程分类（`plan.race`），马娘特殊事件可把本回合实际动作改为休息；
                 // 目前只登记凯斯奇迹 T65（临时表，引擎「马娘特殊事件记录」改造后迁移）。
                 self.forced_rest = is_forced_rest_turn(self.base.uma.chara_id(), self.base.turn);
+                diag!(
+                    "【回合】T{} Begin {} 类型: {}",
+                    self.base.turn,
+                    MatsuriYear::from_turn(self.base.turn).as_str(),
+                    self.diag_turn_kind()
+                );
                 // 回合开始的状态判定：友人疲劳回复（一次性）、变胖解除概率（剧本规则）
                 self.recover_fatigue();
                 self.roll_fat_recovery(strategy);
@@ -299,7 +307,17 @@ impl MatsuriGame {
             Stage::End => {
                 // 合宿计数：比赛 / 强制休息回合不计入，计满窗口长度后本次合宿结束。
                 let counted = self.plan.camp_zone && !self.plan.race && !self.forced_rest;
+                let camp_before = self.camp.counted;
                 self.camp.end_turn(counted, &self.data.camp.windows);
+                if self.plan.camp_zone {
+                    diag!(
+                        "【合宿】T{} End 计入={} 已计入 {}→{}",
+                        self.base.turn,
+                        counted,
+                        camp_before,
+                        self.camp.counted
+                    );
+                }
                 // 剧本结算：発表会 / 本番 → 合宿结束全演目 Lv+1
                 self.settle_turn_end()?;
                 // 教诲窗口：先应用融合（配置预设），再把 120 个分配候选交给 Trainer（S7）

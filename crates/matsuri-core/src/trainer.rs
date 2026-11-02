@@ -16,6 +16,7 @@ use umaai_core::gamedata::{EventChoice, EventData};
 use umasim::game::{Game, Trainer};
 
 use crate::config::MatsuriConfig;
+use crate::diag;
 use crate::game::{Action, MatsuriGame};
 use crate::value::Model;
 
@@ -55,6 +56,11 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
             bail!("候选动作为空，无法选择");
         }
         if actions.len() == 1 {
+            diag!(
+                "【决策】T{} 唯一候选 {}（无需比较）",
+                game.turn(),
+                actions[0]
+            );
             return Ok(0);
         }
         // 教诲分配决策点：候选全是分配方案 → 价值矩阵择优（确定性）
@@ -75,6 +81,15 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
                     best = index;
                 }
             }
+            diag!(
+                "【决策】T{} 教诲分配 值={:.1} 方案 {}",
+                game.turn(),
+                best_value,
+                actions
+                    .get(best)
+                    .map(ToString::to_string)
+                    .unwrap_or_default()
+            );
             return Ok(best);
         }
 
@@ -82,6 +97,7 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
         if Self::needs_clinic(game)
             && let Some(index) = actions.iter().position(|action| *action == Action::Clinic)
         {
+            diag!("【决策】T{} 守门·治病优先（不擅长 / 生病）", game.turn());
             return Ok(index);
         }
 
@@ -100,6 +116,15 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
                 best = index;
             }
         }
+        diag!(
+            "【决策】T{} 动作 {} 值={:.1}",
+            game.turn(),
+            actions
+                .get(best)
+                .map(ToString::to_string)
+                .unwrap_or_default(),
+            best_value
+        );
         Ok(best)
     }
 
@@ -125,6 +150,11 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
                 best = index;
             }
         }
+        diag!(
+            "【决策】T{} 选项 {best} 期望={:.1}（旧接口）",
+            game.turn(),
+            best_value
+        );
         Ok(best)
     }
 
@@ -151,6 +181,14 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
                 best = index;
             }
         }
+        diag!(
+            "【决策】T{} 事件#{} {} 选项{} 期望={:.1}",
+            game.turn(),
+            event.id,
+            event.name,
+            best,
+            best_value
+        );
         Ok(best)
     }
 }

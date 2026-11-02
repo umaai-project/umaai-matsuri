@@ -17,6 +17,7 @@ use umaai_core::{Data, Ill};
 use umasim::game::{FriendOutState, Game, Person, sample_bucket};
 
 use super::{MatsuriGame, PersonOrigin};
+use crate::diag;
 
 /// 研鑽「追加の稽古」事件 ID（`scenario_events` 内定义）
 pub(crate) const KENSAN_EVENT_ID: u32 = 400015106;
@@ -36,10 +37,15 @@ impl MatsuriGame {
         let mut fixed = self.list_turn_events(&data.events.story_events);
         fixed.extend(self.list_turn_events(&self.data.scenario_events));
         if !fixed.is_empty() {
+            diag!("【事件链】T{} 固定事件 {} 件", self.turn(), fixed.len());
             return fixed;
         }
         // ② 抑制判定（合宿规则 + 引擎基线）
         if self.random_events_suppressed() {
+            diag!(
+                "【事件链】T{} 随机事件抑制（合宿 / 引擎禁事件回合）",
+                self.turn()
+            );
             return vec![];
         }
         // ③ 友人出行解锁：首次点击后（BeforeUnlock）按羁绊高低取概率，命中后本回合只发生这一件
@@ -55,6 +61,7 @@ impl MatsuriGame {
             if rng.random_bool(data.event_prob(key).unwrap_or(0.0))
                 && let Some(event) = data.events.friend_events.get("out")
             {
+                diag!("【事件链】T{} 友人出行解锁 #{}", self.turn(), event.id);
                 return vec![event.clone()];
             }
         }
@@ -62,6 +69,7 @@ impl MatsuriGame {
         let Ok(bucket) = sample_bucket(&data.consts.get_event_distribution(), rng) else {
             return vec![];
         };
+        diag!("【事件链】T{} 随机事件桶 {bucket}", self.turn());
         match bucket {
             0 => {
                 // 支援卡连续事件：只取可用 **支援卡** 人头（友人 / 团队不计入连续事件）
@@ -120,6 +128,7 @@ impl MatsuriGame {
             && let Ok(data) = Data::get()
             && let Some(event) = data.events.friend_events.get("newyear")
         {
+            diag!("【事件链】T{} 友人正月 #{}", self.turn(), event.id);
             events.push(event.clone());
         }
     }
@@ -130,6 +139,7 @@ impl MatsuriGame {
             return;
         };
         let turn = self.turn();
+        let queued_before = self.unresolved_events.len();
         if turn == 77 {
             if self.base.friend.out_state == FriendOutState::AfterUnlock
                 && let Some(event) = data.events.friend_events.get("end")
@@ -145,6 +155,10 @@ impl MatsuriGame {
         {
             self.unresolved_events.push(event.clone());
         }
+        let queued = self.unresolved_events.len() - queued_before;
+        if queued > 0 {
+            diag!("【事件链】T{turn} 回合后事件入队 {queued} 件");
+        }
     }
 
     /// 疲劳回复（剧本自持 flag）：体力 ≤49 时一次性 +15
@@ -157,6 +171,7 @@ impl MatsuriGame {
             vital: 15,
             ..Default::default()
         });
+        diag!("【状态】T{} 疲劳回复 体力+15", self.turn());
     }
 
     /// 【变胖】回合开始判定：按剧本规则概率解除
@@ -167,6 +182,7 @@ impl MatsuriGame {
         let prob = self.data.rules.fat_recovery_prob;
         if prob > 0 && rng.random_bool(f64::from(prob) / 100.0) {
             self.uma_mut().flags.ill.remove(Ill::FAT);
+            diag!("【状态】T{} 变胖解除（{}% 判定命中）", self.turn(), prob);
         }
     }
 
@@ -186,28 +202,60 @@ impl MatsuriGame {
         else {
             return;
         };
+        let gauge_before = self.acts.gauge;
         if extra.act_gauge_lowest > 0 {
             self.gain_lowest_act_gauge(extra.act_gauge_lowest);
         }
-        if extra.clear_debuff {
-            self.clear_one_debuff();
+        let cleared = if extra.clear_debuff {
+            self.clear_one_debuff()
+        } else {
+            None
+        };
+        let mut parts: Vec<String> = Vec::new();
+        if extra.act_gauge_lowest > 0 {
+            for (act, (before, after)) in
+                gauge_before.iter().zip(self.acts.gauge.iter()).enumerate()
+            {
+                if before != after {
+                    parts.push(format!("演目{act}槽{before}→{after}"));
+                }
+            }
+        }
+        if let Some(name) = cleared {
+            parts.push(format!("解除{name}"));
+        }
+        if !parts.is_empty() {
+            diag!(
+                "【事件附加】T{} 事件#{} 选项{} {}",
+                self.turn(),
+                event_id,
+                choice,
+                parts.join(" ")
+            );
         }
     }
 
-    /// 解除一个 debuff（优先不擅长训练，其次具名生病位）
-    fn clear_one_debuff(&mut self) {
+    /// 解除一个 debuff（优先不擅长训练，其次具名生病位）；返回被解除的状态名
+    fn clear_one_debuff(&mut self) -> Option<&'static str> {
         let flags = &mut self.uma_mut().flags;
         if flags.bad_trainer {
             flags.bad_trainer = false;
             flags.ill.remove(Ill::BAD_TRAINER);
-            return;
+            return Some("不擅长训练");
         }
-        for kind in [Ill::FAT, Ill::SKIN, Ill::HEADACHE, Ill::LAZY, Ill::NIGHT] {
+        for (kind, name) in [
+            (Ill::FAT, "变胖"),
+            (Ill::SKIN, "皮肤差"),
+            (Ill::HEADACHE, "偏头痛"),
+            (Ill::LAZY, "摸鱼"),
+            (Ill::NIGHT, "熬夜"),
+        ] {
             if flags.ill.contains(kind) {
                 flags.ill.remove(kind);
-                return;
+                return Some(name);
             }
         }
+        None
     }
 
     /// 研鑽「追加の稽古」：推入剧本事件（`400015106`，训练员选择上 / 下档）
@@ -224,7 +272,12 @@ impl MatsuriGame {
         event.person_index = self
             .person_index_of_type(umasim::game::PersonType::Yayoi)
             .map(|index| index as i32);
-        let _ = train;
+        diag!(
+            "【追加稽古】T{} 训练#{} 推入事件 #{}",
+            self.turn(),
+            train,
+            event.id
+        );
         self.unresolved_events.push(event);
         Ok(())
     }
@@ -238,6 +291,7 @@ impl MatsuriGame {
             hint_level: 1,
             ..Default::default()
         });
+        diag!("【状态】T{} 进化技能 hint_level+1", self.turn());
     }
 
     /// 支援卡事件人头候选：可用支援卡（`PersonOrigin::Card`）人头下标

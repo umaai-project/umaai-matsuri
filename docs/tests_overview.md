@@ -10,7 +10,7 @@
 
 | crate | 测试面 | 现状 |
 |---|---|---|
-| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成） | 内联单测 **107** 个 + L2 数据层 **15** 个 + 机制集成 **29** 个 |
+| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成）+ `tests/diag.rs`（诊断守门） | 内联单测 **114** 个 + L2 数据层 **15** 个 + 机制集成 **30** 个 + 诊断 **1** 个 |
 | `matsuri-sim` | `tests/baseline.rs`（固定种子基线） | 待补 |
 | `matsuri-cli` | 内联（呈现件纯函数）+ `tests/manual_smoke.rs`（手动档管道输入跑满整局 + 面板关键块） | 内联 **5** 个 + 冒烟 **1** 个（manual 档）；策略档冒烟 / 基线待补 |
 | `matsuri-ai` / `matsuri-tools` | 骨架，暂无 | — |
@@ -26,6 +26,8 @@
 | `core/src/trainer.rs` | `trainer_prefers_heal_when_bad_trainer` / `trainer_reads_trainer_knobs` | 手写训练员守门链：不擅长优先治病；配置旋钮读取 |
 | `core/src/value.rs` | `big_eater_choice_follows_vital` / `assignment_puts_801_on_most_assigned_act` / `status_marginal_saturates_at_limit` | 估值层：事件选项按体力取舍（大胃王）/ 教诲分配 801 硬约束同口径 / 五维边际到上限归零 |
 | `core/src/game/mod.rs` | `lowest_act_follows_three_rule_order` / `gauge_three_rule_skips_full_and_splits_ties` / `gauge_gain_capped_per_act` / `scenario_resources_start_at_turn2` / `act_level_capped_and_three_rule` / `presentation_bonus_follows_latest_resolved_row` / `judge_presentation_uses_act_levels` / `keiko_period_switches_at_turn_24` / `practice_acts_camp_all_and_gauge_lit` / `train_level_bonus_raises_all_facilities` / `deck_five_types` | 三则落点 / gauge 满槽跳过与上限 / **剧本机制 turn 2 启动闸门（0–1 不入槽）** / 演目 Lv 夹取 / 发布会 buff 取行与结果判定 / 稽古换档 / 排练集合 / 训练 Lv 提升 / 5 种卡条件 |
+| `core/src/game/view.rs` | `view_mirrors_game_state` / `view_is_pure_and_idempotent` / `view_schedule_derivations` / `year_boundaries` / `event_log_keeps_recent_and_monotonic_seq` / `view_roundtrip` | 回合信息快照：分节字段与局面逐项一致 / 只读幂等 / 赛程派生（発表会门槛 / 合宿总长 / 自选赛过滤）/ 年次边界 / 事件记录滚动 + 序号单调 / serde 往返 |
+| `core/src/game/diag.rs` | `diff_reports_only_changes` | 诊断快照变化摘要：只列变化项、格式与面板「变化」同口径 |
 | `core/src/game/advice.rs` | `permutation_count_and_uniqueness` / `advice_effect_aggregation` / `slot_effect_uses_bound_act_level` / `fusion_adds_new_and_upgraded_effects` / `participant_advice_stacks_by_count` / `assignment_candidates_enumerate_and_apply` / `enforce_801_on_most_assigned_act` / `kensan_act_found_after_fusion` | 教诲：按绑定演目 Lv 取级 / 融合 = 新教诲 + 固定升级效果 / 参与人数叠加与絆平摊 / 120 排列与校验 / 401+801 硬约束 |
 | `core/src/game/distribute.rs` | `absent_weight_uses_scenario_values` / `deyilv_includes_presentation_baseline` / `distribution_locks_act_members_and_fills_friend` / `cooperate_advice_adds_split_appearance` / `finals_extra_member_only_for_edition_cards` / `practice_five_types_lights_all_card_hints` | 分布：不在率 / 得意率基线 / 亮起锁人 + 吾妻补位 + 容量 / 協力与 URA 分身 / 排练全灵感 |
 | `core/src/game/train.rs` | `upper_*`（8 条）/ `ura_training_effects` / `unyielding_drops_failure_to_zero` / `kensan_pushes_choice_event` / `kensan_triggers_on_normal_training_too` / `gauge_gain_by_participants_with_shining` / `preview_action_resources_matches_actual` / `keiko_flat_applies_to_all_five_stats` / `friend_click_pushes_first_then_click_by_probability` / `fat_zeroes_training_speed_only` / `fat_cleared_by_clinic_and_camp_rest` / `preview_matches_actual_training` | 训练上层公式 / 失败率 / 追加稽古事件化 / 训练入槽 / **动作资源预览（槽 / Lv）与实结算一致、不改原局面** / 全基础 +10 flat / 友人点击链（首次必发 + 40%）/ 变胖速度归零与解除 / 预览与实结算一致 |
@@ -73,6 +75,7 @@
 | `deck_warnings_link_type_mismatch` | 速重炮（link 力演目）→ W1 link 类型≠固定演目 |
 | `deck_warning_uneven_persons` | 各演目「卡+NPC」人物数极差 ≥2 → W10 |
 | `view_snapshot_roundtrip` | `MatsuriView` 值快照 serde 往返 | 契约 View |
+| `view_fields_match_game_at_train_decision` | 整局 78 个 Train 决策点：`MatsuriView` 与局面逐项一致（数值 / 资源账本 / 人头 / 分布与闪彩 / 担当 / 训练位 / 赛程 / 友人 / 事件），守「面板只被允许从 view 取数」 | 契约 View |
 | `action_set_by_turn_type` | 普通 / 合宿年 1 / 合宿年 2 / 目标赛 / 强制休息（T65）/ 自选比赛 / URA 决赛的动作集分叉 | §1 / §6 |
 | `target_race_reward_applied` | 目标赛事件在 `AfterTrain` 入账：五维 `floor(5×scale)` / SP `floor(72×scale)`，比赛事件计 1 次 | §4 |
 | `self_race_reward_applied` | 自选比赛：随机 1 项属性 + 面板 SP，两者都吃比赛加成 | §4 |
@@ -89,6 +92,14 @@
 | `unresolved_events_drained_each_turn` | 78 回合每回合 `AfterTrain` / `End` 后无待结算事件泄漏 | §1 |
 | `handwritten_trainer_covers_all_decision_points` | 整局：教诲分配决策恰好 6 次（T2 Begin + 11/23/35/47/59 End）、融合已应用、事件选项决策被调用 | §6 / §6.2 |
 | `handwritten_trainer_is_deterministic` | 同种子同配置两次跑局：五维 / PT / 演目账本 / 発表会结果逐位一致 | §6.2 |
+
+### 3.1 诊断守门（`core/tests/diag.rs`）
+
+> 独立测试进程内装一次性捕获日志器；诊断目标 / 埋点齐备 / 静默不位移结果由该文件守门。
+
+| 用例 | 守门内容 |
+|---|---|
+| `diag_logs_key_state_changes_without_changing_results` | 整局：target 全为 `diagnostic`；回合 78 / 発表会 3 / 分布·动作·训练后·事件·教诲·决策均非空；T0 回合行 / T2 首次授予 / T2 分布抽样；`DiagGuard::suppress()` 期间零产出且同种子终局局面逐位一致 |
 
 ## 4. 冒烟与基线
 
@@ -121,4 +132,5 @@
 | 2026-11-01 | 剧本机制 T2 启动闸门 | 用户 + Agent | 用户核对确认：剧本机制自 turn 2 起，0–1 回合无担当分配、训练 / 休息 / 出行 / 事件不获取演目槽；实现 `SCENARIO_START_TURN` + `MatsuriGame::scenario_started` 在入槽入口拦截；四档绿（98 内联 + 15 L2 + 27 机制 + 5 CLI 内联 + 1 CLI 冒烟 = 146 测例）；样例训练员冒烟 44946 → 40853 / UC、PT 7496 → 6978 | 有（早期槽 / 冒烟位移；S9 前不建基线） |
 | 2026-11-01 | 手动面板第三 / 四轮：育成配置 / NPC 短名 / 动作资源预览 / 演目短名 / 教诲结果 / 事件 Inquire | 用户 + Agent | 开局育成配置（马娘 / 卡组 / 继承）；`[嘉宾]`→`[NPC]` 且 NPC 用角色名前两字；动作预览在成功收益后附演目槽增量（核心新增 `preview_action_resources` / `ResourcePreview`，克隆局面只读）；「上一步后变化」增演目 Lv 行；事件选项改 Inquire 且事件名亮蓝；演目名紧凑位置改 2 字短名；教诲窗口后列分配结果（首次传授 / 転成 / 改派·保持）并紧跟刷新后的剧本资源表；非合宿回合不再显示合宿状态；四档绿（100 内联 + 15 L2 + 27 机制 + 5 CLI 内联 + 1 CLI 冒烟 = 148 测例） | 纯呈现 + 只读预览；S7 / S8 其余待做 |
 | 2026-11-02 | S7 手写训练员：目标口径 / 旋钮 / 守门链 / 事件选项 / 教诲分配走 Trainer | 用户 + Agent | `[trainer]` 配置段（pt_favor=2.0、阈值、权重、教诲分配权重；覆盖层整段替换 + 范围校验）；守门链 + 官方评分边际打分表；事件选项通用期望值（17 个 player_select 全走）；教诲分配 T2 + 5 窗口合并 120 候选交 Trainer（确定性、不耗决策随机）；融合仍配置预设（`fusion_plan` 留替换点）；四档绿（107 内联 + 15 L2 + 29 机制 + 5 CLI 内联 + 1 CLI 冒烟 = 157 测例）；整局冒烟 54683 / UB9、PT 9024（旧样例 40899 / UC、PT 6982），同种子两次逐位一致 | 融合配对 A/B（3 套）/ 训练员旋钮扫参 / M2 搜索 待做（S9 前不建基线） |
+| 2026-11-02 | S8 View 补全 + diag 诊断接线 | 用户 + Agent | `MatsuriView` 升级为回合信息完整快照（B 方案分节：turn / resources / uma / board / schedule / friend / camp + 事件 / 编成警告）；manual 面板改 `view()` 单一数据源（纯呈现）；复用引擎 `diag!` + `log` 依赖 + CLI stderr 日志器（`[output] log_level`）+ 剧本侧关键状态变化埋点（回合 / 动作 / 事件 / 教诲 / 発表会 / 分布 / 决策；预览与 rollout 静默）；四档绿（114 内联 + 15 L2 + 30 机制 + 1 diag + 5 CLI 内联 + 1 CLI 冒烟 = 166 测例）；整局冒烟 54683 / UB9、PT 9024（与 S7 逐位一致） | S8 其余（在线外壳 `matsuri-ai` / 训练员选择器）→ S9 基线 |
 | 2026-11-01 | 教诲首次授予提前到 turn 2 Begin | 用户 + Agent | 用户核对「NPC / 友人在 T2 开始时加入后立即分配」「教诲效果要对 T2 训练生效」；`stage.rs` Begin（事件链后、分布 / 训练前）调 `acquire_advice`；`settle.rs` End 窗口 0 改空操作；机制链新增「T2 Begin 已授予 / T1 前为零」断言；四档绿（148 测例）；样例训练员冒烟 40853 → 40899 / UC、PT 6978 → 6982 | 有（数值位移；S9 前不建基线） |

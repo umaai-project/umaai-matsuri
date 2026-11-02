@@ -85,7 +85,7 @@
   四档绿（**107 内联 + 15 L2 + 29 机制 + 5 CLI 内联 + 1 CLI 冒烟 = 157 测例**）；整局冒烟
   **54683 分 / UB9、PT 9024、390 阶段**（旧样例训练员 40899 / UC、PT 6982；同种子两次逐位一致；
   S9 前不建基线）。
-- **S8 手动核对面板（2026-11-01，先行落地 + 四轮显示调整；S8 其余待做）**：`manual` 档从「摘要 + 编号输入」
+- **S8 手动核对面板（2026-11-01，先行落地 + 四轮显示调整）**：`manual` 档从「摘要 + 编号输入」
   升级为机制核对面板——**开局打印育成配置**（育成马娘 / 卡组含突破与稀有度 / 继承：蓝因子 + 剧本因子 +
   开局继承）；每次动作决策前打印回合结构 / 五维（含引擎上限）/ 体力干劲 / 状态 / **剧本资源表**（演目
   2 字短名 · 槽 x/y · Lv · 教诲→転成 · 担当人物；発表会结果与永久 buff / 助力支撑 / 追加稽古着色）/
@@ -105,14 +105,27 @@
   手动档引擎 `PrintFrontend` 切 `Quiet`，面板为唯一信息源；CLI 冒烟（管道输入跑满整局 + 非 TTY 无 ANSI +
   教诲 / 资源 / 短名 / 无合宿误报断言）。四档绿（**100 内联 + 15 L2 + 27 机制 + 5 CLI 内联 + 1 CLI 冒烟
   = 148 测例**）；样例训练员冒烟 **40899 分 / UC、PT 6982**（T2 闸门 + T2 教诲生效后的位移；S9 前不建基线）。
-  S7 训练员 / S8 其余（View 字段补全 / 在线外壳 / 选择器）仍待做。
+  S8 其余（在线外壳 / 训练员选择器）待做。
+- **S8 View 补全 + diag 诊断（2026-11-02）**：①**`MatsuriView` 升级为回合信息完整快照**（B 方案分节重构，
+  落点 `core/src/game/view.rs`）：`turn / resources / uma / board / schedule / friend / camp` 七节 +
+  `deck_warnings` / `recent_events`，手动面板已显示的数值 / 人头分布 / 训练位 / 赛程 / 友人链 / 合宿全部
+  进快照；名称文本不进（呈现层查静态表）、动作候选与预览不进（决策上下文）。②**手动面板改纯呈现**：
+  所有状态从 `view()` 取，`game` 只剩只读预览与建局配置；`view_fields_match_game_at_train_decision`
+  在 78 个 Train 决策点逐项守门。③**diag 诊断接线**：复用引擎 `umaai_core::diag!`（统一入口
+  `matsuri_core::diag`）+ `log` 依赖 + CLI stderr 日志器消费 `[output] log_level`（默认 `info`，
+  覆盖层可设 `off`）；埋点覆盖回合 / 事件链 / 事件结算 / 状态增减 / 动作与变化 / 训练后 / 演目槽 /
+  分布 / 教诲 / 発表会 / 合宿 / 终局奖励 / 训练员决策，预览与搜索 rollout 自动静默。
+  四档绿（**114 内联 + 15 L2 + 30 机制 + 1 diag + 5 CLI 内联 + 1 CLI 冒烟 = 166 测例**）；整局冒烟
+  **54683 分 / UB9、PT 9024（与 S7 逐位一致，未位移）**；整局诊断约 1.6k 行，`DiagGuard` 静默不改变终局局面。
 
 ## 结构
 
 | crate / 文件 | 职责 |
 |---|---|
 | `crates/matsuri-core/src/lib.rs` | 模块声明 + 对外重导出 + `MAX_TURN` |
-| `crates/matsuri-core/src/game/mod.rs` | 局面 `MatsuriGame` + `ActLedger` / `AdviceLedger` 账本 + 演目 gauge / Lv / 发布日期 buff 派生 + 事件记录 `EventRecord` / 训练预览 `TrainingPreview` / 动作资源预览 `ResourcePreview` + `MatsuriView` + `build_game`（含友人卡门禁） |
+| `crates/matsuri-core/src/game/mod.rs` | 局面 `MatsuriGame` + `ActLedger` / `AdviceLedger` 账本 + 演目 gauge / Lv / 発表会 buff 派生 + 训练预览 `TrainingPreview` / 动作资源预览 `ResourcePreview` + `build_game`（含友人卡门禁） |
+| `crates/matsuri-core/src/game/view.rs` | 回合信息快照 `MatsuriView`（分节：turn / resources / uma / board / schedule / friend / camp + 编成警告 / 事件记录）+ `view()` |
+| `crates/matsuri-core/src/game/diag.rs` | 诊断辅助：关键状态快照 / 变化摘要 / 回合类型摘要（供 `diag!` 埋点，只读） |
 | `crates/matsuri-core/src/game/stage.rs` | 阶段机 `Stage`（含 `StageId` 投影）+ 回合结构 `TurnPlan` + 合宿进度 `CampState` |
 | `crates/matsuri-core/src/game/person.rs` | 剧本人头 `MatsuriPerson` + 来源 `PersonOrigin`（与引擎 `PersonType` 分工见文档） |
 | `crates/matsuri-core/src/game/roster.rs` | 建局人头名单 + 担当分配（link 钉位 / 外派链 / NPC 余额） |
@@ -128,7 +141,8 @@
 | `crates/matsuri-core/src/config.rs` | 剧本配置段（融合 / 転成预设 + 覆盖层） |
 | `crates/matsuri-core/src/trainer.rs` | 样例训练员 `MatsuriTrainer` |
 | `crates/matsuri-cli/src/main.rs` | 终端前端：bin `matsuri`（跑局；`matsuri` / `random` / `manual` 训练员选择） |
-| `crates/matsuri-cli/src/manual.rs` | 手动核对面板（S8）：育成配置 + 彩色训练明细表（人物着色 / Hint 叹号 / 羁绊）+ 剧本资源与教诲分配结果 + 合宿（仅合宿回合）·友人链·赛程 + 动作槽增量预览 + Inquire 动作 / 事件选择 |
+| `crates/matsuri-cli/src/manual.rs` | 手动核对面板（S8）：状态全部从 `MatsuriView` 取（纯呈现）；育成配置 + 彩色训练明细表（人物着色 / Hint 叹号 / 羁绊）+ 剧本资源与教诲分配结果 + 合宿（仅合宿回合）·友人链·赛程 + 动作槽增量预览 + Inquire 动作 / 事件选择 |
+| `crates/matsuri-cli/src/logging.rs` | stderr 日志器：消费 `[output] log_level`，承接引擎 / 剧本 `diag!` 记录（默认 `info`、`off` 静默） |
 | `crates/matsuri-sim` | 模拟器与基线裁判（骨架） |
 | `crates/matsuri-ai` | 在线决策核心（骨架） |
 | `crates/matsuri-tools` | 外围工具（骨架） |
@@ -155,6 +169,7 @@
 cargo run --release --bin matsuri --            # 样例训练员
 cargo run --release --bin matsuri -- random     # 引擎随机基线（对照用）
 cargo run --release --bin matsuri -- manual     # 手动核对面板（动作 Inquire；Esc 退出，非 TTY 退回编号输入）
+# 诊断日志级别见 data/ai_config.toml [output] log_level（默认 info；工作目录覆盖层可设 off 静默）
 
 cargo fmt --all --check
 cargo check --workspace --all-targets --offline
@@ -166,7 +181,10 @@ cargo test --workspace --release --offline
 - 接入新剧本时引擎仓 `git diff` 为空——确需新能力时回引擎仓按「带默认实现、非破坏」加钩子。
 - 三条随机轴（局面 / 事件 / 策略）+ 决策流只喂 `Trainer`；阶段自持、对外只投影 `StageId`；
   同一 `master` 下两次运行 / 两支分支逐位一致。
-- 剧本资源给前端走 `MatsuriView`（形态 A 五条纪律），不进契约 trait。
+- 回合信息给前端 / 在线外壳走 `MatsuriView`（**完整回合快照**，分节；名称文本由呈现层按静态表解析），
+  不进契约 trait。
+- 诊断日志统一走 `diag!`（target = `diagnostic`）：级别由 `[output] log_level` 控制（默认 `info`；
+  `off` 静默），批量 / 基线入口用 `DiagGuard::suppress()`；工作目录放 `ai_config.toml` 覆盖层即可调级别。
 
 ## 依赖三档
 

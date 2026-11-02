@@ -611,6 +611,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "inquire",
+ "log",
  "matsuri-core",
  "rand",
  "umaai",
@@ -624,6 +625,7 @@ name = "matsuri-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "log",
  "rand",
  "serde",
  "serde_json",

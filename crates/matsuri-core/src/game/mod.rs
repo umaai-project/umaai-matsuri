@@ -1,12 +1,14 @@
-//! 剧本局面（`MatsuriGame`）、资源账本、资源快照与装配
+//! 剧本局面（`MatsuriGame`）、资源账本与装配
 //!
 //! 状态底座复用引擎 [`BaseGame`]（回合 / 马娘 / 卡组 / 继承 / 规则流），剧本只加自己的
 //! 阶段机、人头、剧本资源与剧本资产。契约 impl 集中在 [`traits`]，回合结构与阶段机在
-//! [`stage`]，本文件只放 inherent 方法（资源账本 / 建局 / 快照 / 训练）。
+//! [`stage`]，回合信息快照（`MatsuriView`）在 [`view`]，本文件只放 inherent 方法
+//! （资源账本 / 建局 / 训练 / 预览）。
 
 pub mod action;
 pub mod advice;
 pub mod deck;
+mod diag;
 pub mod distribute;
 pub mod event;
 pub mod person;
@@ -15,12 +17,12 @@ pub mod settle;
 pub mod stage;
 pub mod train;
 pub mod traits;
+mod view;
 
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use umaai::Config;
 use umaai_core::gamedata::ActionValue;
 use umaai_core::rng::StrategyRng;
@@ -32,6 +34,10 @@ pub use action::Action;
 pub use deck::{DeckError, DeckReport, DeckWarning};
 pub use person::{MatsuriPerson, PersonOrigin};
 pub use stage::{CampState, Stage, TurnPlan};
+pub use view::{
+    BoardView, CampView, CheckPointNeed, EVENT_LOG_CAPACITY, EventRecord, FriendView, MatsuriView,
+    MatsuriYear, MemberView, PersonView, ResourceView, ScheduleView, SelfRace, TurnView, UmaView,
+};
 
 use crate::data::{ActLevelEffect, CheckPointResult, MatsuriData};
 
@@ -71,31 +77,6 @@ pub struct AdviceLedger {
     pub acquired: bool,
 }
 
-/// 事件记录容量（S8 手动 / 前端回显：滚动保留最近 N 条）
-pub const EVENT_LOG_CAPACITY: usize = 32;
-
-/// 一次事件结算记录（S8：手动核对 / 前端回显）
-///
-/// 由 [`MatsuriGame`] 在事件结算后追加：事件 id / 名称 / 选项 / 实际到账数值（含卡面加成）。
-/// 属剧本自持的“呈现辅助状态”，不参与机制结算。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct EventRecord {
-    /// 单调递增序号（记录滚动后仍可用于「自上次以来」判断）
-    pub seq: u64,
-    /// 结算回合（0 基）
-    pub turn: i32,
-    /// 事件 id
-    pub id: u32,
-    /// 事件名
-    pub name: String,
-    /// 选项组下标（0 基）
-    pub choice: usize,
-    /// 结算摘要（实际到账数值 / 状态变化；无选项或无数值时为空）
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
-}
-
 /// 训练 / 演目稽古预览（S8：手动核对与前端面板）
 ///
 /// 成功收益 = 下层（引擎默认公式）+ 上层（剧本来源），已含变胖速度归零 / 本番演出等剧本修正；
@@ -117,73 +98,6 @@ pub struct ResourcePreview {
     pub gauge_delta: Array5,
     /// 各演目 Lv 增量
     pub level_delta: Array5,
-}
-
-/// 剧本资源快照（给前端的纯数据 View）
-///
-/// 形态 A 五条纪律（见引擎仓 `docs/scenario/contracts.md`）：**单一取数口** / 只放引擎不知道的字段 /
-/// 快照语义（幂等、无副作用）/ 可演进（`non_exhaustive`）/ **不进契约 trait**。
-/// S3 建底、S5 补全剧本自持资源：演目 gauge / Lv / 教诲槽位与転成 / 合宿状态 / 発表会·本番结果 /
-/// 永久 buff / 助力支撑 / 追加稽古 / 訓練 Lv 提升。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[non_exhaustive]
-pub struct MatsuriView {
-    /// 5 条演目 gauge（索引 = 演目 / 训练位下标）
-    pub act_gauge: Array5,
-    /// 5 个演目 Lv（1 级起）
-    pub act_level: Array5,
-    /// 演目 Lv 上限（SSR 吾妻 → 10）
-    pub act_level_max: i32,
-    /// 教诲槽位：每个演目绑定的基础教诲 id（0 = 未分配）
-    pub advice_slots: Array5,
-    /// 転成：每个演目槽位叠加的教诲 id（0 = 未転成）
-    pub advice_fused: Array5,
-    /// 本回合是否强制比赛（目标赛 / URA 决赛；被强制休息覆盖时分类仍为 true）
-    pub race: bool,
-    /// 本回合是否本番（第 3 次発表会）
-    pub finals: bool,
-    /// 本回合進捗発表会 / 本番场次（0–2；非结算回合为 `None`）
-    pub check_point: Option<usize>,
-    /// 本回合是否教诲可调整窗口（在 `End` 阶段、剧本结算之后处理）
-    pub advice_window: bool,
-    /// 本回合是否在合宿区（含被比赛 / 强制休息占用的回合）
-    pub camp_active: bool,
-    /// 本回合训练是否全变演目稽古（合宿排练回合）
-    pub camp_training: bool,
-    /// 本回合合宿年次（0–2；不在合宿为 `None`）
-    pub camp_year: Option<usize>,
-    /// 本回合是否延长期合宿
-    pub camp_extended: bool,
-    /// 本年度已计入的合宿回合数（比赛 / 强制休息不计）
-    pub camp_counted: usize,
-    /// 本回合是否因马娘特殊事件改为强制休息（目标赛回合仍按赛程分类）
-    pub forced_rest: bool,
-    /// 進捗発表会 / 本番结果（3 场）
-    pub check_points: [CheckPointResult; 3],
-    /// 本番演出是否已结算（S5 落地）
-    pub finals_done: bool,
-    /// 是否 URA 收尾期（本番后 turn 68–77）
-    pub ura_period: bool,
-    /// 発表会 / 本番永久友情 buff %（累计；开局 0）
-    pub presentation_friendship: i32,
-    /// 発表会 / 本番永久得意率 +N（累计；开局基线 20）
-    pub presentation_deyilv: i32,
-    /// 発表会 / 本番永久灵感发生率 +N%
-    pub presentation_hint_rate: i32,
-    /// 発表会 / 本番永久比赛加成 +N%
-    pub presentation_race_bonus: i32,
-    /// 助力支撑剩余次数（0 = 无）
-    pub assist_support_left: i32,
-    /// 本回合研鑽「追加の稽古」是否掷中（未点对应训练则作废）
-    pub kensan_pending: bool,
-    /// 発表会大成功累计的普通训练 Lv 提升
-    pub train_level_bonus: Array5,
-    /// 编成警告项（建局时一次算定；None 段位表示编成合规）
-    pub deck_warnings: Vec<DeckWarning>,
-
-    /// 最近事件记录（S8：手动核对 / 前端回显；容量上限 [`EVENT_LOG_CAPACITY`]）
-    pub recent_events: Vec<EventRecord>,
 }
 
 /// 剧本局面
@@ -310,51 +224,6 @@ impl MatsuriGame {
     pub fn with_config(mut self, config: crate::MatsuriConfig) -> Self {
         self.config = config;
         self
-    }
-
-    /// 取剧本资源快照（**单一取数口**；何时取由宿主决定）
-    #[must_use]
-    pub fn view(&self) -> MatsuriView {
-        MatsuriView {
-            act_gauge: self.acts.gauge,
-            act_level: self.acts.level,
-            act_level_max: self.act_level_cap(),
-            advice_slots: self.advice.slots,
-            advice_fused: self.advice.fused,
-            race: self.plan.race,
-            finals: self.plan.finals(),
-            check_point: self.plan.check_point,
-            advice_window: self.plan.advice_window.is_some(),
-            camp_active: self.plan.camp_zone,
-            camp_training: self.plan.camp_train(self.forced_rest),
-            camp_year: self.plan.camp_year,
-            camp_extended: self.plan.camp_extended,
-            camp_counted: self.camp.counted,
-            forced_rest: self.forced_rest,
-            check_points: self.check_points,
-            finals_done: self.finals_done,
-            ura_period: self.plan.ura_period,
-            presentation_friendship: self.presentation_bonus().friendship,
-            presentation_deyilv: self.presentation_bonus().deyilv,
-            presentation_hint_rate: self.presentation_bonus().hint_rate,
-            presentation_race_bonus: self.presentation_bonus().race_bonus,
-            assist_support_left: self.assist_support_left,
-            kensan_pending: self.kensan_pending,
-            train_level_bonus: self.train_level_bonus,
-            deck_warnings: self.deck_warnings.clone(),
-            recent_events: self.event_log.clone(),
-        }
-    }
-
-    /// 追加一条事件记录（S8 手动 / 前端核对；滚动保留最近 [`EVENT_LOG_CAPACITY`] 条）
-    ///
-    /// 序号由记录自身延续（滚动丢弃旧记录后仍单调递增），供前端判断「自上次以来」的新事件。
-    pub(crate) fn push_event_log(&mut self, mut record: EventRecord) {
-        record.seq = self.event_log.last().map_or(1, |last| last.seq + 1);
-        if self.event_log.len() >= EVENT_LOG_CAPACITY {
-            self.event_log.remove(0);
-        }
-        self.event_log.push(record);
     }
 
     /// 演目 Lv 上限（仅支持 SSR 吾妻 → 带友人档 10）

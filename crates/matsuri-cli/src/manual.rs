@@ -6,6 +6,10 @@
 //! 彩圈卡亮绿 / 普通支援卡白 / NPC 灰）/ 合宿·友人链·赛程 / 动作候选（成功收益预览、失败率）。
 //! 事件选择时打印选项组与各分支数值；动作选择在交互终端用 Inquire 列表，非 TTY 退回编号输入。
 //!
+//! **数据源纪律（S8 2026-11-02）**：面板状态一律从 `MatsuriGame::view()`（`MatsuriView`）取，
+//! 本文件只做呈现（名称文本按引擎静态表查）；`game` 仅用于只读预览（`preview_training` /
+//! `preview_action_resources`）与开局育成配置。动作候选是决策上下文，由训练员入参提供。
+//!
 //! 交互依赖 Inquire（仅终端）；颜色与表格复用 umaai-cli 呈现原语（term 三重门禁：非 TTY /
 //! NO_COLOR 自动退化纯文本）。本模式下引擎侧 PrintFrontend 静默（Quiet），面板是唯一信息源。
 
@@ -15,15 +19,15 @@ use std::io::{self, IsTerminal, Write};
 
 use anyhow::{Context, Result, anyhow};
 use inquire::Select;
+use matsuri_core::SCENARIO_START_TURN;
 use matsuri_core::data::CheckPointResult;
-use matsuri_core::game::{Action, MatsuriGame, PersonOrigin};
-use matsuri_core::{MAX_TURN, SCENARIO_START_TURN};
+use matsuri_core::game::{Action, MatsuriGame, MatsuriView, MatsuriYear, PersonOrigin};
 use rand::rngs::StdRng;
 use umaai_cli::render::table::Grid;
 use umaai_cli::render::term;
 use umaai_core::Data;
 use umaai_core::gamedata::{EventChoice, EventData};
-use umasim::game::{FriendOutState, Game, Person, Trainer};
+use umasim::game::{FriendOutState, Game, Trainer};
 
 /// 训练 / 五维轴名（简称）
 const AXIS_NAMES: [&str; 5] = ["速", "耐", "力", "根", "智"];
@@ -134,26 +138,45 @@ fn delta_tone(delta: i32) -> Option<&'static str> {
     }
 }
 
-/// 训练位下标 → 演目下标
-fn act_of_train(game: &MatsuriGame, train: usize) -> usize {
-    game.data
-        .acts
+/// 训练位下标 → 演目下标（`act_trains` 反查；防御性回退同下标）
+fn act_of_train(view: &MatsuriView, train: usize) -> usize {
+    view.resources
+        .act_trains
         .iter()
-        .position(|act| act.train == train)
+        .position(|mapped| *mapped == train)
         .unwrap_or(train)
 }
 
-/// 本回合按排练处理的演目集合（合宿排练回合 → 全部；否则演目槽满亮起集合）
-fn practice_acts(game: &MatsuriGame) -> [bool; 5] {
-    if game.plan.camp_train(game.forced_rest) {
-        return [true; 5];
+/// 人头短名（呈现层按引擎静态表解析；与 `MatsuriPerson::short_name` 同口径）
+fn person_short_name(person: &matsuri_core::PersonView) -> String {
+    match person.origin {
+        PersonOrigin::Guest => {
+            let name = Data::get().ok().map_or_else(String::new, |data| {
+                data.get_chara_name(person.chara_id)
+                    .chars()
+                    .take(2)
+                    .collect()
+            });
+            format!("[NPC]{name}")
+        }
+        PersonOrigin::Yayoi => "理事长".to_string(),
+        PersonOrigin::Reporter => "记者".to_string(),
+        PersonOrigin::Card | PersonOrigin::Friend => {
+            if let Some(card_id) = person.card_id
+                && let Ok(data) = Data::get()
+                && let Ok(card) = data.get_card(card_id)
+            {
+                return card.short_name().to_string();
+            }
+            let short: String = Data::get().ok().map_or_else(String::new, |data| {
+                data.get_chara_name(person.chara_id)
+                    .chars()
+                    .take(2)
+                    .collect()
+            });
+            format!("[???]{short}")
+        }
     }
-    let max = game.data.rules.act_gauge_max;
-    let mut lit = [false; 5];
-    for (act, gauge) in game.acts.gauge.iter().enumerate() {
-        lit[act] = *gauge >= max;
-    }
-    lit
 }
 
 /// 演目槽数字文本（x/y；满槽亮绿、差一格亮黄、有进度亮青、空灰）
@@ -170,15 +193,6 @@ fn gauge_text(gauge: i32, max: i32, color: bool) -> String {
         Some(ANSI_GRAY)
     };
     paint(&format!("{gauge}/{max}"), code, color)
-}
-
-/// 下次考核（発表会 / 本番）：(回合, 需要演目 Lv, 需要演目数)；本番之后为 None
-fn next_check_point(game: &MatsuriGame) -> Option<(i32, i32, i32)> {
-    game.data
-        .schedule
-        .iter()
-        .find(|row| row.turn >= game.turn())
-        .map(|row| (row.turn, row.need_act_level, row.need_act_num))
 }
 
 /// 演目 Lv 文本（未达下次考核门槛亮黄、已达成绿；本番后默认色）
@@ -224,43 +238,51 @@ fn advice_cell(base: i32, fused: i32, kensan_pending: bool, color: bool) -> Stri
 /// 演目担当人物（卡 + 编成外神驹；只列当前可用者，卡亮青 / 神驹灰）
 ///
 /// 0–1 回合剧本机制尚未开始，没有担当分配。
-fn act_members(game: &MatsuriGame, act: usize, color: bool) -> String {
-    if !game.scenario_started() {
+fn act_members(view: &MatsuriView, act: usize, color: bool) -> String {
+    if !view.turn.scenario_started {
         return paint("未分配", Some(ANSI_GRAY), color);
     }
-    let names: Vec<String> = (0..game.persons().len())
-        .filter(|index| game.persons()[*index].act == Some(act))
-        .filter(|index| game.person_is_available(*index))
-        .map(|index| {
-            let person = &game.persons()[index];
+    let members: Vec<String> = view
+        .board
+        .act_members
+        .get(act)
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .filter_map(|index| view.board.persons.get(*index))
+        .map(|person| {
             let code = if person.origin == PersonOrigin::Card {
                 Some(ANSI_BRIGHT_CYAN)
             } else {
                 Some(ANSI_GRAY)
             };
-            paint(&person.short_name(), code, color)
+            paint(&person_short_name(person), code, color)
         })
         .collect();
-    if names.is_empty() {
+    if members.is_empty() {
         "—".to_string()
     } else {
-        names.join(" ")
+        members.join(" ")
     }
 }
 
 /// 单个人头在训练位的显示（类型着色 + Hint 亮黄叹号 + 未满 100 的羁绊）
-fn person_label(game: &MatsuriGame, person_index: usize, train: usize, color: bool) -> String {
-    let person = &game.persons()[person_index];
-    let name = person.short_name();
+fn person_label(
+    view: &MatsuriView,
+    person_index: usize,
+    shining: bool,
+    color: bool,
+) -> Option<String> {
+    let person = view.board.persons.get(person_index)?;
+    let name = person_short_name(person);
     // 编成外神驹没有羁绊面板；其余人物未满 100 时尾附数值
-    let body = if person.origin != PersonOrigin::Guest && person.friendship() < 100 {
-        format!("{name}{}", person.friendship())
+    let body = if person.origin != PersonOrigin::Guest && person.friendship < 100 {
+        format!("{name}{}", person.friendship)
     } else {
         name
     };
     let body = match person.origin {
         PersonOrigin::Card => {
-            let code = if game.is_shining_at(person_index, train) {
+            let code = if shining {
                 Some(ANSI_BRIGHT_GREEN)
             } else {
                 Some(ANSI_WHITE)
@@ -272,20 +294,22 @@ fn person_label(game: &MatsuriGame, person_index: usize, train: usize, color: bo
             paint(&body, Some(ANSI_GRAY), color)
         }
     };
-    if person.hint() {
+    Some(if person.hint {
         format!("{}{body}", paint("!", Some(ANSI_BRIGHT_YELLOW), color))
     } else {
         body
-    }
+    })
 }
 
 /// 一个训练位的全部人头（一格内多行；无人显示 —）
-fn person_cell(game: &MatsuriGame, train: usize, color: bool) -> String {
-    let members: Vec<String> = game.distribution()[train]
+fn person_cell(view: &MatsuriView, train: usize, color: bool) -> String {
+    let members: Vec<String> = view
+        .board
+        .distribution
+        .get(train)
+        .map_or(&[][..], Vec::as_slice)
         .iter()
-        .filter(|index| **index >= 0)
-        .filter_map(|index| usize::try_from(*index).ok())
-        .map(|index| person_label(game, index, train, color))
+        .filter_map(|member| person_label(view, member.person, member.shining, color))
         .collect();
     if members.is_empty() {
         "—".to_string()
@@ -326,13 +350,8 @@ fn out_state_name(state: FriendOutState) -> &'static str {
 }
 
 /// 年次名
-fn year_name(turn: i32) -> &'static str {
-    match turn {
-        0..=23 => "Junior",
-        24..=47 => "Classic",
-        48..=MAX_TURN => "Senior",
-        _ => "?",
-    }
+fn year_name(year: MatsuriYear) -> &'static str {
+    year.as_str()
 }
 
 /// 比赛等级名（等级表口径：0 = 无比赛、1 = G1 … 4 = OP）
@@ -448,7 +467,7 @@ pub fn newgame_config(game: &MatsuriGame) -> String {
     out
 }
 
-/// 局面数值快照（算「上一步后变化」）
+/// 局面数值快照（`MatsuriView` 派生；算「上一步后变化」）
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Snapshot {
     turn: i32,
@@ -460,15 +479,14 @@ struct Snapshot {
 }
 
 impl Snapshot {
-    fn of(game: &MatsuriGame) -> Self {
-        let uma = game.uma();
+    fn of(view: &MatsuriView) -> Self {
         Self {
-            turn: game.turn(),
-            five: uma.five_status,
-            pt: uma.skill_pt,
-            vital: uma.vital,
-            motivation: uma.motivation,
-            act_level: game.view().act_level,
+            turn: view.turn.turn,
+            five: view.uma.five_status,
+            pt: view.uma.skill_pt,
+            vital: view.uma.vital,
+            motivation: view.uma.motivation,
+            act_level: view.resources.act_level,
         }
     }
 }
@@ -524,52 +542,53 @@ impl ManualTrainer {
     }
 
     /// 本回合类型标签（目标赛 / 発表会 / 合宿 / 教诲窗口 / 强制休息 / URA …）
-    fn turn_kind(game: &MatsuriGame, actions: &[Action]) -> String {
-        let plan = &game.plan;
+    fn turn_kind(view: &MatsuriView) -> String {
+        let turn = &view.turn;
+        let camp = &view.camp;
         let mut tags: Vec<String> = Vec::new();
-        if plan.race {
+        if turn.race {
             tags.push(
-                if plan.ura_race {
+                if turn.ura_race {
                     "URA决赛"
                 } else {
                     "目标赛"
                 }
                 .to_string(),
             );
-        } else if actions.iter().any(|action| matches!(action, Action::Race)) {
+        } else if turn.self_race_available {
             tags.push("可自选比赛".to_string());
         }
-        if plan.finals() {
+        if turn.finals {
             tags.push("本番".to_string());
-        } else if let Some(check_point) = plan.check_point {
+        } else if let Some(check_point) = turn.check_point {
             tags.push(format!("発表会{}", check_point + 1));
         }
-        if plan.camp_zone {
+        if camp.active {
             tags.push(format!(
                 "合宿{}年{}",
-                plan.camp_year.map_or(0, |year| year + 1),
-                if plan.camp_extended {
+                camp.year.map_or(0, |year| year + 1),
+                if camp.extended {
                     "·延长"
-                } else if plan.camp_regular {
+                } else if camp.regular {
                     "·常规"
                 } else {
                     ""
                 }
             ));
         }
-        if plan.camp_rest {
+        if camp.rest {
             tags.push("合宿版休息".to_string());
         }
-        if plan.camp_level_up {
+        if camp.level_up {
             tags.push("合宿结算·全演目+1".to_string());
         }
-        if plan.advice_window.is_some() {
+        if turn.advice_window {
             tags.push("教诲窗口".to_string());
         }
-        if game.forced_rest {
+        if turn.forced_rest {
             tags.push("强制休息".to_string());
         }
-        if plan.ura_period {
+        if turn.ura_period {
             tags.push("URA收尾".to_string());
         }
         if tags.is_empty() {
@@ -580,10 +599,10 @@ impl ManualTrainer {
     }
 
     /// 事件回显：打印「自上次提示以来」新结算的事件
-    fn write_new_events(&self, game: &MatsuriGame, out: &mut String) {
+    fn write_new_events(&self, view: &MatsuriView, out: &mut String) {
         let last_seq = self.last_event_seq.get();
-        let fresh: Vec<_> = game
-            .event_log
+        let fresh: Vec<_> = view
+            .recent_events
             .iter()
             .filter(|record| record.seq > last_seq)
             .collect();
@@ -607,11 +626,11 @@ impl ManualTrainer {
     }
 
     /// 上一步后的数值变化（正绿 / 负红）
-    fn write_delta(&self, game: &MatsuriGame, out: &mut String, color: bool) {
+    fn write_delta(&self, view: &MatsuriView, out: &mut String, color: bool) {
         let Some(last) = self.last.get() else {
             return;
         };
-        let now = Snapshot::of(game);
+        let now = Snapshot::of(view);
         let range = if last.turn == now.turn {
             "本回合上一步后".to_string()
         } else {
@@ -674,9 +693,8 @@ impl ManualTrainer {
     }
 
     /// 五维 / 体力 / 状态
-    fn write_uma(&self, game: &MatsuriGame, out: &mut String, color: bool) {
-        let data = &game.data;
-        let uma = game.uma();
+    fn write_uma(&self, view: &MatsuriView, out: &mut String, color: bool) {
+        let uma = &view.uma;
         let consts = Data::get().map(|data| &data.consts).ok();
         let motivation_name = consts
             .and_then(|consts| {
@@ -736,20 +754,17 @@ impl ManualTrainer {
         if !flags.is_empty() {
             states.push(paint(&flags, Some(ANSI_RED), color));
         }
-        if game.fatigue_recovery {
+        if view.friend.fatigue_recovery {
             states.push(paint("疲劳回复", Some(ANSI_GREEN), color));
         }
-        if game.plan.advice_window.is_some() {
+        if view.turn.advice_window {
             states.push(paint("教诲窗口", Some(ANSI_BRIGHT_YELLOW), color));
         }
-        if let Some(train) = game.base.last_train {
+        if let Some(train) = uma.last_train {
             states.push(format!(
                 "上次训练:{}",
                 AXIS_NAMES.get(train).copied().unwrap_or("?")
             ));
-        }
-        if data.camp.windows.len() != 3 {
-            states.push(paint("合宿窗口数据异常", Some(ANSI_RED), color));
         }
         // 仅显示已置状态；全部没有时不打印该行（不用「无」占位）
         if !states.is_empty() {
@@ -758,19 +773,18 @@ impl ManualTrainer {
     }
 
     /// 教诲结果：首次授予 / 転成 / 改派窗口后的下一次面板列出分配结果（其后紧跟剧本资源刷新）
-    fn write_advice_window(&self, game: &MatsuriGame, out: &mut String, color: bool) {
-        let view = game.view();
-        let state = (view.advice_slots, view.advice_fused);
+    fn write_advice_window(&self, view: &MatsuriView, out: &mut String, color: bool) {
+        let state = (view.resources.advice_slots, view.resources.advice_fused);
         let prev_state = self.last_advice.get();
         let prev_window = self.last_advice_window.get();
-        let settled = prev_window.is_some_and(|turn| game.turn() == turn + 1);
+        let settled = prev_window.is_some_and(|turn| view.turn.turn == turn + 1);
         let changed = prev_state.is_some_and(|prev| prev != state);
         // 变化优先归到上一个窗口；T2 的首次授予发生在 Begin（无上窗口）→ 归到本回合
         let window = if changed {
             if settled {
                 prev_window
             } else {
-                Some(game.turn())
+                Some(view.turn.turn)
             }
         } else if settled {
             prev_window
@@ -786,7 +800,7 @@ impl ManualTrainer {
             let parts: Vec<String> = (0..5)
                 .map(|act| {
                     let label = act_name(act);
-                    let base = view.advice_slots[act];
+                    let base = view.resources.advice_slots[act];
                     if base == 0 {
                         return format!("{label}=—");
                     }
@@ -795,7 +809,7 @@ impl ManualTrainer {
                         base,
                         paint(&advice_name(base), Some(ANSI_BRIGHT_CYAN), color)
                     );
-                    let fused = view.advice_fused[act];
+                    let fused = view.resources.advice_fused[act];
                     if fused != 0 {
                         cell.push_str(&format!(
                             "→{} {}",
@@ -814,19 +828,18 @@ impl ManualTrainer {
         }
         self.last_advice.set(Some(state));
         // 本回合是窗口 → 记下来，下一次面板列结果；本回合已列过结果则不重复记
-        let store_window = game.view().advice_window && window.is_none();
+        let store_window = view.turn.advice_window && window.is_none();
         self.last_advice_window
-            .set(store_window.then_some(game.turn()));
+            .set(store_window.then_some(view.turn.turn));
     }
 
     /// 剧本资源：演目表（槽 / Lv / 教诲→転成 / 担当人物）+ 発表会·永久 buff·资源状态
-    fn write_resources(&self, game: &MatsuriGame, out: &mut String, color: bool) {
-        let view = game.view();
-        let rules = &game.data.rules;
-        let need = next_check_point(game);
-        let need_level = need.map(|(_, level, _)| level);
+    fn write_resources(&self, view: &MatsuriView, out: &mut String, color: bool) {
+        let res = &view.resources;
+        let need = view.schedule.next_check_point;
+        let need_level = need.map(|need| need.need_act_level);
         out.push_str("【剧本资源】\n");
-        if !game.scenario_started() {
+        if !view.turn.scenario_started {
             let note = format!(
                 "（剧本机制自 T{SCENARIO_START_TURN} 开始：0–1 回合无担当分配，训练等不获取演目资源）"
             );
@@ -834,27 +847,27 @@ impl ManualTrainer {
         }
         let mut grid = Grid::new(["演目", "槽", "Lv", "教诲 → 転成", "担当"]);
         for act in 0..5 {
-            let train = game.data.acts.get(act).map_or(act, |act| act.train);
+            let train = res.act_trains.get(act).copied().unwrap_or(act);
             let name = format!(
                 "{}({})",
                 act_short(act),
                 AXIS_NAMES.get(train).copied().unwrap_or("?")
             );
-            let slot = gauge_text(view.act_gauge[act], rules.act_gauge_max, color);
-            let level = act_level_text(view.act_level[act], view.act_level_max, need_level, color);
+            let slot = gauge_text(res.act_gauge[act], res.act_gauge_max, color);
+            let level = act_level_text(res.act_level[act], res.act_level_max, need_level, color);
             let advice = advice_cell(
-                view.advice_slots[act],
-                view.advice_fused[act],
-                view.kensan_pending,
+                res.advice_slots[act],
+                res.advice_fused[act],
+                res.kensan_pending,
                 color,
             );
-            let members = act_members(game, act, color);
+            let members = act_members(view, act, color);
             grid.push([name, slot, level, advice, members]);
         }
         out.push_str(&grid.render(term::resolve_width(None)));
         out.push('\n');
         // 発表会 / 本番结果、下次考核门槛
-        let results: Vec<String> = view
+        let results: Vec<String> = res
             .check_points
             .iter()
             .enumerate()
@@ -872,8 +885,8 @@ impl ManualTrainer {
             })
             .collect();
         let finals = paint(
-            if view.finals_done { "已" } else { "未" },
-            if view.finals_done {
+            if res.finals_done { "已" } else { "未" },
+            if res.finals_done {
                 Some(ANSI_GREEN)
             } else {
                 Some(ANSI_GRAY)
@@ -881,17 +894,22 @@ impl ManualTrainer {
             color,
         );
         let mut line = format!("  発表会 {} · 本番 {finals}", results.join(" "));
-        if let Some((turn, level, count)) = need {
-            let reached = view.act_level.iter().filter(|lv| **lv >= level).count();
-            let last_turn = game.data.schedule.last().map_or(i32::MIN, |row| row.turn);
-            let stage = if turn == last_turn {
+        if let Some(need) = need {
+            let reached = res
+                .act_level
+                .iter()
+                .filter(|level| **level >= need.need_act_level)
+                .count();
+            let stage = if need.is_finals {
                 "本番"
             } else {
                 "発表会"
             };
-            let ok = reached >= count as usize;
-            let text =
-                format!(" · 下次{stage} T{turn} 需全演目 Lv≥{level}（达成 {reached}/{count}）");
+            let ok = reached >= need.need_act_num as usize;
+            let text = format!(
+                " · 下次{stage} T{} 需全演目 Lv≥{}（达成 {reached}/{}）",
+                need.turn, need.need_act_level, need.need_act_num
+            );
             line.push_str(&paint(
                 &text,
                 if ok {
@@ -907,40 +925,38 @@ impl ManualTrainer {
         let mut extras: Vec<String> = vec![paint(
             &format!(
                 "永久buff 友情+{}% 擅长率+{} 灵感+{}% 比赛+{}%",
-                view.presentation_friendship,
-                view.presentation_deyilv,
-                view.presentation_hint_rate,
-                view.presentation_race_bonus
+                res.presentation_friendship,
+                res.presentation_deyilv,
+                res.presentation_hint_rate,
+                res.presentation_race_bonus
             ),
             Some(ANSI_BRIGHT_CYAN),
             color,
         )];
-        if view.assist_support_left > 0 {
+        if res.assist_support_left > 0 {
             extras.push(paint(
-                &format!("助力支撑 ×{}", view.assist_support_left),
+                &format!("助力支撑 ×{}", res.assist_support_left),
                 Some(ANSI_BRIGHT_CYAN),
                 color,
             ));
         }
-        if view.kensan_pending {
+        if res.kensan_pending {
             extras.push(paint("追加稽古 掷中", Some(ANSI_BRIGHT_YELLOW), color));
         }
-        if view.train_level_bonus.iter().any(|bonus| *bonus != 0) {
-            extras.push(format!("訓練Lv加成 {:?}", view.train_level_bonus));
+        if res.train_level_bonus.iter().any(|bonus| *bonus != 0) {
+            extras.push(format!("訓練Lv加成 {:?}", res.train_level_bonus));
         }
         let _ = writeln!(out, "  {}", extras.join(" · "));
     }
 
     /// 训练明细表：每训练一列（列头 = 训练名 / 排练名 + Lv），格内列出该位置全部人头
-    fn write_training(&self, game: &MatsuriGame, out: &mut String, color: bool) {
-        let view = game.view();
-        let practice = practice_acts(game);
+    fn write_training(&self, view: &MatsuriView, out: &mut String, color: bool) {
         let headers: Vec<String> = (0..5)
             .map(|train| {
-                let act = act_of_train(game, train);
-                if practice[act] {
+                let act = act_of_train(view, train);
+                if view.turn.practice[act] {
                     paint(
-                        &format!("{} Lv{}", act_short(act), view.act_level[act]),
+                        &format!("{} Lv{}", act_short(act), view.resources.act_level[act]),
                         Some(ANSI_BRIGHT_YELLOW),
                         color,
                     )
@@ -948,14 +964,14 @@ impl ManualTrainer {
                     format!(
                         "{} Lv{}",
                         AXIS_NAMES.get(train).copied().unwrap_or("?"),
-                        game.train_level(train)
+                        view.board.train_levels[train]
                     )
                 }
             })
             .collect();
         let mut grid = Grid::new(headers);
         let cells: Vec<String> = (0..5)
-            .map(|train| person_cell(game, train, color))
+            .map(|train| person_cell(view, train, color))
             .collect();
         let widest = cells
             .iter()
@@ -979,16 +995,12 @@ impl ManualTrainer {
     }
 
     /// 合宿 / 友人链 / 赛程 / 编成警告
-    fn write_context(&self, game: &MatsuriGame, out: &mut String, color: bool) {
-        if game.plan.camp_zone {
-            let year = game.plan.camp_year.unwrap_or(0);
-            let total = game
-                .data
-                .camp
-                .windows
-                .get(year)
-                .map_or(0, |window| window.end - window.start + 1);
-            let level_up = if game.plan.camp_level_up {
+    fn write_context(&self, view: &MatsuriView, out: &mut String, color: bool) {
+        let camp = &view.camp;
+        if camp.active {
+            let year = camp.year.unwrap_or(0);
+            let total = camp.total.unwrap_or(0);
+            let level_up = if camp.level_up {
                 format!("  {}", paint("本回合全演目+1", Some(ANSI_GREEN), color))
             } else {
                 String::new()
@@ -997,44 +1009,37 @@ impl ManualTrainer {
                 out,
                 "【合宿】第{}年 {}  已计入 {}/{} 回合{level_up}",
                 paint(&(year + 1).to_string(), Some(ANSI_BRIGHT_CYAN), color),
-                if game.plan.camp_extended {
+                if camp.extended {
                     "延长期"
                 } else {
                     "常规窗口"
                 },
-                game.camp.counted,
+                camp.counted,
                 total,
             );
         }
-        let out_used = game.friend.out_used.iter().filter(|used| **used).count();
-        let next_step = game
-            .friend
-            .out_used
-            .iter()
-            .position(|used| !*used)
-            .map_or(0, |step| step + 1);
-        let next_event = if next_step == 0 {
-            String::new()
-        } else {
-            Data::get()
-                .ok()
-                .and_then(|data| data.events.friend_events.get(&next_step.to_string()))
-                .map_or(String::new(), |event| {
-                    format!("（#{} {}）", event.id, event.name)
+        let friend = &view.friend;
+        let out_used = friend.out_used.iter().filter(|used| **used).count();
+        let next_step = friend.next_step.map_or(0, |step| step + 1);
+        let next_event = friend
+            .next_step
+            .and_then(|step| {
+                Data::get().ok().and_then(|data| {
+                    data.events
+                        .friend_events
+                        .get(&(step + 1).to_string())
+                        .map(|event| format!("（#{} {}）", event.id, event.name))
                 })
-        };
-        let state = match game.friend.out_state {
+            })
+            .unwrap_or_default();
+        let state = match friend.out_state {
             FriendOutState::AfterUnlock => paint(
-                out_state_name(game.friend.out_state),
+                out_state_name(friend.out_state),
                 Some(ANSI_BRIGHT_CYAN),
                 color,
             ),
-            FriendOutState::Away => paint(
-                out_state_name(game.friend.out_state),
-                Some(ANSI_GRAY),
-                color,
-            ),
-            _ => out_state_name(game.friend.out_state).to_string(),
+            FriendOutState::Away => paint(out_state_name(friend.out_state), Some(ANSI_GRAY), color),
+            _ => out_state_name(friend.out_state).to_string(),
         };
         let outing = paint(
             &format!(
@@ -1045,7 +1050,7 @@ impl ManualTrainer {
             color,
         );
         // 仅在有疲劳回复时附状态；没有则不显示该项
-        let fatigue = if game.fatigue_recovery {
+        let fatigue = if friend.fatigue_recovery {
             format!("  {}", paint("疲劳回复", Some(ANSI_GREEN), color))
         } else {
             String::new()
@@ -1054,9 +1059,7 @@ impl ManualTrainer {
             out,
             "【友人】{state}  {outing}  下一段 {next_step}{next_event}{fatigue}"
         );
-        let goals: Vec<i32> = (game.turn()..=MAX_TURN)
-            .filter(|turn| game.uma().is_race_turn(*turn))
-            .collect();
+        let goals = &view.schedule.goal_races;
         let goal_text = if goals.is_empty() {
             "无后续目标赛".to_string()
         } else {
@@ -1075,13 +1078,12 @@ impl ManualTrainer {
                 .join(" ")
         };
         let _ = writeln!(out, "【目标赛】{goal_text}");
-        let races: Vec<String> = (game.turn()..=MAX_TURN)
-            .filter(|turn| !game.uma().is_race_turn(*turn))
-            .filter_map(|turn| {
-                let grade = *game.race_grades.get(turn as usize)?;
-                (grade > 0).then(|| format!("T{turn}({})", grade_name(grade)))
-            })
+        let races: Vec<String> = view
+            .schedule
+            .self_races
+            .iter()
             .take(4)
+            .map(|race| format!("T{}({})", race.turn, grade_name(race.grade)))
             .collect();
         let _ = writeln!(
             out,
@@ -1092,8 +1094,8 @@ impl ManualTrainer {
                 races.join(" ")
             }
         );
-        if !game.deck_warnings.is_empty() {
-            let warnings: Vec<String> = game
+        if !view.deck_warnings.is_empty() {
+            let warnings: Vec<String> = view
                 .deck_warnings
                 .iter()
                 .map(ToString::to_string)
@@ -1116,7 +1118,13 @@ impl ManualTrainer {
     }
 
     /// 单个动作的说明（训练带成功收益预览与失败率；末尾附剧本资源增量）
-    fn describe_action(&self, game: &MatsuriGame, action: &Action, color: bool) -> String {
+    fn describe_action(
+        &self,
+        game: &MatsuriGame,
+        view: &MatsuriView,
+        action: &Action,
+        color: bool,
+    ) -> String {
         let body = match action {
             Action::Train(train) => {
                 let train = usize::from(*train);
@@ -1135,8 +1143,8 @@ impl ManualTrainer {
             }
             Action::ActTrain(act) => {
                 let act = usize::from(*act);
-                let train = game.data.acts.get(act).map_or(act, |act| act.train);
-                let level = game.view().act_level.get(act).copied().unwrap_or(0);
+                let train = view.resources.act_trains.get(act).copied().unwrap_or(act);
+                let level = view.resources.act_level.get(act).copied().unwrap_or(0);
                 match game.preview_training(train, true) {
                     Ok(preview) => format!(
                         "Lv{}  成功: {}  失败率 {}",
@@ -1152,17 +1160,16 @@ impl ManualTrainer {
                 }
             }
             Action::Race => {
-                let uma = game.uma();
-                if game.plan.ura_race {
+                if view.turn.ura_race {
                     "URA 决赛（奖励按引擎）".to_string()
-                } else if game.plan.race {
-                    format!("目标赛（比赛加成 +{}%）", uma.race_bonus)
+                } else if view.turn.race {
+                    format!("目标赛（比赛加成 +{}%）", view.uma.race_bonus)
                 } else {
-                    format!("自选比赛（比赛加成 +{}%）", uma.race_bonus)
+                    format!("自选比赛（比赛加成 +{}%）", view.uma.race_bonus)
                 }
             }
             Action::Rest => {
-                if game.plan.camp_rest {
+                if view.camp.rest {
                     "合宿版休息（体力 +40 / 干劲 +1）".to_string()
                 } else {
                     "普通休息（体力回复；不改干劲）".to_string()
@@ -1170,18 +1177,19 @@ impl ManualTrainer {
             }
             Action::NormalOuting => "普通出行（随机出行事件：体力 / 属性 / 干劲）".to_string(),
             Action::FriendOuting => {
-                let step = game
+                let step = view.friend.next_step.map_or(0, |step| step + 1);
+                let name = view
                     .friend
-                    .out_used
-                    .iter()
-                    .position(|used| !*used)
-                    .map_or(0, |step| step + 1);
-                let name = Data::get()
-                    .ok()
-                    .and_then(|data| data.events.friend_events.get(&step.to_string()))
-                    .map_or(String::new(), |event| {
-                        format!("：#{} {}", event.id, event.name)
-                    });
+                    .next_step
+                    .and_then(|step| {
+                        Data::get().ok().and_then(|data| {
+                            data.events
+                                .friend_events
+                                .get(&(step + 1).to_string())
+                                .map(|event| format!("：#{} {}", event.id, event.name))
+                        })
+                    })
+                    .unwrap_or_default();
                 format!("友人出行第 {step} 段{name}（最低演目槽 Lv+1 + 段事件）")
             }
             Action::Clinic => "治病（体力 +20；清空生病位与不擅长训练）".to_string(),
@@ -1196,6 +1204,7 @@ impl ManualTrainer {
     /// 打印局面面板 + 动作候选
     fn show_board(&self, game: &MatsuriGame, actions: &[Action]) -> Result<String> {
         let color = term::use_color(false);
+        let view = game.view();
         let mut out = String::new();
         let _ = writeln!(
             out,
@@ -1204,51 +1213,51 @@ impl ManualTrainer {
         let _ = writeln!(
             out,
             "T{}/{} {}  阶段 {}({})  类型: {}",
-            game.turn(),
-            game.max_turn(),
-            year_name(game.turn()),
-            game.stage().get(),
-            stage_name(game.stage().get()),
-            Self::turn_kind(game, actions),
+            view.turn.turn,
+            view.turn.max_turn,
+            year_name(view.turn.year),
+            view.turn.stage.get(),
+            stage_name(view.turn.stage.get()),
+            Self::turn_kind(&view),
         );
-        self.write_new_events(game, &mut out);
-        self.write_delta(game, &mut out, color);
-        self.write_uma(game, &mut out, color);
-        self.write_advice_window(game, &mut out, color);
-        self.write_resources(game, &mut out, color);
-        self.write_training(game, &mut out, color);
-        self.write_context(game, &mut out, color);
+        self.write_new_events(&view, &mut out);
+        self.write_delta(&view, &mut out, color);
+        self.write_uma(&view, &mut out, color);
+        self.write_advice_window(&view, &mut out, color);
+        self.write_resources(&view, &mut out, color);
+        self.write_training(&view, &mut out, color);
+        self.write_context(&view, &mut out, color);
         out.push_str("【动作】\n");
         for (idx, action) in actions.iter().enumerate() {
             let _ = writeln!(
                 out,
                 "  [{idx}] {}  {}",
                 self.action_label(action),
-                self.describe_action(game, action, color)
+                self.describe_action(game, &view, action, color)
             );
         }
 
         // 更新面板状态：下次提示显示本步之后的变化 / 新事件
-        self.last.set(Some(Snapshot::of(game)));
+        self.last.set(Some(Snapshot::of(&view)));
         Ok(out)
     }
 
     /// 教诲分配决策：面板只显示当前槽位分配 + 保持现状（本档不择优；策略档见 `matsuri`）
-    fn choose_advice(&self, game: &MatsuriGame, actions: &[Action]) -> Result<usize> {
+    fn choose_advice(&self, view: &MatsuriView, actions: &[Action]) -> Result<usize> {
         let color = term::use_color(false);
-        let view = game.view();
+        let res = &view.resources;
         let mut out = String::new();
         let _ = writeln!(
             out,
             "──────── 教诲分配（T{}，{} 个候选）────────",
-            game.turn(),
+            view.turn.turn,
             actions.len()
         );
         let mut cells = Vec::new();
-        for (act, (base, fused)) in view
+        for (act, (base, fused)) in res
             .advice_slots
             .iter()
-            .zip(view.advice_fused.iter())
+            .zip(res.advice_fused.iter())
             .enumerate()
         {
             let mut text = format!("{}←{}", act_short(act), base);
@@ -1390,7 +1399,8 @@ impl Trainer<MatsuriGame> for ManualTrainer {
     ) -> Result<usize> {
         // 教诲分配决策点：候选全是分配方案，用独立的一行提示（不刷整块面板 / 120 行列表）
         if matches!(actions.first(), Some(Action::AssignAdvice(_))) {
-            return self.choose_advice(game, actions);
+            let view = game.view();
+            return self.choose_advice(&view, actions);
         }
         println!("{}", self.show_board(game, actions)?);
         self.choose_action(actions)

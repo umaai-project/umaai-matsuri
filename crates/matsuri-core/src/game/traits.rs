@@ -17,6 +17,7 @@ use super::person::{MatsuriPerson, PersonOrigin};
 use super::{Action, EventRecord, MatsuriGame, Stage};
 use crate::MAX_TURN;
 use crate::data::CheckPointResult;
+use crate::diag;
 
 /// 剧本人头：引擎通用字段逐项委托 [`BasePerson`](umasim::game::base::BasePerson)
 ///
@@ -184,26 +185,62 @@ impl Game for MatsuriGame {
     }
 
     fn apply_event(&mut self, event: &EventData, choice: usize, rng: &mut impl Rng) -> Result<()> {
+        let before = self.key_state();
         // ① 引擎底座负责通用数值结算（含友人卡事件加成、ExtraStatus）
         let result = self.base.apply_event(event, choice, rng);
         if let Some(result) = &result {
             // ② 引擎 `BaseEvent::apply_event` 不结算 add/remove_flags，剧本侧补齐（变胖等状态）
             self.base.uma.update_flags(result);
+            let add_flags = result
+                .add_flags
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default();
+            let remove_flags = result
+                .remove_flags
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default();
+            if !add_flags.is_empty() || !remove_flags.is_empty() {
+                diag!(
+                    "【状态】T{} 事件#{} 状态+[{add_flags}] 状态-[{remove_flags}]",
+                    self.turn(),
+                    event.id
+                );
+            }
             // ③ 事件羁绊归属（红点 / 点击 / 出行 / 友人事件等带羁绊值）
             if result.value.friendship != 0
                 && let Some(person_index) = self.base.event_person_target(event, &self.persons)
             {
                 self.base
                     .add_friendship(&mut self.persons, person_index, result.value.friendship);
+                diag!(
+                    "【事件羁绊】T{} 事件#{} 人头{person_index} +{}",
+                    self.turn(),
+                    event.id,
+                    result.value.friendship
+                );
             }
         }
         // ④ 剧本特例：友人出行解锁 + 疲劳回复 flag
         if event.id == super::event::FRIEND_OUT_EVENT_ID {
             self.base.friend.out_state = umasim::game::FriendOutState::AfterUnlock;
             self.fatigue_recovery = true;
+            diag!(
+                "【状态】T{} 友人出行解锁 → 出行可用 + 疲劳回复 flag",
+                self.turn()
+            );
         }
         // ⑤ 事件额外效果（演目 gauge / 解 debuff）
         self.apply_event_extra(event.id, choice);
+        diag!(
+            "【事件结算】T{} #{} {} 选项{}｜变化 {}",
+            self.turn(),
+            event.id,
+            event.name,
+            choice,
+            before.diff(&self.key_state())
+        );
         // ⑥ 事件记录（S8 手动 / 前端核对）：记录实际到账数值与状态变化
         let mut detail = result
             .as_ref()

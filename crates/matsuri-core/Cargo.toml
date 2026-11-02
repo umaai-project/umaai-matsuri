@@ -1,6 +1,6 @@
 # 剧本机制本体 + 训练员 + 装配（宿主稳定面 crate）
 #
-# 局面 `MatsuriGame` / 动作 / 数据 / 配置 / `MatsuriView` 快照 / 样例训练员 / `build_game` 装配。
+# 局面 `MatsuriGame` / 动作 / 数据 / 配置 / 回合信息快照 `MatsuriView` / 手写训练员 / `build_game` 装配。
 # 下游宿主（Web / Android）只依赖本 crate。
 [package]
 name = "matsuri-core"
@@ -13,6 +13,7 @@ umaai-core.workspace = true
 umasim.workspace = true
 umaai.workspace = true
 anyhow.workspace = true
+log.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true

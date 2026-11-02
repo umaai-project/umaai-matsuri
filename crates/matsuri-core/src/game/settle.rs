@@ -12,6 +12,7 @@ use umasim::game::{Game, PersonType, Trainer};
 use super::MatsuriGame;
 use crate::config::FusionPair;
 use crate::data::{CheckPointResult, Reward, RewardResult};
+use crate::diag;
 
 impl MatsuriGame {
     /// 回合末剧本结算（在合宿计数之后、求解器推进回合之前调用）
@@ -22,9 +23,15 @@ impl MatsuriGame {
         }
         // 2) 合宿结束：全演目 Lv +1（turn 15 / 39 / 63）
         if self.plan.camp_level_up {
+            let before = self.acts.level;
             for act in 0..5 {
                 self.add_act_level(act, 1);
             }
+            diag!(
+                "【合宿】T{} 结束 全演目 Lv+1 {before:?}→{:?}",
+                self.turn(),
+                self.acts.level
+            );
         }
         Ok(())
     }
@@ -40,6 +47,22 @@ impl MatsuriGame {
         self.check_points[index] = result;
         if index == 2 {
             self.finals_done = true;
+        }
+        if let Some(schedule) = self.data.schedule.get(index) {
+            let reached = self
+                .acts
+                .level
+                .iter()
+                .filter(|level| **level >= schedule.need_act_level)
+                .count();
+            diag!(
+                "【発表会】T{} 第{}回 {} 达标 {reached}/{} 演目 Lv≥{}",
+                self.turn(),
+                index + 1,
+                check_point_result_name(result),
+                schedule.need_act_num,
+                schedule.need_act_level
+            );
         }
         let schedule = index as i32 + 1;
         let Some(reward_result) = reward_result(result) else {
@@ -81,6 +104,16 @@ impl MatsuriGame {
         // `act_member_add`：第 2 批神驹的登场条件本身即「Classic 進捗発表会大成功」
         // （建局时已按 `needs_great_success` 门禁），此处不需要再补人头（U27 口径）。
         let _ = reward.act_member_add;
+        diag!(
+            "【奖励】T{} 五维+{} SP+{} 体力+{} 干劲+{} 訓練Lv+{} 理事长羁绊+{}",
+            self.turn(),
+            reward.status,
+            reward.skill_pt,
+            reward.vital,
+            reward.motivation,
+            reward.training_level_up,
+            reward.president_friendship
+        );
     }
 
     /// 教诲窗口（`End` 阶段、剧本结算之后）：融合（配置预设）→ 分配（交给 Trainer）
@@ -126,6 +159,15 @@ impl MatsuriGame {
         } else {
             RewardResult::Success
         };
+        diag!(
+            "【终局】T{} 三场结果 {:?} → {}档奖励",
+            self.turn(),
+            self.check_points,
+            match result {
+                RewardResult::GreatSuccess => "大成功",
+                RewardResult::Success => "成功",
+            }
+        );
         if let Some(reward) = self
             .data
             .career_end_rewards
@@ -135,6 +177,15 @@ impl MatsuriGame {
         {
             self.apply_reward(&reward);
         }
+    }
+}
+
+/// 発表会结果名（诊断日志用）
+fn check_point_result_name(result: CheckPointResult) -> &'static str {
+    match result {
+        CheckPointResult::NotReached => "未达成",
+        CheckPointResult::Success => "成功",
+        CheckPointResult::GreatSuccess => "大成功",
     }
 }
 

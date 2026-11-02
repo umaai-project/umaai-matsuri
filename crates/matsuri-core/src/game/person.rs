@@ -15,12 +15,14 @@
 //! 运行期引擎侧默认逻辑只读 `PersonType`；剧本侧逻辑只看 `PersonOrigin`（不用 `PersonType` 反推）。
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use umaai_core::Data;
 use umasim::game::base::BasePerson;
 use umasim::game::{PersonType, SupportCard};
 
 /// 人头来源（剧本侧标签；与引擎 `PersonType` 的映射见文件头）
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PersonOrigin {
     /// 编成普通支援卡（含 link 卡）：参与担当分配
     #[default]

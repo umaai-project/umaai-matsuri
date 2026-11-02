@@ -31,6 +31,8 @@ umaai-cli = { path = "../umaai_next/crates/umaai-cli" }
 matsuri-core = { path = "crates/matsuri-core" }
 
 anyhow = "1.0.104"
+# 日志门面（诊断 `diag!` 的运行时出口；与引擎同版本；`std` 特性供入口层装箱日志器）
+log = { version = "0.4.34", features = ["std"] }
 rand = { version = "0.9.5", features = ["std_rng"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"

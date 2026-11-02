@@ -8,6 +8,7 @@
 //! （缺省 `matsuri`；可切 `random`——引擎随机基线、`manual`——机制核对面板（人工逐决策）；
 //! 数据根是代码级配置 [`DATA_ROOT`]，不暴露在命令行）
 
+mod logging;
 mod manual;
 
 use std::process::ExitCode;
@@ -47,6 +48,8 @@ fn run() -> Result<()> {
 
     // 配置两份同名不同位：默认层在数据根、覆盖层在当前目录（与引擎约定一致）
     let cfg = Config::load_with_overlay_file(DATA_ROOT, ".").context("载入配置失败")?;
+    // 诊断日志：级别来自 `[output] log_level`（默认 info；`off` 关闭，batch / 基线可静音）
+    logging::init_logger(&cfg.output.log_level).context("初始化日志器失败")?;
     Data::init(DATA_ROOT)?;
     let data = Arc::new(MatsuriData::load(DATA_ROOT).context("载入剧本数据失败")?);
     let matsuri_cfg =

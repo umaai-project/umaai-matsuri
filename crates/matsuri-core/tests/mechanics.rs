@@ -14,7 +14,7 @@ use matsuri_core::game::deck::inspect_deck;
 use matsuri_core::testing::data_dir;
 use matsuri_core::{
     Action, DeckError, DeckReport, DeckWarning, MAX_TURN, MatsuriConfig, MatsuriData, MatsuriGame,
-    MatsuriPerson, MatsuriTrainer, MatsuriView, PersonOrigin, TurnPlan,
+    MatsuriPerson, MatsuriTrainer, MatsuriView, MatsuriYear, PersonOrigin, SelfRace, TurnPlan,
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -171,14 +171,18 @@ fn turn_structure() -> Result<()> {
             "turn {turn} 発表会 / 本番场次"
         );
         assert_eq!(plan.finals(), turn == 67, "turn {turn} 本番标记");
-        assert_eq!(o.view.race, plan.race, "turn {turn} View 比赛标记");
-        assert_eq!(o.view.finals, plan.finals(), "turn {turn} View 本番标记");
+        assert_eq!(o.view.turn.race, plan.race, "turn {turn} View 比赛标记");
         assert_eq!(
-            o.view.check_point, plan.check_point,
+            o.view.turn.finals,
+            plan.finals(),
+            "turn {turn} View 本番标记"
+        );
+        assert_eq!(
+            o.view.turn.check_point, plan.check_point,
             "turn {turn} View 発表会场次"
         );
         assert_eq!(
-            o.view.advice_window,
+            o.view.turn.advice_window,
             plan.advice_window.is_some(),
             "turn {turn} View 教诲窗口"
         );
@@ -207,10 +211,10 @@ fn turn_structure() -> Result<()> {
                     "turn {turn} 原窗口内"
                 );
                 assert_eq!(plan.camp_rest, year >= 1, "turn {turn} 合宿版休息档");
-                assert!(o.view.camp_active && o.view.camp_training);
+                assert!(o.view.camp.active && o.view.camp.training);
                 let start = [12, 36, 60][year];
                 assert_eq!(
-                    o.view.camp_counted as i32,
+                    o.view.camp.counted as i32,
                     turn - start,
                     "turn {turn} 已计入合宿回合数"
                 );
@@ -218,28 +222,31 @@ fn turn_structure() -> Result<()> {
             _ => {
                 assert!(!plan.camp_zone, "turn {turn} 不应在合宿区");
                 assert_eq!(plan.camp_year, None, "turn {turn} 合宿年次");
-                assert!(!o.view.camp_active);
+                assert!(!o.view.camp.active);
             }
         }
     }
     // View 账本初值：演目 Lv 从 1 起、gauge / 教诲槽清零、発表会未结算
     let first = &obs[0];
     assert_eq!(first.turn, 0);
-    assert_eq!(first.view.act_level, [1; 5]);
-    assert_eq!(first.view.act_gauge, [0; 5]);
+    assert_eq!(first.view.resources.act_level, [1; 5]);
+    assert_eq!(first.view.resources.act_gauge, [0; 5]);
     assert_eq!(
-        first.view.act_level_max, 10,
+        first.view.resources.act_level_max, 10,
         "参考卡组带 SSR 吾妻 → 演目 Lv 上限 10"
     );
-    assert_eq!(first.view.advice_slots, [0; 5]);
-    assert_eq!(first.view.advice_fused, [0; 5]);
-    assert!(!first.view.race && !first.view.finals);
-    assert_eq!(first.view.check_point, None);
-    assert!(!first.view.advice_window);
-    assert!(!first.view.forced_rest);
-    assert_eq!(first.view.check_points, [CheckPointResult::NotReached; 3]);
-    assert!(!first.view.finals_done);
-    assert!(!first.view.ura_period);
+    assert_eq!(first.view.resources.advice_slots, [0; 5]);
+    assert_eq!(first.view.resources.advice_fused, [0; 5]);
+    assert!(!first.view.turn.race && !first.view.turn.finals);
+    assert_eq!(first.view.turn.check_point, None);
+    assert!(!first.view.turn.advice_window);
+    assert!(!first.view.turn.forced_rest);
+    assert_eq!(
+        first.view.resources.check_points,
+        [CheckPointResult::NotReached; 3]
+    );
+    assert!(!first.view.resources.finals_done);
+    assert!(!first.view.turn.ura_period);
     println!("回合结构：78 回合 / 発表会 3 场 / 合宿 3 次 / 教诲窗口 6 个；View 初值 OK");
     Ok(())
 }
@@ -271,11 +278,11 @@ fn camp_forced_rest_extends() -> Result<()> {
     assert!(extended.plan.camp_zone && extended.plan.camp_extended);
     assert_eq!(extended.plan.camp_year, Some(1));
     assert!(!extended.plan.camp_rest, "延长回合休息为普通休息");
-    assert_eq!(extended.view.camp_counted, 3, "被强制休息占用的回合不计入");
-    assert!(extended.view.camp_training);
+    assert_eq!(extended.view.camp.counted, 3, "被强制休息占用的回合不计入");
+    assert!(extended.view.camp.training);
     let after = at(41);
     assert!(!after.plan.camp_zone, "计满 4 个非比赛回合后合宿结束");
-    assert_eq!(after.view.camp_counted, 0);
+    assert_eq!(after.view.camp.counted, 0);
     println!("合宿延长：turn 39 强制休息 → 顺延到 turn 40，turn 41 结束");
     Ok(())
 }
@@ -292,12 +299,12 @@ fn keis_miracle_t65_forced_rest() -> Result<()> {
         );
         if turn == 65 {
             assert!(game.plan.race, "T65 仍按目标赛回合分类（赛程标记不变）");
-            assert!(game.view().forced_rest);
+            assert!(game.view().turn.forced_rest);
         }
         Ok(())
     })?;
     let t65 = &obs[65];
-    assert!(t65.plan.race && t65.view.forced_rest);
+    assert!(t65.plan.race && t65.view.turn.forced_rest);
     assert!(!t65.plan.camp_zone, "T65 在合宿窗口外（样例赛程）");
     println!("凯斯奇迹 T65：目标赛回合分类保留 + 强制休息标记；T64 / T66 无标记");
     Ok(())
@@ -745,6 +752,211 @@ fn view_snapshot_roundtrip() -> Result<()> {
     let back: MatsuriView = serde_json::from_str(&text).context("反序列化 View 失败")?;
     assert_eq!(back, view);
     println!("View 快照往返 OK：{text}");
+    Ok(())
+}
+
+/// 面板数据源守门：Train 决策点取快照，View 与局面逐项一致（manual / 前端只应读 View）
+struct ViewCheckingTrainer {
+    inner: MatsuriTrainer,
+    checks: Cell<usize>,
+}
+
+impl ViewCheckingTrainer {
+    fn new() -> Self {
+        Self {
+            inner: MatsuriTrainer::new(MatsuriConfig::default()),
+            checks: Cell::new(0),
+        }
+    }
+
+    /// 逐项核对 View 与局面（类型 / 账本 / 人头 / 分布 / 赛程 / 友人 / 事件）
+    fn check(game: &MatsuriGame) {
+        let view = game.view();
+        // 回合与阶段
+        assert_eq!(view.turn.turn, game.turn(), "View 回合");
+        assert_eq!(view.turn.max_turn, MAX_TURN, "View 最大回合");
+        assert_eq!(view.turn.stage, game.stage(), "View 阶段");
+        assert_eq!(view.turn.year, MatsuriYear::from_turn(game.turn()));
+        // 数值与状态
+        let uma = game.uma();
+        assert_eq!(view.uma.uma_id, uma.uma_id);
+        assert_eq!(view.uma.vital, uma.vital);
+        assert_eq!(view.uma.max_vital, uma.max_vital);
+        assert_eq!(view.uma.motivation, uma.motivation);
+        assert_eq!(view.uma.five_status, uma.five_status);
+        assert_eq!(view.uma.five_status_limit, uma.five_status_limit);
+        assert_eq!(view.uma.skill_pt, uma.skill_pt);
+        assert_eq!(view.uma.total_hints, uma.total_hints);
+        assert_eq!(view.uma.race_bonus, uma.race_bonus);
+        assert_eq!(view.uma.flags, uma.flags);
+        assert_eq!(view.uma.last_train, game.base.last_train);
+        // 剧本资源账本
+        assert_eq!(view.resources.act_gauge, game.acts.gauge);
+        assert_eq!(view.resources.act_level, game.acts.level);
+        assert_eq!(view.resources.act_gauge_max, game.data.rules.act_gauge_max);
+        assert_eq!(
+            view.resources.act_level_max,
+            game.data.rules.act_level_max_with_friend
+        );
+        assert_eq!(view.resources.advice_slots, game.advice.slots);
+        assert_eq!(view.resources.advice_fused, game.advice.fused);
+        assert_eq!(view.resources.advice_acquired, game.advice.acquired);
+        assert_eq!(view.resources.assist_support_left, game.assist_support_left);
+        assert_eq!(view.resources.kensan_pending, game.kensan_pending);
+        assert_eq!(view.resources.train_level_bonus, game.train_level_bonus);
+        assert_eq!(view.resources.check_points, game.check_points);
+        assert_eq!(view.resources.finals_done, game.finals_done);
+        // 人头 / 训练位
+        assert_eq!(view.board.persons.len(), game.persons().len());
+        for (index, person) in game.persons().iter().enumerate() {
+            let snapshot = &view.board.persons[index];
+            assert_eq!(snapshot.origin, person.origin, "人头 {index} 来源");
+            assert_eq!(snapshot.act, person.act, "人头 {index} 担当");
+            assert_eq!(snapshot.chara_id, person.chara_id());
+            assert_eq!(snapshot.card_id, person.card_id());
+            assert_eq!(snapshot.friendship, person.friendship());
+            assert_eq!(snapshot.hint, person.hint());
+            assert_eq!(snapshot.available, game.person_is_available(index));
+        }
+        assert_eq!(
+            view.board.train_levels,
+            std::array::from_fn(|train| game.train_level(train))
+        );
+        for train in 0..5 {
+            let expected: Vec<usize> = game.base.distribution[train]
+                .iter()
+                .filter(|person| **person >= 0)
+                .map(|person| *person as usize)
+                .collect();
+            let actual: Vec<usize> = view.board.distribution[train]
+                .iter()
+                .map(|member| member.person)
+                .collect();
+            assert_eq!(actual, expected, "训练位 {train} 成员");
+            for member in &view.board.distribution[train] {
+                assert_eq!(
+                    member.shining,
+                    game.is_shining_at(member.person, train),
+                    "训练位 {train} 闪彩标记"
+                );
+            }
+        }
+        // 排练集合：合宿 -> 全部；否则演目槽满亮起
+        for act in 0..5 {
+            let expected =
+                view.camp.training || view.resources.act_gauge[act] >= view.resources.act_gauge_max;
+            assert_eq!(view.turn.practice[act], expected, "演目 {act} 排练集合");
+        }
+        // 担当：机制启动后 = 该演目可用人头
+        for act in 0..5 {
+            let mut expected: Vec<usize> = Vec::new();
+            if view.turn.scenario_started {
+                for (index, person) in game.persons().iter().enumerate() {
+                    if person.act == Some(act) && game.person_is_available(index) {
+                        expected.push(index);
+                    }
+                }
+            }
+            assert_eq!(view.board.act_members[act], expected, "演目 {act} 担当");
+        }
+        // 赛程
+        let expected_goals: Vec<i32> = (game.turn()..=MAX_TURN)
+            .filter(|turn| game.uma().is_race_turn(*turn))
+            .collect();
+        assert_eq!(view.schedule.goal_races, expected_goals, "目标赛窗口");
+        let expected_self: Vec<SelfRace> = (game.turn()..=MAX_TURN)
+            .filter(|turn| !game.uma().is_race_turn(*turn))
+            .filter_map(|turn| {
+                let grade = *game.base.race_grades.get(turn as usize)?;
+                (grade > 0).then_some(SelfRace { turn, grade })
+            })
+            .collect();
+        assert_eq!(view.schedule.self_races, expected_self, "自选赛窗口");
+        // 友人 / 合宿 / 事件 / 编成
+        assert_eq!(view.friend.out_state, game.base.friend.out_state);
+        assert_eq!(
+            view.friend.out_used,
+            std::array::from_fn(|index| {
+                game.base
+                    .friend
+                    .out_used
+                    .get(index)
+                    .copied()
+                    .unwrap_or(false)
+            })
+        );
+        assert_eq!(view.camp.counted, game.camp.counted);
+        assert_eq!(view.deck_warnings, game.deck_warnings);
+        assert_eq!(view.recent_events, game.event_log);
+    }
+}
+
+impl Trainer<MatsuriGame> for ViewCheckingTrainer {
+    fn select_action(
+        &self,
+        game: &MatsuriGame,
+        actions: &[Action],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        // 教诲分配决策点没有训练分布语义，只做决策
+        if actions
+            .iter()
+            .all(|action| matches!(action, Action::AssignAdvice(_)))
+        {
+            return self.inner.select_action(game, actions, rng);
+        }
+        Self::check(game);
+        self.checks.set(self.checks.get() + 1);
+        self.inner.select_action(game, actions, rng)
+    }
+
+    fn select_choice(
+        &self,
+        game: &MatsuriGame,
+        choices: &[Vec<EventChoice>],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        self.inner.select_choice(game, choices, rng)
+    }
+
+    fn select_event_choice(
+        &self,
+        game: &MatsuriGame,
+        event: &umaai_core::gamedata::EventData,
+        choices: &[Vec<EventChoice>],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        self.inner.select_event_choice(game, event, choices, rng)
+    }
+}
+
+/// 整局守门：每个 Train 决策点 View 与局面完全一致（面板数据源可直接替代局面直读）
+#[test]
+fn view_fields_match_game_at_train_decision() -> Result<()> {
+    let repo = Repo::load()?;
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    let trainer = ViewCheckingTrainer::new();
+    let mut decision = StdRng::seed_from_u64(7);
+    for turn in 0..=MAX_TURN {
+        for stage_idx in 0..5 {
+            game.run_stage(&trainer, &mut decision)?;
+            let has_next = game.next();
+            assert_eq!(
+                has_next,
+                stage_idx < 4 || turn < MAX_TURN,
+                "阶段推进异常：turn {turn} stage {stage_idx}"
+            );
+        }
+    }
+    assert_eq!(
+        trainer.checks.get(),
+        (MAX_TURN + 1) as usize,
+        "每个 Train 决策点各核对一次"
+    );
+    println!(
+        "View 完整性：{} 个 Train 决策点与局面逐项一致",
+        trainer.checks.get()
+    );
     Ok(())
 }
 
@@ -1207,8 +1419,8 @@ fn outing_actions() -> Result<()> {
         .context("SSR 吾妻人头应存在")?;
     let friendship_before = game.persons()[friend_index].friendship();
     let before = Stats::of(&game);
-    let level_before = game.view().act_level;
-    let gauge_before = game.view().act_gauge;
+    let level_before = game.view().resources.act_level;
+    let gauge_before = game.view().resources.act_gauge;
     // 段事件计数（前面回合可能已被新训练员用过友人出行；这里只看这 5 段的增量）
     let segment_ids: Vec<u32> = (1..=5)
         .map(|key| -> Result<u32> {
@@ -1243,7 +1455,7 @@ fn outing_actions() -> Result<()> {
     let gauge_max = repo.data.rules.act_gauge_max;
     let expected_level = expected_outing_levels(level_before, gauge_before, gauge_max);
     assert_eq!(
-        game.view().act_level,
+        game.view().resources.act_level,
         expected_level,
         "5 段出行的演目 Lv 落点（Lv 最低 → 槽最低 → 属性序）"
     );
@@ -1289,7 +1501,7 @@ fn outing_actions() -> Result<()> {
     );
     println!(
         "出行：普通出行 1 个通用事件；友人出行 5 段 → 演目 Lv {level:?} / 羁绊 +25 / 五维下界 +[10,5,5,20,20] / SP+45",
-        level = game.view().act_level
+        level = game.view().resources.act_level
     );
     Ok(())
 }
@@ -1304,7 +1516,7 @@ fn keiko_success_levels_up_and_clears_gauge() -> Result<()> {
     let gauge_max = repo.data.rules.act_gauge_max;
     // 手动点满槽（本回合进入排练），先从 Distribute 阶段跑出真实分布
     game.acts.gauge[0] = gauge_max;
-    let level_before = game.view().act_level;
+    let level_before = game.view().resources.act_level;
     let mut decision = StdRng::seed_from_u64(7);
     let trainer = MatsuriTrainer::new(MatsuriConfig::default());
     game.run_stage(&trainer, &mut decision)?; // Distribute
@@ -1330,9 +1542,13 @@ fn keiko_success_levels_up_and_clears_gauge() -> Result<()> {
         },
     )?;
     let after = Stats::of(&game);
-    let level_after = game.view().act_level;
+    let level_after = game.view().resources.act_level;
     assert_eq!(level_after[0], level_before[0] + 1, "稽古成功演目 Lv+1");
-    assert_eq!(game.view().act_gauge[0], 0, "稽古成功该演目槽清零");
+    assert_eq!(
+        game.view().resources.act_gauge[0],
+        0,
+        "稽古成功该演目槽清零"
+    );
     assert!(
         after.five[0] - before.five[0] >= lower + 10,
         "稽古数值至少含下层 {lower} + 全基础 +10 flat（实际 +{}）",
@@ -1389,8 +1605,8 @@ fn gauge_gains_from_race_and_rest() -> Result<()> {
     // 目标赛（turn 11 生涯目标赛）：+4，按三则落点 4 次 +1
     let mut game = repo.game(repo.cfg.sim.uma)?;
     drive_to_turn(&mut game, 11)?;
-    let level = game.view().act_level;
-    let gauge = game.view().act_gauge;
+    let level = game.view().resources.act_level;
+    let gauge = game.view().resources.act_gauge;
     finish_turn(
         &mut game,
         &ScriptedTrainer {
@@ -1400,7 +1616,7 @@ fn gauge_gains_from_race_and_rest() -> Result<()> {
     )?;
     let expect = expected_gauge_up(level, gauge, 4, gauge_max);
     assert_eq!(
-        game.view().act_gauge,
+        game.view().resources.act_gauge,
         [0, 1, 2, 3, 4].map(|act| gauge[act] + expect[act]),
         "目标赛演目槽 +4（含满槽跳过 / 并列分摊）"
     );
@@ -1412,8 +1628,8 @@ fn gauge_gains_from_race_and_rest() -> Result<()> {
         game.list_actions()?.contains(&Action::Race),
         "turn 20 应有可自选比赛"
     );
-    let level = game.view().act_level;
-    let gauge = game.view().act_gauge;
+    let level = game.view().resources.act_level;
+    let gauge = game.view().resources.act_gauge;
     finish_turn(
         &mut game,
         &ScriptedTrainer {
@@ -1423,7 +1639,7 @@ fn gauge_gains_from_race_and_rest() -> Result<()> {
     )?;
     let expect = expected_gauge_up(level, gauge, 1, gauge_max);
     assert_eq!(
-        game.view().act_gauge,
+        game.view().resources.act_gauge,
         [0, 1, 2, 3, 4].map(|act| gauge[act] + expect[act]),
         "自选比赛演目槽 +1"
     );
@@ -1431,8 +1647,8 @@ fn gauge_gains_from_race_and_rest() -> Result<()> {
     // 休息：+1
     let mut game = repo.game(repo.cfg.sim.uma)?;
     drive_to_turn(&mut game, 20)?;
-    let level = game.view().act_level;
-    let gauge = game.view().act_gauge;
+    let level = game.view().resources.act_level;
+    let gauge = game.view().resources.act_gauge;
     finish_turn(
         &mut game,
         &ScriptedTrainer {
@@ -1442,7 +1658,7 @@ fn gauge_gains_from_race_and_rest() -> Result<()> {
     )?;
     let expect = expected_gauge_up(level, gauge, 1, gauge_max);
     assert_eq!(
-        game.view().act_gauge,
+        game.view().resources.act_gauge,
         [0, 1, 2, 3, 4].map(|act| gauge[act] + expect[act]),
         "休息演目槽 +1"
     );
@@ -1483,7 +1699,7 @@ fn gauge_gains_from_training_participants() -> Result<()> {
         },
     )?;
     assert_eq!(
-        game.view().act_gauge,
+        game.view().resources.act_gauge,
         expect,
         "训练参与担当按担当归集入槽（闪彩 +2）"
     );
@@ -1498,37 +1714,59 @@ fn s5_mechanism_chain_over_full_run() -> Result<()> {
     let obs = sweep(repo.game(repo.cfg.sim.uma)?, |turn, game| {
         if turn == 1 {
             assert!(
-                game.view().advice_slots.iter().all(|slot| *slot == 0),
+                game.view()
+                    .resources
+                    .advice_slots
+                    .iter()
+                    .all(|slot| *slot == 0),
                 "T2 之前不应获得教诲"
             );
         }
         if turn == 2 {
             assert!(
-                game.view().advice_slots.iter().all(|slot| *slot != 0),
+                game.view()
+                    .resources
+                    .advice_slots
+                    .iter()
+                    .all(|slot| *slot != 0),
                 "T2 Begin（NPC / 友人加入后）立即授予 5 个基础教诲，效果对 T2 训练生效"
             );
         }
         if turn == 24 {
             assert_ne!(
-                game.view().check_points[0],
+                game.view().resources.check_points[0],
                 CheckPointResult::NotReached,
                 "turn 23 结束应结算第 1 回発表会"
             );
             assert!(
-                game.view().advice_fused.iter().any(|fused| *fused != 0),
+                game.view()
+                    .resources
+                    .advice_fused
+                    .iter()
+                    .any(|fused| *fused != 0),
                 "turn 23 结束应完成第 2 年融合"
             );
         }
         if turn == 48 {
-            assert_ne!(game.view().check_points[1], CheckPointResult::NotReached);
+            assert_ne!(
+                game.view().resources.check_points[1],
+                CheckPointResult::NotReached
+            );
             assert!(
-                game.view().advice_fused.iter().all(|fused| *fused != 0),
+                game.view()
+                    .resources
+                    .advice_fused
+                    .iter()
+                    .all(|fused| *fused != 0),
                 "turn 47 结束应完成第 3 年融合"
             );
         }
         if turn == 68 {
-            assert_ne!(game.view().check_points[2], CheckPointResult::NotReached);
-            assert!(game.view().finals_done, "本番演出已结算");
+            assert_ne!(
+                game.view().resources.check_points[2],
+                CheckPointResult::NotReached
+            );
+            assert!(game.view().resources.finals_done, "本番演出已结算");
         }
         if turn == 70 {
             assert!(game.plan.ura_period, "turn 70 在 URA 收尾期");

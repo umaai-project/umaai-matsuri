@@ -14,6 +14,7 @@ use umasim::game::{ActionEnum, Game};
 
 use super::MatsuriGame;
 use super::advice::AdviceAssignment;
+use crate::diag;
 
 /// 剧本动作
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +91,7 @@ impl MatsuriGame {
     /// `scale = (100 + 支援卡赛后加成 + 発表会 / 本番永久比赛加成) / 100`；取整（floor）在引擎。
     /// 演目槽：目标赛（含 URA 决赛）+4（按 4 次 +1 三则落点）；自选比赛（非目标）+1。
     pub(crate) fn do_race(&mut self) -> Result<()> {
+        let before = self.key_state();
         let goal = self.plan.race;
         let scale = (100 + self.base.uma.race_bonus + self.scenario_race_bonus()) as f64 / 100.0;
         self.base.push_race_event(scale, 1.0)?;
@@ -99,6 +101,18 @@ impl MatsuriGame {
             self.data.rules.act_gauge_gain.other
         };
         self.gain_lowest_act_gauge(gain);
+        let kind = if self.plan.ura_race {
+            "URA决赛"
+        } else if goal {
+            "目标赛"
+        } else {
+            "自选比赛"
+        };
+        diag!(
+            "【动作】T{} {kind} 加成×{scale:.2}｜变化 {}",
+            self.turn(),
+            before.diff(&self.key_state())
+        );
         Ok(())
     }
 
@@ -106,24 +120,48 @@ impl MatsuriGame {
     ///
     /// 合宿版休息额外解除【变胖】（剧本口径）。
     pub(crate) fn do_rest(&mut self, rng: &mut impl Rng) -> Result<()> {
+        let before = self.key_state();
         BaseAction::do_sleep(&mut self.base, rng)?;
         if self.plan.camp_rest {
             self.uma_mut().flags.ill.remove(umaai_core::Ill::FAT);
         }
         self.gain_lowest_act_gauge(self.data.rules.act_gauge_gain.other);
+        diag!(
+            "【动作】T{} 休息（{}）｜变化 {}",
+            self.turn(),
+            if self.plan.camp_rest {
+                "合宿版"
+            } else {
+                "普通"
+            },
+            before.diff(&self.key_state())
+        );
         Ok(())
     }
 
     /// 普通出行：通用出行事件挂入待结算队列（`AfterTrain` 结算）；演目槽 +1
     pub(crate) fn do_normal_outing(&mut self, rng: &mut impl Rng) -> Result<()> {
+        let before = self.key_state();
         BaseAction::do_normal_outing(&mut self.base, rng)?;
         self.gain_lowest_act_gauge(self.data.rules.act_gauge_gain.other);
+        diag!(
+            "【动作】T{} 普通出行｜变化 {}",
+            self.turn(),
+            before.diff(&self.key_state())
+        );
         Ok(())
     }
 
     /// 治病：基础库默认（+20 体力、清空生病位与不擅长训练）
     pub(crate) fn do_clinic(&mut self, rng: &mut impl Rng) -> Result<()> {
-        BaseAction::do_clinic(&mut self.base, rng)
+        let before = self.key_state();
+        BaseAction::do_clinic(&mut self.base, rng)?;
+        diag!(
+            "【动作】T{} 治病｜变化 {}",
+            self.turn(),
+            before.diff(&self.key_state())
+        );
+        Ok(())
     }
 
     /// 友人（吾妻）出行：推进 5 段进度 + 按 `outing` 资产给最低演目 Lv+1 + 本段真实卡面事件入队
@@ -131,6 +169,7 @@ impl MatsuriGame {
     /// 段事件 = `events.friend_events["1".."5"]`（吾妻 `809052011–015`）；数值为 memo 基础值，
     /// 结算时由引擎叠卡面「事件效果 / 回复量」加成。
     pub(crate) fn do_friend_outing(&mut self, _rng: &mut impl Rng) -> Result<()> {
+        let before = self.key_state();
         if !self.base.can_friend_outing() {
             return Err(anyhow!("当前不能友人出行（未解锁 / 终盘 / 5 段已用完）"));
         }
@@ -160,6 +199,24 @@ impl MatsuriGame {
             .get(&key)
             .cloned()
             .ok_or_else(|| anyhow!("友人出行段事件缺行: friend_events[{key}]"))?;
+        diag!(
+            "【动作】T{} 友人出行 第{}段 演出目Lv+{} 事件#{}（已用 {}/5 段）",
+            self.turn(),
+            step + 1,
+            add_level,
+            event.id,
+            self.base
+                .friend
+                .out_used
+                .iter()
+                .filter(|used| **used)
+                .count()
+        );
+        diag!(
+            "【动作】T{} 友人出行｜变化 {}",
+            self.turn(),
+            before.diff(&self.key_state())
+        );
         self.unresolved_events.push(event);
         Ok(())
     }
