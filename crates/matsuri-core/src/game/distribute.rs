@@ -63,6 +63,21 @@ impl MatsuriGame {
         std::array::from_fn(|train| practice[self.act_of_train(train)])
     }
 
+    /// 该训练位是否已有「友人 / 团队 / 理事长 / 记者」人头
+    ///
+    /// 通用规则（user 2026-11-05 补充）：**同一训练位最多 1 名**友人 / 团队 / 理事长 / 记者。
+    /// 引擎 `Person::is_friend()` 的口径 = `train_type() > 4 || Yayoi || Reporter`，与之一致；
+    /// 引擎 `distribute_person` 自带该校验，剧本侧自定义放位（理事长 / 记者 / 吾妻补位）须自己补上。
+    fn has_social_person(&self, train: usize) -> bool {
+        self.base.distribution[train].iter().any(|index| {
+            *index >= 0
+                && self
+                    .persons
+                    .get(*index as usize)
+                    .is_some_and(|person| person.is_friend())
+        })
+    }
+
     /// 亮起演目的担当（卡 / 神驹）强制锁位（不判不在）
     fn place_locked(&mut self, practice: &[bool; 5]) {
         let mut locked = 0;
@@ -160,6 +175,7 @@ impl MatsuriGame {
                 !practice_train[*train]
                     && self.base.distribution[*train].len() < TRAIN_CAP
                     && !self.base.distribution[*train].contains(&(person_index as i32))
+                    && !self.has_social_person(*train)
             })
             .collect();
         if allowed.is_empty() {
@@ -196,6 +212,7 @@ impl MatsuriGame {
                     practice_train[*train]
                         && self.base.distribution[*train].len() < TRAIN_CAP
                         && !self.base.distribution[*train].contains(&(friend_index as i32))
+                        && !self.has_social_person(*train)
                 })
                 .collect();
             if empty.is_empty() {
@@ -510,6 +527,34 @@ mod tests {
             .map(|(train, _)| train)
             .collect();
         assert_eq!(positions.len(), 1, "合宿中吾妻应恰好出现 1 处（不可分身）");
+    }
+
+    /// 通用规则：同一训练位最多 1 名「友人 / 团队 / 理事长 / 记者」
+    #[test]
+    fn at_most_one_social_person_per_position() {
+        for seed in 0..40u64 {
+            let mut game = crate::testing::sample_game();
+            game.turn = 20;
+            game.acts.gauge[2] = game.act_gauge_max();
+            let mut rng = StdRng::seed_from_u64(seed);
+            game.distribute_round(&mut rng).expect("分布失败");
+            for (train, slot) in game.distribution().iter().enumerate() {
+                let social = slot
+                    .iter()
+                    .filter(|index| {
+                        **index >= 0
+                            && game
+                                .persons
+                                .get(**index as usize)
+                                .is_some_and(|person| person.is_friend())
+                    })
+                    .count();
+                assert!(
+                    social <= 1,
+                    "seed {seed}: 训练位 {train} 有多名友人/理事长/记者: {slot:?}"
+                );
+            }
+        }
     }
 
     #[test]

@@ -49,6 +49,7 @@ fn manual_mode_runs_full_game_with_scripted_input() {
         "【目标赛】",
         "【演目槽】",
         "←101 牵绊",
+        "可触发追加稽古",
         "配色：",
         "评分",
     ] {
@@ -68,6 +69,12 @@ fn manual_mode_runs_full_game_with_scripted_input() {
     assert!(
         !stdout.contains('\x1b'),
         "非 TTY 输出不应含 ANSI 颜色序列（stdout 长度 {}）",
+        stdout.len()
+    );
+    // 追加稽古改标列标题：动作后缀「追稽✓」已移除
+    assert!(
+        !stdout.contains("追稽✓"),
+        "动作后缀不应再出现追稽✓（stdout 长度 {}）",
         stdout.len()
     );
     // 事件回显覆盖 S6 关键链

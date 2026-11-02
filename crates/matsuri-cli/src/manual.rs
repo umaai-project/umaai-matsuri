@@ -144,19 +144,12 @@ fn display_status(value: i32) -> i32 {
     }
 }
 
-/// 训练表人物颜色：彩圈亮绿 > 助力黄 > 研鑽紫 > 类型底色
-fn member_color(
-    origin: PersonOrigin,
-    shining: bool,
-    kensan_bound: bool,
-    assist_bound: bool,
-) -> Option<&'static str> {
+/// 训练表人物颜色：彩圈亮绿 > 助力黄 > 类型底色（研鑽不再给人头上色，改标列标题）
+fn member_color(origin: PersonOrigin, shining: bool, assist_bound: bool) -> Option<&'static str> {
     if origin == PersonOrigin::Card && shining {
         Some(ANSI_BRIGHT_GREEN)
     } else if assist_bound {
         Some(ANSI_YELLOW)
-    } else if kensan_bound {
-        Some(ANSI_BRIGHT_MAGENTA)
     } else {
         match origin {
             PersonOrigin::Card => Some(ANSI_WHITE),
@@ -302,7 +295,7 @@ fn act_members(view: &MatsuriView, act: usize, color: bool) -> String {
     }
 }
 
-/// 单个人头在训练位的显示（类型 / 研鑽 / 助力着色 + Hint 亮黄叹号 + 未满 100 的羁绊）
+/// 单个人头在训练位的显示（类型 / 助力着色 + Hint 亮黄叹号 + 未满 100 的羁绊）
 ///
 /// `keiko` = 该训练位本回合是否按稽古处理（助力支撑只在稽古成功时触发）。
 fn person_label(
@@ -320,18 +313,29 @@ fn person_label(
     } else {
         name
     };
-    // 教诲绑定：研鑽（追加稽古）全表标记；助力只在稽古位标记
-    let kensan_bound = person.act.is_some() && person.act == view.resources.kensan_act;
+    // 助力只在稽古位标记；研鑽（追加稽古）改标训练列标题，不再给人头着色
     let assist_bound = keiko && person.act.is_some() && person.act == view.resources.assist_act;
     let body = paint(
         &body,
-        member_color(person.origin, shining, kensan_bound, assist_bound),
+        member_color(person.origin, shining, assist_bound),
         color,
     );
     Some(if person.hint {
         format!("{}{body}", paint("!", Some(ANSI_BRIGHT_YELLOW), color))
     } else {
         body
+    })
+}
+
+/// 该训练位参与者是否含指定演目担当（研鑽 / 助力判定同口径）
+fn participant_has_act(view: &MatsuriView, train: usize, act: usize) -> bool {
+    view.board.distribution.get(train).is_some_and(|members| {
+        members.iter().any(|member| {
+            view.board
+                .persons
+                .get(member.person)
+                .is_some_and(|person| person.act == Some(act))
+        })
     })
 }
 
@@ -1032,13 +1036,10 @@ impl ManualTrainer {
             };
             extras.push(paint(&text, Some(ANSI_BRIGHT_CYAN), color));
         }
-        // 追加稽古：掷中 + 研鑽绑定演目 / 发生率（未点含该演目担当的训练则作废）
-        if res.kensan_pending {
-            let text = match res.kensan_act {
-                Some(act) => format!("追加稽古 掷中·{}({}%)", act_short(act), res.kensan_rate),
-                None => "追加稽古 掷中".to_string(),
-            };
-            extras.push(paint(&text, Some(ANSI_BRIGHT_YELLOW), color));
+        // 追加稽古：本回合掷中且存在可触发列 → 亮黄提示（训练表列标题另标紫「追加稽古」）
+        // 比赛回合等必然无训练位时掷中注定作废，不提示，避免「显示可触发却没有目标」
+        if res.kensan_pending && Self::kensan_columns(view).iter().any(|marked| *marked) {
+            extras.push(paint("可触发追加稽古", Some(ANSI_BRIGHT_YELLOW), color));
         }
         if res.train_level_bonus.iter().any(|bonus| *bonus != 0) {
             extras.push(format!("訓練Lv加成 {:?}", res.train_level_bonus));
@@ -1046,12 +1047,26 @@ impl ManualTrainer {
         let _ = writeln!(out, "  {}", extras.join(" · "));
     }
 
-    /// 训练明细表：每训练一列（列头 = 训练名 / 排练名 + Lv），格内列出该位置全部人头
+    /// 本回合掷中且该训练位参与者含研鑽担当 → 列标题标「追加稽古」（与触发判定同口径）
+    fn kensan_columns(view: &MatsuriView) -> [bool; 5] {
+        let res = &view.resources;
+        let Some(kensan_act) = res.kensan_act else {
+            return [false; 5];
+        };
+        if !res.kensan_pending {
+            return [false; 5];
+        }
+        std::array::from_fn(|train| participant_has_act(view, train, kensan_act))
+    }
+
+    /// 训练明细表：每训练一列（列头 = 训练名 / 排练名 + Lv；掷中时含研鑽担当的列加紫行），
+    /// 格内列出该位置全部人头
     fn write_training(&self, view: &MatsuriView, out: &mut String, color: bool) {
+        let kensan = Self::kensan_columns(view);
         let headers: Vec<String> = (0..5)
             .map(|train| {
                 let act = act_of_train(view, train);
-                if view.turn.practice[act] {
+                let base = if view.turn.practice[act] {
                     paint(
                         &format!("{} Lv{}", act_short(act), view.resources.act_level[act]),
                         Some(ANSI_BRIGHT_YELLOW),
@@ -1063,6 +1078,15 @@ impl ManualTrainer {
                         AXIS_NAMES.get(train).copied().unwrap_or("?"),
                         view.board.train_levels[train]
                     )
+                };
+                // 掷中且该列参与者含研鑽担当：列标题下加一行紫色「追加稽古」
+                if kensan[train] {
+                    format!(
+                        "{base}\n{}",
+                        paint("追加稽古", Some(ANSI_BRIGHT_MAGENTA), color)
+                    )
+                } else {
+                    base
                 }
             })
             .collect();
@@ -1089,18 +1113,12 @@ impl ManualTrainer {
         out.push_str("【训练】\n");
         out.push_str(&grid.render(term::resolve_width(None)));
         out.push('\n');
-        // 人物配色图例（只列本局存在的教诲来源）
-        let mut legend: Vec<String> = Vec::new();
-        if view.resources.kensan_act.is_some() {
-            legend.push(paint(
-                "亮紫=研鑽担当（追加稽古）",
-                Some(ANSI_BRIGHT_MAGENTA),
-                color,
-            ));
-        }
-        if view.resources.assist_act.is_some() {
-            legend.push(paint("黄=助力担当（稽古触发）", Some(ANSI_YELLOW), color));
-        }
+        // 人物配色图例（只列本局存在的教诲来源；研鑽改标列标题，不再给人物着色）
+        let legend: Vec<String> = if view.resources.assist_act.is_some() {
+            vec![paint("黄=助力担当（稽古触发）", Some(ANSI_YELLOW), color)]
+        } else {
+            Vec::new()
+        };
         if !legend.is_empty() {
             let _ = writeln!(out, "  配色：{}", legend.join("  "));
         }
@@ -1235,11 +1253,8 @@ impl ManualTrainer {
         }
     }
 
-    /// 动作会触发的剧本资源标记：`(追加稽古, 助力支撑)`
-    ///
-    /// 判定与结算同口径：追加稽古看该训练位参与者是否含研鑽绑定演目担当；
-    /// 助力支撑只在稽古位且参与者含助力绑定演目担当时成立。
-    fn action_marks(view: &MatsuriView, action: &Action) -> (bool, bool) {
+    /// 动作是否会获得 / 重置「助力支撑」：稽古位且参与者含助力绑定演目担当
+    fn assist_mark(view: &MatsuriView, action: &Action) -> bool {
         let (train, keiko) = match action {
             Action::Train(train) => (usize::from(*train), false),
             Action::ActTrain(act) => {
@@ -1248,31 +1263,12 @@ impl ManualTrainer {
                 let keiko = view.turn.practice.get(act).copied().unwrap_or(false);
                 (train, keiko)
             }
-            _ => return (false, false),
+            _ => return false,
         };
-        let res = &view.resources;
-        let mut kensan = false;
-        let mut assist = false;
-        for member in view
-            .board
-            .distribution
-            .get(train)
-            .map_or(&[][..], Vec::as_slice)
-        {
-            let Some(person) = view.board.persons.get(member.person) else {
-                continue;
-            };
-            let Some(act) = person.act else {
-                continue;
-            };
-            if res.kensan_pending && Some(act) == res.kensan_act {
-                kensan = true;
-            }
-            if keiko && Some(act) == res.assist_act {
-                assist = true;
-            }
+        match (keiko, view.resources.assist_act) {
+            (true, Some(assist_act)) => participant_has_act(view, train, assist_act),
+            _ => false,
         }
-        (kensan, assist)
     }
 
     /// 单个动作的说明（训练带成功收益预览与失败率；末尾附剧本资源增量）
@@ -1362,11 +1358,7 @@ impl ManualTrainer {
             ),
         };
         let mut suffix = gauge_suffix(game, action, color);
-        let (kensan, assist) = Self::action_marks(view, action);
-        if kensan {
-            suffix.push_str(&paint("  追稽✓", Some(ANSI_BRIGHT_YELLOW), color));
-        }
-        if assist {
+        if Self::assist_mark(view, action) {
             suffix.push_str(&paint("  助力支撑✓", Some(ANSI_YELLOW), color));
         }
         format!("{body}{suffix}")
@@ -1658,31 +1650,26 @@ mod tests {
 
     #[test]
     fn test_member_color_priority() {
-        // 彩圈最高：即使命中研鑽 / 助力也保持亮绿
+        // 彩圈最高：即使命中助力也保持亮绿
         assert_eq!(
-            member_color(PersonOrigin::Card, true, true, true),
+            member_color(PersonOrigin::Card, true, true),
             Some(ANSI_BRIGHT_GREEN)
         );
-        // 助力黄 > 研鑽紫 > 类型底色
+        // 助力黄 > 类型底色（研鑽不再给人头上色）
         assert_eq!(
-            member_color(PersonOrigin::Card, false, true, true),
+            member_color(PersonOrigin::Card, false, true),
             Some(ANSI_YELLOW)
         );
         assert_eq!(
-            member_color(PersonOrigin::Guest, false, true, false),
-            Some(ANSI_BRIGHT_MAGENTA),
-            "NPC 研鑽担当也标亮紫"
-        );
-        assert_eq!(
-            member_color(PersonOrigin::Card, false, false, false),
+            member_color(PersonOrigin::Card, false, false),
             Some(ANSI_WHITE)
         );
         assert_eq!(
-            member_color(PersonOrigin::Friend, false, false, false),
+            member_color(PersonOrigin::Friend, false, false),
             Some(ANSI_GREEN)
         );
         assert_eq!(
-            member_color(PersonOrigin::Guest, false, false, false),
+            member_color(PersonOrigin::Guest, false, false),
             Some(ANSI_GRAY)
         );
     }
