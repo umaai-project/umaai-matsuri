@@ -104,7 +104,7 @@ pub struct TurnView {
     pub forced_rest: bool,
     /// 本回合是否可自选比赛（自选赛窗口内）
     pub self_race_available: bool,
-    /// 本回合按排练处理的演目集合（合宿排练回合 → 全部；否则槽满亮起集合）
+    /// 本回合按排练处理的演目集合（合宿排练 / URA 回合 → 全部；否则槽满亮起集合）
     pub practice: [bool; 5],
 }
 

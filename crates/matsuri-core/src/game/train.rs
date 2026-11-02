@@ -181,6 +181,7 @@ impl MatsuriGame {
             self.gain_training_gauge(train);
         }
         // 演目稽古成功：非合宿 → 该演目 Lv+1、槽清零；合宿中不升不清
+        // （URA 期全变稽古但非合宿：仍按日常稽古结算 Lv+1 / 清槽）
         if keiko {
             let act = self.act_of_train(train);
             if !self.plan.camp_train(self.forced_rest) {

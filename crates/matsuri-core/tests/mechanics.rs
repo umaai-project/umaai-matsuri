@@ -850,10 +850,11 @@ impl ViewCheckingTrainer {
                 );
             }
         }
-        // 排练集合：合宿 -> 全部；否则演目槽满亮起
+        // 排练集合：合宿 / URA 回合 -> 全部；否则演目槽满亮起
         for act in 0..5 {
-            let expected =
-                view.camp.training || view.resources.act_gauge[act] >= view.resources.act_gauge_max;
+            let expected = view.camp.training
+                || view.turn.ura_period
+                || view.resources.act_gauge[act] >= view.resources.act_gauge_max;
             assert_eq!(view.turn.practice[act], expected, "演目 {act} 排练集合");
         }
         // 担当：机制启动后 = 该演目可用人头
@@ -1148,11 +1149,24 @@ fn action_set_by_turn_type() -> Result<()> {
     drive_to_turn(&mut game, 73)?;
     assert_eq!(game.list_actions()?, vec![Action::Race]);
 
-    // URA 黑障回合（turn 72 / 74 / 76）：不可比赛 / 友人出行，可休息、普通出行、治病
+    // URA 回合（turn 72 / 74 / 76）：**全部训练变演目稽古**（类似合宿）；
+    // 不可自选比赛 / 友人出行，可休息、普通出行、治病
     let mut game = repo.game(repo.cfg.sim.uma)?;
     drive_to_turn(&mut game, 72)?;
     game.uma_mut().flags.ill = umaai_core::Ill::FAT;
     let actions = game.list_actions()?;
+    let acts: Vec<u8> = actions
+        .iter()
+        .filter_map(|action| match action {
+            Action::ActTrain(act) => Some(*act),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(acts, vec![0, 1, 2, 3, 4], "URA 回合 5 个训练位全变稽古");
+    assert!(
+        !actions.iter().any(|a| matches!(a, Action::Train(_))),
+        "URA 回合无普通训练"
+    );
     assert!(!actions.contains(&Action::Race), "URA 黑障回合不可自选比赛");
     assert!(
         !actions.contains(&Action::FriendOuting),

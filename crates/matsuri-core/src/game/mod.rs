@@ -337,11 +337,18 @@ impl MatsuriGame {
 
     /// 本回合按排练处理的演目集合（合宿排练回合 → 全部；否则亮起集合）
     pub(crate) fn practice_acts(&self) -> [bool; 5] {
-        if self.plan.camp_train(self.forced_rest) {
+        if self.all_keiko_round() {
             [true; 5]
         } else {
             self.lit_acts()
         }
+    }
+
+    /// 本回合是否「全部训练变演目稽古」：合宿排练回合 / **URA 回合（72–77，剧本结束后的决赛期）**
+    ///
+    /// URA 期与合宿一样 5 个训练位全按稽古处理（锁担当 / 全灵感 / 编成卡 +1 人等按排练口径）。
+    pub(crate) fn all_keiko_round(&self) -> bool {
+        self.plan.camp_train(self.forced_rest) || self.plan.ura_period
     }
 
     /// 给单个演目加槽（满槽吃掉溢出、不叠加），返回实际增加量
@@ -660,6 +667,30 @@ mod tests {
             game.train_level(0),
             game.max_normal_train_level(),
             "夹到训练等级上限"
+        );
+    }
+
+    /// URA 回合（72–77）全变稽古：5 个训练位全部按排练处理（无需槽满）
+    #[test]
+    fn ura_round_all_keiko() {
+        let mut game = crate::testing::sample_game();
+        assert!(!game.all_keiko_round(), "日常回合不是全稽古回合");
+        game.plan = TurnPlan {
+            ura_period: true,
+            ..TurnPlan::default()
+        };
+        assert!(game.all_keiko_round(), "URA 回合属于全稽古回合");
+        assert_eq!(game.practice_acts(), [true; 5], "URA 期全部按排练处理");
+        // 空窗期（68–71）不属于 URA、不启用全稽古
+        game.plan = TurnPlan {
+            interlude: true,
+            ..TurnPlan::default()
+        };
+        assert!(!game.all_keiko_round(), "空窗期不是全稽古回合");
+        assert_eq!(
+            game.practice_acts(),
+            game.lit_acts(),
+            "空窗期按日常槽满亮起口径"
         );
     }
 

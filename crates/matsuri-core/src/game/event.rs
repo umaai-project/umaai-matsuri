@@ -582,13 +582,12 @@ mod tests {
         );
     }
 
-    /// 事件 `hint_level` 收益必须计入 `total_hints`（URA 期事件同样适用）
+    /// 事件 `hint_level` 收益必须计入 `total_hints`（通用事件；URA 事件本身无 Hint）
     #[test]
-    fn event_hint_level_is_counted_in_ura_window() {
+    fn event_hint_level_is_counted() {
         let mut game = sample_game();
-        game.turn = crate::URA_START_TURN; // 72
-        game.finals_done = true;
-        // 友人正月事件：hint_level = 3
+        // 友人正月事件在 turn 24 真实发生，hint_level = 3
+        game.turn = 24;
         let event = Data::get()
             .expect("静态数据")
             .events
@@ -602,7 +601,7 @@ mod tests {
         assert_eq!(
             game.uma().total_hints,
             before + 3,
-            "URA 期事件 hint_level 应计入 total_hints"
+            "事件 hint_level 应计入 total_hints"
         );
         assert_eq!(
             game.view().uma.total_hints,

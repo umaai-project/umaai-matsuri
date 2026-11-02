@@ -153,8 +153,18 @@ impl Game for MatsuriGame {
             }
             return Ok(actions);
         }
-        // 日常 / 空窗期 / URA 回合（72–77）：槽满的演目对应训练位变演目稽古；
-        // URA 期是否全变稽古**存疑待确认**（当前按日常口径），比赛 / 友人出行由引擎 URA 规则拦截
+        // URA 回合（72–77，剧本结束后的决赛期）：**全部训练变演目稽古**（类似合宿）；
+        // 可休息 / 普通出行 / 治病；不可自选赛 / 友人出行（引擎 URA 规则已拦截）
+        if self.plan.ura_period {
+            let mut actions: Vec<Action> = (0..5u8).map(Action::ActTrain).collect();
+            actions.push(Action::Rest);
+            actions.push(Action::NormalOuting);
+            if !self.uma().flags.ill.is_empty() {
+                actions.push(Action::Clinic);
+            }
+            return Ok(actions);
+        }
+        // 日常 / 空窗期回合：槽满的演目对应训练位变演目稽古
         let gauge_max = self.data.rules.act_gauge_max;
         let mut actions: Vec<Action> = (0..5u8)
             .map(|train| {
