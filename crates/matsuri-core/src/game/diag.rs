@@ -11,7 +11,7 @@ use umasim::game::Game;
 
 use super::MatsuriGame;
 
-/// 关键状态快照（诊断用）：体力 / 干劲 / 五维 / PT / 演目槽 / 演目 Lv
+/// 关键状态快照（诊断用）：体力 / 干劲 / 五维 / PT / 灵感合计 / 演目槽 / 演目 Lv
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct KeyState {
     /// 体力
@@ -22,6 +22,8 @@ pub(crate) struct KeyState {
     pub(crate) five: Array5,
     /// 技能点
     pub(crate) pt: i32,
+    /// 灵感合计（事件 / 训练 hint 收益；URA 期事件也计入）
+    pub(crate) total_hints: i32,
     /// 演目 gauge
     pub(crate) gauge: Array5,
     /// 演目 Lv
@@ -46,6 +48,9 @@ impl KeyState {
         }
         if next.pt != self.pt {
             parts.push(format!("PT{:+}", next.pt - self.pt));
+        }
+        if next.total_hints != self.total_hints {
+            parts.push(format!("灵感{:+}", next.total_hints - self.total_hints));
         }
         for (act, (before, after)) in self.gauge.iter().zip(next.gauge.iter()).enumerate() {
             if before != after {
@@ -73,6 +78,7 @@ impl MatsuriGame {
             motivation: self.uma().motivation,
             five: self.uma().five_status,
             pt: self.uma().skill_pt,
+            total_hints: self.uma().total_hints,
             gauge: self.acts.gauge,
             level: self.acts.level,
         }
@@ -122,8 +128,11 @@ impl MatsuriGame {
         if self.forced_rest {
             tags.push("强制休息".to_string());
         }
+        if plan.interlude {
+            tags.push("空窗期".to_string());
+        }
         if plan.ura_period {
-            tags.push("URA收尾".to_string());
+            tags.push("URA回合".to_string());
         }
         if tags.is_empty() {
             "普通回合".to_string()
@@ -144,6 +153,7 @@ mod tests {
             motivation: 3,
             five: [10, 20, 30, 40, 50],
             pt: 100,
+            total_hints: 7,
             gauge: [0; 5],
             level: [1; 5],
         };
@@ -153,12 +163,13 @@ mod tests {
             motivation: 4,
             five: [12, 20, 30, 40, 50],
             pt: 116,
+            total_hints: 10,
             gauge: [1, 0, 0, 0, 0],
             level: [1, 2, 1, 1, 1],
         };
         assert_eq!(
             before.diff(&after),
-            "速+2 体力-20 干劲+1 PT+16 演目0槽0→1 演目1Lv1→2"
+            "速+2 体力-20 干劲+1 PT+16 灵感+3 演目0槽0→1 演目1Lv1→2"
         );
     }
 }

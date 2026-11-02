@@ -96,8 +96,10 @@ pub struct TurnView {
     pub check_point: Option<usize>,
     /// 本回合是否教诲可调整窗口
     pub advice_window: bool,
-    /// 本回合是否 URA 收尾期
+    /// 本回合是否 URA 回合（turn 72–77；73/75/77 为固定决赛）
     pub ura_period: bool,
+    /// 本回合是否剧本结束后的空窗期（本番后、URA 前，turn 68–71；不属于 URA 回合）
+    pub interlude: bool,
     /// 本回合是否因马娘特殊事件改为强制休息（目标赛回合仍按赛程分类）
     pub forced_rest: bool,
     /// 本回合是否可自选比赛（自选赛窗口内）
@@ -349,6 +351,7 @@ impl MatsuriGame {
                 check_point: self.plan.check_point,
                 advice_window: self.plan.advice_window.is_some(),
                 ura_period: self.plan.ura_period,
+                interlude: self.plan.interlude,
                 forced_rest: self.forced_rest,
                 self_race_available: self.base.can_self_race(),
                 practice: self.practice_acts(),
@@ -554,6 +557,7 @@ mod tests {
             race: false,
             ura_race: false,
             ura_period: false,
+            interlude: false,
             camp_year: Some(1),
             camp_zone: true,
             camp_regular: true,

@@ -1,7 +1,7 @@
 //! 回合结构与阶段机（内部强类型；对外只投影 [`StageId`]）
 //!
 //! 纪律：**无数据、无引用、可 `Copy`**；中间状态（gauge / 合宿进度 / 教诲槽）放局面字段。
-//! 阶段只表示回合内的**执行位置**；比赛 / 合宿 / 発表会 / 本番 / URA 收尾是回合类型或自动
+//! 阶段只表示回合内的**执行位置**；比赛 / 合宿 / 発表会 / 本番 / 空窗期 / URA 回合是回合类型或自动
 //! 结算（由 [`TurnPlan`] 与局面字段表达），不各开一个阶段。比赛 / 稽古 / 出行是 `Train` 阶段
 //! 里的动作（S4 落）；発表会 / 本番 / 合宿 +1 与教诲分配 / 调整都是 `End` 阶段的自动结算 /
 //! 决策（S5 落，其中教诲在剧本结算之后处理）。
@@ -16,6 +16,12 @@ use super::MatsuriGame;
 use super::view::MatsuriYear;
 use crate::data::{CampWindow, CheckPointSchedule};
 use crate::diag;
+
+/// URA 回合起始（0 基）：**URA 期 = turn 72–77**（与引擎同口径；73/75/77 为固定决赛）
+///
+/// 本番（最后一次発表会 T67）后先经过 **68–71 的空窗期**（剧本已结束、尚未进 URA），
+/// 空窗期不属于 URA 回合：本番演出的训练限定效果不在空窗期生效。
+pub const URA_START_TURN: i32 = 72;
 
 /// 剧本阶段
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -61,7 +67,7 @@ impl From<Stage> for StageId {
 
 /// 单回合结构（回合开始时派生一次）
 ///
-/// 「回合类型」全在这里：强制比赛 / 合宿（含延长段）/ 発表会 / 本番 / URA 收尾期；阶段机
+/// 「回合类型」全在这里：强制比赛 / 合宿（含延长段）/ 発表会 / 本番 / 空窗期 / URA 回合；阶段机
 /// 不再按回合类型分叉。S4 / S5 / S6 从这里取本回合该走哪条分支。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TurnPlan {
@@ -69,8 +75,10 @@ pub struct TurnPlan {
     pub race: bool,
     /// 本回合是否 URA 决赛（turn 73 预选 / 75 准决赛 / 77 决赛）
     pub ura_race: bool,
-    /// 本回合是否 URA 收尾期（本番后的 turn 68–77）
+    /// 本回合是否 URA 回合（turn 72–77；73/75/77 为固定决赛）
     pub ura_period: bool,
+    /// 本回合是否剧本结束后的空窗期（本番后、URA 前，turn 68–71；不属于 URA 回合）
+    pub interlude: bool,
     /// 本回合合宿年次（0–2；`None` = 不在合宿期）
     pub camp_year: Option<usize>,
     /// 本回合是否在合宿区（含被比赛 / 强制休息占用的回合）
@@ -198,8 +206,8 @@ pub(crate) fn advice_window_index(turn: i32, windows: &[i32]) -> Option<usize> {
     windows.iter().position(|item| *item == turn)
 }
 
-/// URA 收尾期起点（本番 = 最后一次発表会之后的回合，0 基 68；缺资产时退化为不过渡）
-pub(crate) fn ura_period_start(schedule: &[CheckPointSchedule]) -> i32 {
+/// 剧本结束后的空窗期起点（本番 = 最后一次発表会之后的回合，0 基 68；缺资产时退化为不过渡）
+pub(crate) fn post_scenario_start(schedule: &[CheckPointSchedule]) -> i32 {
     schedule
         .last()
         .map_or(crate::MAX_TURN + 1, |item| item.turn + 1)
@@ -223,10 +231,12 @@ impl MatsuriGame {
     pub(crate) fn derive_plan(&mut self) -> TurnPlan {
         let turn = self.base.turn;
         let camp = self.camp.begin_turn(turn, &self.data.camp.windows);
+        let post_scenario = post_scenario_start(&self.data.schedule);
         TurnPlan {
             race: self.base.uma.is_race_turn(turn),
             ura_race: is_ura_race_turn(turn),
-            ura_period: turn >= ura_period_start(&self.data.schedule),
+            ura_period: turn >= URA_START_TURN,
+            interlude: turn >= post_scenario && turn < URA_START_TURN,
             camp_year: camp.year,
             camp_zone: camp.zone,
             camp_regular: camp.regular,
@@ -480,7 +490,7 @@ mod tests {
         assert_eq!(check_point_index(67, &schedule), Some(2));
         assert_eq!(check_point_index(0, &schedule), None);
         assert_eq!(check_point_index(24, &schedule), None);
-        assert_eq!(ura_period_start(&schedule), 68);
+        assert_eq!(post_scenario_start(&schedule), 68);
     }
 
     #[test]
@@ -490,6 +500,31 @@ mod tests {
         assert_eq!(advice_window_index(23, &windows), Some(2));
         assert_eq!(advice_window_index(59, &windows), Some(5));
         assert_eq!(advice_window_index(3, &windows), None);
+    }
+
+    /// URA 边界：68–71 空窗期（不属于 URA），72–77 URA 回合；决赛回合 73/75/77
+    #[test]
+    fn ura_boundaries_and_interlude() {
+        let schedule = vec![CheckPointSchedule {
+            turn: 67,
+            need_act_num: 5,
+            need_act_level: 6,
+        }];
+        let post = post_scenario_start(&schedule);
+        assert_eq!(post, 68, "空窗期自本番后一回合（68）起");
+        // 把「是否空窗 / 是否 URA」按 derive_plan 同口径复算
+        let classify = |turn: i32| {
+            (
+                turn >= post && turn < URA_START_TURN,
+                turn >= URA_START_TURN,
+            )
+        };
+        assert_eq!(classify(67), (false, false), "本番回合既非空窗也非 URA");
+        assert_eq!(classify(68), (true, false), "68 空窗期");
+        assert_eq!(classify(71), (true, false), "71 空窗期末");
+        assert_eq!(classify(72), (false, true), "72 起进 URA");
+        assert_eq!(classify(77), (false, true), "77 URA 末回合");
+        assert_eq!(URA_START_TURN, 72);
     }
 
     #[test]

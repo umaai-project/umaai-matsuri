@@ -473,6 +473,7 @@ struct Snapshot {
     turn: i32,
     five: [i32; 5],
     pt: i32,
+    total_hints: i32,
     vital: i32,
     motivation: i32,
     act_level: [i32; 5],
@@ -484,6 +485,7 @@ impl Snapshot {
             turn: view.turn.turn,
             five: view.uma.five_status,
             pt: view.uma.skill_pt,
+            total_hints: view.uma.total_hints,
             vital: view.uma.vital,
             motivation: view.uma.motivation,
             act_level: view.resources.act_level,
@@ -588,8 +590,11 @@ impl ManualTrainer {
         if turn.forced_rest {
             tags.push("强制休息".to_string());
         }
+        if turn.interlude {
+            tags.push("空窗期".to_string());
+        }
         if turn.ura_period {
-            tags.push("URA收尾".to_string());
+            tags.push("URA回合".to_string());
         }
         if tags.is_empty() {
             "普通回合".to_string()
@@ -662,15 +667,20 @@ impl ManualTrainer {
             delta_tone(now.pt - last.pt),
             color,
         );
-        let _ = writeln!(
-            out,
-            "【变化】{range}：{} {vital} {motivation} {pt}",
-            if axes.is_empty() {
-                "五维±0".to_string()
-            } else {
-                axes.join(" ")
-            }
-        );
+        let mut parts: Vec<String> = vec![if axes.is_empty() {
+            "五维±0".to_string()
+        } else {
+            axes.join(" ")
+        }];
+        parts.push(vital);
+        parts.push(motivation);
+        parts.push(pt);
+        // 灵感（Hint）收益也要进入「变化」：事件 / 训练后的 hint 在 URA 期间同样发生
+        if now.total_hints != last.total_hints {
+            let delta = now.total_hints - last.total_hints;
+            parts.push(paint(&format!("灵感{delta:+}"), delta_tone(delta), color));
+        }
+        let _ = writeln!(out, "【变化】{range}：{}", parts.join(" "));
         // 演目等级变化（排练成功 / 友人出行 / 合宿结算等）
         let levels: Vec<String> = (0..5)
             .filter(|act| now.act_level[*act] != last.act_level[*act])

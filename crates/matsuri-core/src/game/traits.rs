@@ -153,7 +153,8 @@ impl Game for MatsuriGame {
             }
             return Ok(actions);
         }
-        // 日常 / URA 收尾回合：槽满的演目对应训练位变演目稽古
+        // 日常 / 空窗期 / URA 回合（72–77）：槽满的演目对应训练位变演目稽古；
+        // URA 期是否全变稽古**存疑待确认**（当前按日常口径），比赛 / 友人出行由引擎 URA 规则拦截
         let gauge_max = self.data.rules.act_gauge_max;
         let mut actions: Vec<Action> = (0..5u8)
             .map(|train| {

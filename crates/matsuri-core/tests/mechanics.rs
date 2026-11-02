@@ -1,5 +1,5 @@
 //! S3 机制集成：仓内真实资产建一局，逐阶段跑满 78 回合，守回合结构（`TurnPlan`）/ 赛程 /
-//! 合宿窗口与延长 / 発表会 / 本番 / URA 收尾 / 马娘特殊事件（强制休息）/ `MatsuriView` 账本。
+//! 合宿窗口与延长 / 発表会 / 本番 / 空窗期 / URA 回合 / 马娘特殊事件（强制休息）/ `MatsuriView` 账本。
 //!
 //! 训练员用样例 `MatsuriTrainer`：本阶段只关心回合边界，不关心具体选了什么动作。
 //! 数据根统一经 `matsuri_core::testing::data_dir()` 取仓根 `data/`（引擎静态表 + 剧本资产）。
@@ -141,7 +141,7 @@ fn camp_expect(turn: i32) -> Option<(usize, bool)> {
     }
 }
 
-/// 回合结构 / 赛程 / 発表会 / URA 收尾 / View 账本初值
+/// 回合结构 / 赛程 / 発表会 / 空窗期 / URA 回合 / View 账本初值
 #[test]
 fn turn_structure() -> Result<()> {
     let repo = Repo::load()?;
@@ -186,7 +186,12 @@ fn turn_structure() -> Result<()> {
             plan.advice_window.is_some(),
             "turn {turn} View 教诲窗口"
         );
-        assert_eq!(plan.ura_period, turn >= 68, "turn {turn} URA 收尾期");
+        assert_eq!(plan.ura_period, turn >= 72, "turn {turn} URA 回合（72–77）");
+        assert_eq!(
+            plan.interlude,
+            (68..72).contains(&turn),
+            "turn {turn} 空窗期（本番后、URA 前）"
+        );
         assert_eq!(
             plan.ura_race,
             matches!(turn, 73 | 75 | 77),
@@ -247,6 +252,7 @@ fn turn_structure() -> Result<()> {
     );
     assert!(!first.view.resources.finals_done);
     assert!(!first.view.turn.ura_period);
+    assert!(!first.view.turn.interlude);
     println!("回合结构：78 回合 / 発表会 3 场 / 合宿 3 次 / 教诲窗口 6 个；View 初值 OK");
     Ok(())
 }
@@ -777,6 +783,9 @@ impl ViewCheckingTrainer {
         assert_eq!(view.turn.max_turn, MAX_TURN, "View 最大回合");
         assert_eq!(view.turn.stage, game.stage(), "View 阶段");
         assert_eq!(view.turn.year, MatsuriYear::from_turn(game.turn()));
+        assert_eq!(view.turn.ura_race, game.plan.ura_race, "View URA 决赛回合");
+        assert_eq!(view.turn.ura_period, game.plan.ura_period, "View URA 回合");
+        assert_eq!(view.turn.interlude, game.plan.interlude, "View 空窗期");
         // 数值与状态
         let uma = game.uma();
         assert_eq!(view.uma.uma_id, uma.uma_id);
@@ -1139,8 +1148,25 @@ fn action_set_by_turn_type() -> Result<()> {
     drive_to_turn(&mut game, 73)?;
     assert_eq!(game.list_actions()?, vec![Action::Race]);
 
+    // URA 黑障回合（turn 72 / 74 / 76）：不可比赛 / 友人出行，可休息、普通出行、治病
+    let mut game = repo.game(repo.cfg.sim.uma)?;
+    drive_to_turn(&mut game, 72)?;
+    game.uma_mut().flags.ill = umaai_core::Ill::FAT;
+    let actions = game.list_actions()?;
+    assert!(!actions.contains(&Action::Race), "URA 黑障回合不可自选比赛");
+    assert!(
+        !actions.contains(&Action::FriendOuting),
+        "URA 回合不可友人出行"
+    );
+    assert!(actions.contains(&Action::Rest), "URA 回合可休息");
+    assert!(
+        actions.contains(&Action::NormalOuting),
+        "URA 回合可普通出行"
+    );
+    assert!(actions.contains(&Action::Clinic), "生病时 URA 回合可治病");
+
     println!(
-        "动作集：普通 / 合宿年 1 / 合宿年 2 / 目标赛 / 强制休息 / 自选比赛（turn {race_turn}）/ URA 全部分支正确"
+        "动作集：普通 / 合宿年 1 / 合宿年 2 / 目标赛 / 强制休息 / 自选比赛（turn {race_turn}）/ URA 决赛 + 黑障回合分支正确"
     );
     Ok(())
 }
@@ -1769,7 +1795,12 @@ fn s5_mechanism_chain_over_full_run() -> Result<()> {
             assert!(game.view().resources.finals_done, "本番演出已结算");
         }
         if turn == 70 {
-            assert!(game.plan.ura_period, "turn 70 在 URA 收尾期");
+            assert!(game.plan.interlude, "turn 70 在空窗期（不属于 URA 回合）");
+            assert!(!game.plan.ura_period, "turn 70 不是 URA 回合");
+        }
+        if turn == 72 {
+            assert!(game.plan.ura_period, "turn 72 起进入 URA 回合");
+            assert!(!game.plan.interlude, "turn 72 已不是空窗期");
         }
         Ok(())
     })?;

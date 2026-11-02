@@ -1,7 +1,7 @@
 # 交接提示词
 
 > 用法：上下文过长时，新窗口只读本文件 + 下列关键文件即可续接；只写「代码 / git 状态里恢复不了」的信息。
-> **当前状态：S8 View 补全（回合信息完整快照）+ diag 诊断接线已实现并提交**（2026-11-02；**未 push**）；
+> **当前状态：S8 View 补全 + diag 已提交；URA 阶段口径修正（边界 72–77 / 空窗期 / hint 入账）已落**（2026-11-03；**未 push**）；
 > 此前链：S7 手写训练员 → S6 事件管线 → S8 手动核对面板（先行），均已在本地 `main`。
 > 下一步：**S8 其余**（在线外壳 `matsuri-ai` / 训练员选择器）→ **S9 基线** → 待量化（融合 A/B、
 > 训练员旋钮扫参、M2 搜索）。
@@ -9,9 +9,9 @@
 
 ## 一、git / 环境现状
 
-- **本仓（umaai-matsuri）**：`HEAD` = S8 提交 `feat(core,cli): S8 View 补全为回合信息完整快照 + diag 诊断埋点`
-  （2026-11-02；哈希以 `git log -1` 为准）；**未 push**（`origin/main = ea5f9ad`，**2 个提交待推**：
-  S7 手写训练员 + 本条）。此前链：`9cee735`（S7）→ `ea5f9ad`（S8 面板细化 + 教诲 T2 Begin）→
+- **本仓（umaai-matsuri）**：`HEAD` = URA 口径修正提交（2026-11-03；哈希以 `git log -1` 为准）；
+  **未 push**（`origin/main = ea5f9ad`，**3 个提交待推**：S7 手写训练员 + S8 View/diag + 本条）。
+  此前链：`9327da3`（S8 View + diag）→ `9cee735`（S7）→ `ea5f9ad`（S8 面板细化 + 教诲 T2 Begin）→
   `ce6789b`（S8 升级 + T2 闸门）→ `8f4687e`（S6 + S8 先行）→ `00079f3`（S4+S5）→ `9995329`（S3）等。
 - 依赖：`matsuri-cli` 仍有 `inquire = 0.9.4`（终端动作 / 事件选项；非 TTY 退回编号输入）；
   **新增 `log = { version = "0.4.34", features = ["std"] }`**（workspace 依赖，与引擎同版本；
@@ -63,6 +63,27 @@
    tests_overview 分层计数 / 用例 / 诊断守门新节 / 对话记录；AGENTS 结构表 + diag 纪律；handoff（本文件）；
    crate 文档注释同步。
 
+### URA 阶段口径修正（2026-11-03，user 逐项核对）
+
+1. **URA 训练限定效果（本番演出）只在 72–77 生效**：`train.rs::ura_training_active` 与
+   `distribute.rs::place_splits` 的 finals 判定改 `URA_START_TURN..=MAX_TURN`（`stage::URA_START_TURN = 72`）。
+   68–71 空窗期不生效（体力 / 干劲 / 失败率 / 分身 +1 均不享受）。
+2. **68–71 = 剧本结束到 URA 的空窗期，不属于 URA**：`TurnPlan.ura_period` 改 72–77；新增
+   `TurnPlan.interlude`（由 `data.schedule` 末项 +1 派生到 URA 起点前）与 `MatsuriView.turn.interlude`；
+   手动面板 / 诊断日志回合类型标「空窗期」。
+3. **体力结算顺序**：先稽古耗体下降 / 训练扣体 / 失败率下降，再判定回体（+30）→ URA 训练常为**净回体**
+   （例 -20+30 = +10）；`ura_training_effects` 测试覆盖 68/70/71 不生效与 72/74/77 生效。
+4. **通用规则：演目 Lv 满（10）后仍可攒 5 槽并排练**，排练成功后槽清空、Lv 保持 10；新增内联测试
+   `max_level_act_still_accumulates_and_practices`。
+5. **URA 期是否全变稽古：改为「存疑，待确认」**（此前「不做特殊化」结论作废）；当前实现仍按日常机制，
+   `stubs.md` / glossary / mechanism / memo / intake 同步登记 TBD。
+6. **URA 期事件 hint 收益计入**：`KeyState` 新增 `total_hints`，诊断「变化」/ manual「变化」显示「灵感±N」；
+   新增测试 `event_hint_level_is_counted_in_ura_window`（URA 窗口事件 hint_level 计入 `total_hints` + View 同步）。
+7. **72–77 动作限制确认**：不可友人出行 / 自选比赛；72/74/76 可训练 / 稽古 / 休息 / 普通出行 / 治病，
+   73/75/77 只有比赛（引擎规则已有，`action_set_by_turn_type` 补守门）。
+8. 测试 **169 测例**（core 内联 117 / L2 15 / 机制 30 / diag 1 / CLI 内联 5 / 冒烟 1）；整局冒烟
+   54683 / UB9、PT 9024 → **53083 / UB7、PT 8858**（68–71 不再吃 URA 加成；S9 前不建基线）。
+
 ### S7 手写训练员（2026-11-02，已提交）
 
 > 目标函数 `pt_favor`（官方评分 + PT×`pt_favor_rate`，默认 2.0）、先手写后搜索、教诲分配 T2 + 5 窗口
@@ -97,6 +118,8 @@
   建局配置不属于回合信息。`MatsuriView` 为 serde 值快照 + `non_exhaustive`。
 - **诊断日志**：统一 `crate::diag!`（引擎宏，target = `diagnostic`；编译期 feature + 运行时开关 +
   `DiagGuard` 静默）；日志器在 `matsuri-cli`，级别 = `[output] log_level`（默认 `info`，`off` 静默）。
+- **URA 边界**：`URA_START_TURN = 72`；`plan.ura_period` = 72–77、`plan.interlude` = 68–71（剧本结束后的
+  空窗期）；本番演出训练效果只在 72–77 生效；`KeyState` 含 `total_hints`（事件 hint 变化可观测）。
 - 关键接口：`MatsuriTrainer::new(MatsuriConfig)` / `config()`；估值 `Model::new(game, &TrainerConfig)`
   （私有）；`assignment_candidates` / `apply_assignment`（401+801 硬约束）、`advice_effect_of`、
   `view()`、`kensan_act` / `roll_kensan`、`card_event_candidates`、`preview_training` /
@@ -125,13 +148,16 @@
 ## 五、备忘与未决
 
 - **数值位移**：S5 34368 → S6 44946 →（T2 闸门 + 教诲 T2 Begin）40853 → 40899 / UC、PT 6982 →
-  **S7 手写训练员 54683 / UB9、PT 9024（S8 View+diag 后逐位不变）**；`random` 19516 → 29396（口径变化）。
-  S9 前不建基线；一有数值占位替换 / 训练员改动就重录并记影响面。
+  S7 手写训练员 54683 / UB9、PT 9024（S8 View+diag 后逐位不变）→ **URA 口径修正 53083 / UB7、PT 8858**
+  （68–71 空窗期不再吃 URA 训练限定效果）；`random` 19516 → 29396（口径变化）。S9 前不建基线；
+  一有数值占位替换 / 训练员改动就重录并记影响面。
 - **View 口径**：`MatsuriView` 结构变更属宿主契约变更（serde 结构变 = 旧 JSON 反序列化失败）；
   无持久化 consumer 前可改，S9 / 在线外壳接入后需按 `non_exhaustive` + 加字段纪律演进。
 - **待真机复核**（`stubs.md` 已登记）：变胖解除 20%、事件⑤（SSR 技能事件未接）、事件抑制基线层、
   友人事件槽位映射、memo 友人事件值为「基础值」的推断、400015105 数值、通用事件数值、
   技能灵感 `hint_level` 记账、turn 66 进化 hint+1、T65 之外马娘特殊事件、训练员旋钮默认值。
+- **URA 待确认**：URA 期是否「全变稽古」存疑待确认（当前按日常）；URA 事件 hint 具体数值（当前
+  `data/events.json` 的 URA 决赛三条只有五维 / PT，如真机另有 hint 需补数据）。
 - **不做**：技能系统 / 粉丝、进化技能效果、R / 无凸吾妻分支、团队卡、引擎改造（除非用户另行确认）。
 - 参考源纪律：`../matsuri-ref-01` 不可作为机制 / 数值 / 实现依据；数据只用 `master.mdb` 原始表 +
   本仓 `docs/` + 日文 memo（`../mee-umasim/data/shuntaisai_memo.md`）。

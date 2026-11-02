@@ -337,9 +337,9 @@ impl MatsuriGame {
         drop
     }
 
-    /// 本番演出是否在 URA 收尾期训练中生效（turn 68–77）
+    /// 本番演出是否在 URA 训练中生效（**turn 72–77**；68–71 空窗期不生效）
     pub(crate) fn ura_training_active(&self) -> bool {
-        self.finals_done && (68..=77).contains(&self.turn)
+        self.finals_done && (crate::URA_START_TURN..=crate::MAX_TURN).contains(&self.turn)
     }
 
     /// 训练成功后的剧本后处理：羁绊 / 灵感事件 / 加练 / 点击（替换引擎默认实现）
@@ -737,12 +737,38 @@ mod tests {
     fn ura_training_effects() {
         let mut game = crate::testing::sample_game();
         game.finals_done = true;
-        game.turn = 70;
-        assert!(game.ura_training_active());
-        let upper = game.training_upper(0, &lower_value(100, 0, -20), false);
-        assert_eq!(upper.vital, 10, "URA 训练体力 +30");
-        assert_eq!(upper.motivation, 1, "URA 训练干劲 +1");
-        assert_eq!(game.scenario_fail_rate_drop(0), 100, "本番演出失败率 -100%");
+        // 空窗期 68–71：本番演出**不生效**（训练扣体 / 失败率照常）
+        for turn in [68, 70, 71] {
+            game.turn = turn;
+            assert!(
+                !game.ura_training_active(),
+                "T{turn} 空窗期不应用 URA 训练效果"
+            );
+            let upper = game.training_upper(0, &lower_value(100, 0, -20), false);
+            assert_eq!(upper.vital, -20, "T{turn} 空窗期训练不额外回体");
+            assert_eq!(upper.motivation, 0, "T{turn} 空窗期训练不额外加干劲");
+            assert_eq!(
+                game.scenario_fail_rate_drop(0),
+                0,
+                "T{turn} 空窗期无失败率下降"
+            );
+        }
+        // URA 72–77：本番演出生效（先扣体 / 失败率下降，再回体 → 净回体）
+        for turn in [72, 74, 77] {
+            game.turn = turn;
+            assert!(game.ura_training_active(), "T{turn} URA 训练生效");
+            let upper = game.training_upper(0, &lower_value(100, 0, -20), false);
+            assert_eq!(
+                upper.vital, 10,
+                "T{turn} URA 训练体力 +30（-20+30 净回 10）"
+            );
+            assert_eq!(upper.motivation, 1, "T{turn} URA 训练干劲 +1");
+            assert_eq!(
+                game.scenario_fail_rate_drop(0),
+                100,
+                "T{turn} 本番演出失败率 -100%"
+            );
+        }
     }
 
     #[test]

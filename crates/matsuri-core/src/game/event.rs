@@ -582,6 +582,35 @@ mod tests {
         );
     }
 
+    /// 事件 `hint_level` 收益必须计入 `total_hints`（URA 期事件同样适用）
+    #[test]
+    fn event_hint_level_is_counted_in_ura_window() {
+        let mut game = sample_game();
+        game.turn = crate::URA_START_TURN; // 72
+        game.finals_done = true;
+        // 友人正月事件：hint_level = 3
+        let event = Data::get()
+            .expect("静态数据")
+            .events
+            .friend_events
+            .get("newyear")
+            .cloned()
+            .expect("友人正月事件");
+        let before = game.uma().total_hints;
+        let mut rng = StdRng::seed_from_u64(11);
+        game.apply_event(&event, 0, &mut rng).expect("事件结算");
+        assert_eq!(
+            game.uma().total_hints,
+            before + 3,
+            "URA 期事件 hint_level 应计入 total_hints"
+        );
+        assert_eq!(
+            game.view().uma.total_hints,
+            before + 3,
+            "View 的灵感合计同步"
+        );
+    }
+
     /// 回合后事件入队：turn 48 抽签 / turn 77 育成结束 + 友人结局
     #[test]
     fn after_train_events_queued() {

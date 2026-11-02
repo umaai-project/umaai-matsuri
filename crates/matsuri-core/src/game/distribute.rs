@@ -145,7 +145,9 @@ impl MatsuriGame {
     fn place_splits(&mut self, practice: &[bool; 5], rng: &mut impl Rng) -> Result<()> {
         // (人头, 额外处数)
         let mut extra: Vec<(usize, i32)> = Vec::new();
-        let finals = self.finals_done && (68..=77).contains(&self.turn);
+        // URA 本番演出的「+1 人」只在 URA 训练（72–77）生效；68–71 空窗期不生效
+        let finals =
+            self.finals_done && (crate::URA_START_TURN..=crate::MAX_TURN).contains(&self.turn);
         let camp = self.plan.camp_train(self.forced_rest);
         for (act, lit) in practice.iter().enumerate() {
             let effect = self.advice_slot_effect(act);
@@ -380,7 +382,7 @@ mod tests {
     #[test]
     fn finals_extra_member_only_for_edition_cards() {
         let mut game = crate::testing::sample_game();
-        game.turn = 70;
+        game.turn = 72;
         game.finals_done = true;
         game.acts.gauge[0] = game.act_gauge_max();
         let mut rng = StdRng::seed_from_u64(4);

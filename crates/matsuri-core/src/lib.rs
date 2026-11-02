@@ -41,7 +41,7 @@ pub use game::{
     DeckReport, DeckWarning, EVENT_LOG_CAPACITY, EventRecord, FriendView, MatsuriGame,
     MatsuriPerson, MatsuriView, MatsuriYear, MemberView, PersonOrigin, PersonView, ResourcePreview,
     ResourceView, SCENARIO_START_TURN, ScheduleView, SelfRace, Stage, TrainingPreview, TurnPlan,
-    TurnView, UmaView, build_game,
+    TurnView, URA_START_TURN, UmaView, build_game,
 };
 pub use trainer::MatsuriTrainer;
 

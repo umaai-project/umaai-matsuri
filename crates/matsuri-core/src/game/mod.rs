@@ -33,7 +33,7 @@ use umasim::game::{Game, InheritInfo, TrainingBasicTable};
 pub use action::Action;
 pub use deck::{DeckError, DeckReport, DeckWarning};
 pub use person::{MatsuriPerson, PersonOrigin};
-pub use stage::{CampState, Stage, TurnPlan};
+pub use stage::{CampState, Stage, TurnPlan, URA_START_TURN};
 pub use view::{
     BoardView, CampView, CheckPointNeed, EVENT_LOG_CAPACITY, EventRecord, FriendView, MatsuriView,
     MatsuriYear, MemberView, PersonView, ResourceView, ScheduleView, SelfRace, TurnView, UmaView,
@@ -661,6 +661,31 @@ mod tests {
             game.max_normal_train_level(),
             "夹到训练等级上限"
         );
+    }
+
+    /// 通用规则：演目 Lv 已到上限（10）仍可攒 5 槽并排练；排练后槽清空、Lv 保持上限
+    #[test]
+    fn max_level_act_still_accumulates_and_practices() {
+        use rand::SeedableRng;
+        use rand::rngs::StdRng;
+
+        let mut game = crate::testing::sample_game();
+        // URA 训练：失败率 -100% → 稽古必成功，便于直接验证结果
+        game.turn = crate::URA_START_TURN + 2;
+        game.finals_done = true;
+        game.acts.level = [10; 5];
+        game.acts.gauge = [0; 5];
+        // 满级不阻止攒槽：仍可加满 5 格
+        let max = game.act_gauge_max();
+        game.gain_act_gauge(0, max + 3);
+        assert_eq!(game.acts.gauge[0], max, "满级演目仍可把槽攒满");
+        assert!(game.practice_acts()[0], "满级 + 满槽仍按排练处理");
+        // 排练成功：槽清空、Lv 保持 10（给训练位放一名担当，走完整训练后处理）
+        game.base.distribution = vec![vec![0], vec![], vec![], vec![], vec![]];
+        let mut rng = StdRng::seed_from_u64(3);
+        game.do_act_train(0, &mut rng).expect("稽古结算");
+        assert_eq!(game.acts.gauge[0], 0, "排练成功后槽清空");
+        assert_eq!(game.acts.level[0], 10, "Lv 已满时排练不再升、保持 10");
     }
 
     #[test]
