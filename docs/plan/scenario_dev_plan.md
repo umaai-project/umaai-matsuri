@@ -397,6 +397,12 @@ cargo test --workspace --release --offline
   `special_race_pt_rate` 同步 + manual 面板显示「铁心 五维×2.5 / PT×0.46」。新增内联
   `dictus_iron_heart_bonus_window_and_kind` + 机制 `dictus_iron_heart_race_bonus_applied`。
   测试配卡数值：T22/T58 **19/128**；T68/T69/T71（本番大成功后）**38/256**；106301 冒烟 79929/LG6、PT 11500（非基线）。
+- **已完成：溢出与末段稽古旋钮（2026-11-03）**——新增 `[trainer.overflow]`（`margin` / `tilt` / `keep`）：
+  按**生效上限**判定近顶，非近顶轴加权，主属性近顶时保留副属性 / PT；新增 `[trainer.endgame]`
+  （`keiko` / `scarcity` / `level` / `normal_penalty`）：窗口 = 第三年合宿结束后～T71，只作用普通回合，
+  满槽数超过剩余普通回合时优先满槽稽古，URA 72–77 不参与。默认档 `0.02/0.5/0.15` + `250/1.0/80/120`；
+  100 seed discovery 106301 +245；200 seed holdout 未复现（三马 −33/+7/−7），定位行为旋钮；seed 61444 冒烟不变。
+  新增 5 个内联测试，四档绿 **204 测例**（147 内联 + 15 L2 + 32 机制 + 1 diag + 7 CLI 内联 + 2 CLI 冒烟）。
 
 ## 6. 剧本专属实现项（状态）
 

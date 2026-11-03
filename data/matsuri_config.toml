@@ -6,6 +6,7 @@
 #
 # 默认档 = lab 实验仓冠军档 `ga-r2`（2026-11-03 合并；留出 seeds 62100–62199 ×100 局 74051.7）：
 #   调参口径 = 玉藻十字 102102 + 卡组 A；迁移到仓内默认卡组实测 100 局 +9936.5（t=22.1）。
+# 追加 2026-11-03 的 `[trainer.overflow]` / `[trainer.endgame]` 扫描档：行为旋钮，评分中性。
 # 改这里必须同步 `config.rs` 的 `Default` 实现（`tests/data.rs::load_repo_config` 断言两者相等）。
 #
 # 融合校验：第 2 年（turn 23 结束）恰 2 组、第 3 年（turn 47 结束）恰 3 组；
@@ -85,3 +86,16 @@ act_catchup = 0.0
 vital_decay = 0.2879
 vital_idle = 0.0
 keiko_tempo = 0.486
+
+# 溢出处理（按生效上限判定；全 0 = 关闭，扫描后定档）
+[trainer.overflow]
+margin = 0.02
+tilt = 0.5
+keep = 0.15
+
+# 第三年合宿结束～T71 的稽古兑现（只作用普通回合；全 0 = 关闭，URA 不参与）
+[trainer.endgame]
+keiko = 250.0
+scarcity = 1.0
+level = 80.0
+normal_penalty = 120.0

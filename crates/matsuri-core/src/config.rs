@@ -68,6 +68,12 @@ pub struct TrainerConfig {
     /// `#[serde(default)]`：默认层文件不写这一段也能解析，缺省即全 0 = 静态行为。
     #[serde(default)]
     pub dynamic: DynamicConfig,
+    /// 溢出处理（近顶轴让位、副属性 / PT 保留；默认层见 `data/matsuri_config.toml`）
+    #[serde(default)]
+    pub overflow: OverflowConfig,
+    /// 第三年合宿结束～T71 的稽古兑现（缺省段 = 关闭；URA 不参与）
+    #[serde(default)]
+    pub endgame: EndgameConfig,
 }
 
 /// 动态权重旋钮（逐回合调制；全部默认 `0.0` = 关闭，完全退化成静态打分）
@@ -101,6 +107,59 @@ impl Default for DynamicConfig {
             vital_decay: 0.0,
             vital_idle: 0.0,
             keiko_tempo: 0.0,
+        }
+    }
+}
+
+/// 溢出处理旋钮（属性接近**生效上限**时，训练分配向其余轴倾斜）
+///
+/// 结构体缺省 `0.0` = 关闭；仓内默认层 `data/matsuri_config.toml` 取扫描档。
+/// 只作用于普通回合的训练估值，不影响事件 / 比赛 / 教诲分配的价值。
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct OverflowConfig {
+    /// 距生效上限多少比例内算「近顶」；`0` = 只把真正顶满的轴算近顶
+    pub margin: f64,
+    /// 非近顶轴的权重放大强度：`w[j] *= 1 + tilt * near_n / 5`
+    pub tilt: f64,
+    /// 主属性近顶时，副属性 + PT 的保留加分（防止完全放弃该训练）
+    pub keep: f64,
+}
+
+impl Default for OverflowConfig {
+    fn default() -> Self {
+        Self {
+            margin: 0.0,
+            tilt: 0.0,
+            keep: 0.0,
+        }
+    }
+}
+
+/// 第三年合宿结束～T71 的稽古兑现旋钮（URA 全稽古回合不参与）
+///
+/// 只作用于**普通回合**：满槽数多于剩余普通回合时，把回合优先让给满槽稽古，
+/// 并对普通训练加一点机会成本。结构体缺省 `0.0` = 关闭；仓内默认层取扫描档。
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct EndgameConfig {
+    /// 每个满槽稽古候选的基础加分
+    pub keiko: f64,
+    /// 满槽数 > 剩余普通回合数时的放大强度
+    pub scarcity: f64,
+    /// 每级未满 `act Lv` 的加分（最多按 2 级计）
+    pub level: f64,
+    /// 同一窗口普通训练的扣分（只扣 `Action::Train`，不扣休息 / 治病）
+    pub normal_penalty: f64,
+}
+
+impl Default for EndgameConfig {
+    fn default() -> Self {
+        Self {
+            keiko: 0.0,
+            scarcity: 0.0,
+            level: 0.0,
+            normal_penalty: 0.0,
         }
     }
 }
@@ -412,6 +471,31 @@ fn validate_trainer(trainer: &TrainerConfig) -> Result<()> {
             "trainer.{name} 应在 0–{upper}（实际 {value}）"
         );
     }
+    let overflow = &trainer.overflow;
+    let entries: [(&str, f64, f64); 3] = [
+        ("overflow.margin", overflow.margin, 0.5),
+        ("overflow.tilt", overflow.tilt, 4.0),
+        ("overflow.keep", overflow.keep, 2.0),
+    ];
+    for (name, value, upper) in entries {
+        ensure!(
+            value.is_finite() && (0.0..=upper).contains(&value),
+            "trainer.{name} 应在 0–{upper}（实际 {value}）"
+        );
+    }
+    let endgame = &trainer.endgame;
+    let entries: [(&str, f64, f64); 4] = [
+        ("endgame.keiko", endgame.keiko, 1000.0),
+        ("endgame.scarcity", endgame.scarcity, 4.0),
+        ("endgame.level", endgame.level, 500.0),
+        ("endgame.normal_penalty", endgame.normal_penalty, 1000.0),
+    ];
+    for (name, value, upper) in entries {
+        ensure!(
+            value.is_finite() && (0.0..=upper).contains(&value),
+            "trainer.{name} 应在 0–{upper}（实际 {value}）"
+        );
+    }
     Ok(())
 }
 
@@ -489,6 +573,17 @@ impl Default for TrainerConfig {
                 vital_decay: 0.2879,
                 vital_idle: 0.0,
                 keiko_tempo: 0.486,
+            },
+            overflow: OverflowConfig {
+                margin: 0.02,
+                tilt: 0.5,
+                keep: 0.15,
+            },
+            endgame: EndgameConfig {
+                keiko: 250.0,
+                scarcity: 1.0,
+                level: 80.0,
+                normal_penalty: 120.0,
             },
         }
     }

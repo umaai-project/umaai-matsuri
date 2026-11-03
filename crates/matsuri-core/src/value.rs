@@ -41,6 +41,8 @@ const HIGH_VITAL_IDLE_PENALTY: f64 = 200.0;
 const HIGH_VITAL_THRESHOLD: i32 = 70;
 /// 演目 Lv 上限（有 SSR 吾妻时可到 10）
 const ACT_LEVEL_CAP: i32 = 10;
+/// 第三年合宿结束后的稽古兑现窗口末回合（本番后空窗期结束、URA 前）
+const ENDGAME_LAST_TURN: i32 = 71;
 
 /// 离线搜索蒸馏出的教诲落位先验（`scripts/tabu_route.py` 轮次 7 的禁忌搜索路线）
 ///
@@ -88,6 +90,14 @@ struct Context {
     vital_scale: f64,
     /// 稽古节奏乘子（`keiko_tempo`；1 = 关闭，>1 落后要加速，<1 领先可卡回合）
     tempo_scale: f64,
+    /// 近顶轴标记（按**生效上限**判定；`overflow.margin`）
+    near_cap: [bool; 5],
+    /// 非近顶轴的溢出放大因子（全 1 = 关闭）
+    overflow_factor: [f64; 5],
+    /// 第三年合宿结束～T71 的普通回合窗口
+    endgame: bool,
+    /// 满槽数超过剩余普通回合的比例（0–1）
+    endgame_pressure: f64,
 }
 
 /// 下一次発表会 / 本番的达标压力
@@ -231,6 +241,58 @@ impl<'a> Model<'a> {
             1.0
         };
 
+        // ⑤ 溢出：按**生效上限**标记近顶轴，只放大非近顶轴；主属性近顶时另外保留
+        //    副属性 / PT 的价值（见 `train_value` 的 `keep`）。
+        let overflow = &cfg.overflow;
+        let mut near_cap = [false; 5];
+        let mut near_count = 0usize;
+        if overflow.margin > 0.0 || overflow.tilt > 0.0 || overflow.keep > 0.0 {
+            for (axis, near) in near_cap.iter_mut().enumerate() {
+                let limit = game.uma().five_status_limit[axis].max(1);
+                let value = game.uma().five_status[axis].clamp(0, limit);
+                let ratio = f64::from(limit - value) / f64::from(limit);
+                *near = ratio <= overflow.margin;
+                if *near {
+                    near_count += 1;
+                }
+            }
+        }
+        let overflow_factor: [f64; 5] = std::array::from_fn(|axis| {
+            if near_count > 0 && !near_cap[axis] {
+                1.0 + overflow.tilt * near_count as f64 / 5.0
+            } else {
+                1.0
+            }
+        });
+
+        // ⑥ 第三年合宿结束～T71：只在普通回合统计「满槽数 vs 剩余普通回合」。
+        //    URA（72–77）全稽古、每回合都能选一个，不进入本窗口。
+        let camp_end = game
+            .data
+            .camp
+            .windows
+            .get(2)
+            .map_or(63, |window| window.end);
+        let endgame = turn > camp_end
+            && turn <= ENDGAME_LAST_TURN
+            && !game.plan.camp_zone
+            && !game.plan.ura_period
+            && !game.plan.race
+            && !game.forced_rest;
+        let endgame_pressure = if endgame {
+            let pending = game.lit_acts().iter().filter(|lit| **lit).count();
+            let normal_turns = (turn..=ENDGAME_LAST_TURN)
+                .filter(|t| !game.uma().is_race_turn(*t))
+                .count();
+            if pending > normal_turns {
+                (pending - normal_turns) as f64 / pending as f64
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+
         Ok(Self {
             game,
             consts,
@@ -253,6 +315,10 @@ impl<'a> Model<'a> {
                 dyn_act,
                 vital_scale,
                 tempo_scale,
+                near_cap,
+                overflow_factor,
+                endgame,
+                endgame_pressure,
             },
         })
     }
@@ -353,16 +419,82 @@ impl<'a> Model<'a> {
             return f64::NEG_INFINITY;
         };
         let fail_prob = (f64::from(preview.failure_rate) / 100.0).clamp(0.0, 1.0);
-        let success = self.value_of(&preview.value)
+        let mut success = self.value_of_with(&preview.value, true)
             + self.resource_value(action)
             + self.training_friendship(train)
             + self.kensan_bonus(action);
+        // 主属性近顶时，副属性 / PT 仍是速训练的价值来源：给一个小幅保留加分，
+        // 避免溢出层把「速训练 → 力量 / PT」完全倾斜掉。
+        if let Some(main) = self.train_axis(action)
+            && self.ctx.near_cap[main]
+            && self.cfg.overflow.keep > 0.0
+        {
+            let gains: [i32; 5] = std::array::from_fn(|axis| {
+                if axis == main {
+                    0
+                } else {
+                    preview.value.status_pt[axis]
+                }
+            });
+            success += self.cfg.overflow.keep
+                * (self.status_gain(&gains) + self.pt_gain(preview.value.status_pt[5]));
+        }
+        if keiko {
+            success += self.endgame_keiko_bonus(action);
+        }
         let fail = if keiko {
             -FAIL_PENALTY_KEIKO
         } else {
             -FAIL_PENALTY_TRAIN
         };
-        success * (1.0 - fail_prob) + fail * fail_prob
+        let mut expected = success * (1.0 - fail_prob) + fail * fail_prob;
+        // 末段普通回合：满槽 > 可兑现回合时，普通训练让位（只扣 Train，不扣休息 / 治病）。
+        if !keiko
+            && self.ctx.endgame
+            && self.ctx.endgame_pressure > 0.0
+            && matches!(action, Action::Train(_))
+        {
+            expected -= self.cfg.endgame.normal_penalty * self.ctx.endgame_pressure;
+        }
+        expected
+    }
+
+    /// 训练动作对应的主属性轴（ActionResult 的下标）
+    fn train_axis(&self, action: &Action) -> Option<usize> {
+        match action {
+            Action::Train(train) => Some(usize::from(*train)),
+            Action::ActTrain(act) => self
+                .game
+                .data
+                .acts
+                .get(usize::from(*act))
+                .map(|row| row.train),
+            _ => None,
+        }
+    }
+
+    /// 第三年合宿结束～T71 的满槽稽古加分（URA 不进入 `ctx.endgame`）
+    fn endgame_keiko_bonus(&self, action: &Action) -> f64 {
+        if !self.ctx.endgame || self.ctx.endgame_pressure <= 0.0 {
+            return 0.0;
+        }
+        let Action::ActTrain(act) = action else {
+            return 0.0;
+        };
+        let act = usize::from(*act);
+        let Some(gauge) = self.game.acts.gauge.get(act) else {
+            return 0.0;
+        };
+        let mut bonus = 0.0;
+        if *gauge >= self.game.act_gauge_max() {
+            bonus += self.cfg.endgame.keiko
+                * (1.0 + self.cfg.endgame.scarcity * self.ctx.endgame_pressure);
+        }
+        let level = self.game.acts.level[act];
+        if level < ACT_LEVEL_CAP {
+            bonus += self.cfg.endgame.level * f64::from((ACT_LEVEL_CAP - level).min(2));
+        }
+        bonus
     }
 
     /// 休息估值（普通 / 合宿版；含演目槽 +1）
@@ -567,6 +699,14 @@ impl<'a> Model<'a> {
 
     /// 五维增量评分（含策略权重 `status_weights`）
     fn status_gain(&self, gains: &[i32; 5]) -> f64 {
+        self.status_gain_with(gains, false)
+    }
+
+    /// 五维增量评分；`training` = 是否套用溢出层的非近顶轴放大
+    ///
+    /// 事件 / 比赛 / 教诲分配走 `status_gain`（不放大），只有训练估值走 `training=true`，
+    /// 避免溢出层污染事件与比赛口径。
+    fn status_gain_with(&self, gains: &[i32; 5], training: bool) -> f64 {
         let uma = self.game.uma();
         let mut total = 0.0;
         for (axis, gain) in gains.iter().enumerate() {
@@ -575,9 +715,15 @@ impl<'a> Model<'a> {
             }
             let current = uma.five_status[axis];
             let after = (current + *gain).min(uma.five_status_limit[axis]);
+            let overflow = if training {
+                self.ctx.overflow_factor[axis]
+            } else {
+                1.0
+            };
             total += (self.status_score(axis, after) - self.status_score(axis, current))
                 * self.status_weights[axis]
-                * self.ctx.dyn_status[axis];
+                * self.ctx.dyn_status[axis]
+                * overflow;
         }
         total
     }
@@ -629,8 +775,13 @@ impl<'a> Model<'a> {
 
     /// 一次 `ActionValue` 的评分折算（属性 + PT + 体力 + 干劲 + 羁绊 + 灵感）
     fn value_of(&self, value: &ActionValue) -> f64 {
+        self.value_of_with(value, false)
+    }
+
+    /// `ActionValue` 折算；`training` = 是否套用溢出层的非近顶轴放大
+    fn value_of_with(&self, value: &ActionValue, training: bool) -> f64 {
         let gains: [i32; 5] = std::array::from_fn(|axis| value.status_pt[axis]);
-        self.status_gain(&gains)
+        self.status_gain_with(&gains, training)
             + self.pt_gain(value.status_pt[5])
             + self.vital_gain(self.game.uma().vital, value.vital)
             + f64::from(value.motivation) * self.weights.motivation
@@ -1115,5 +1266,136 @@ mod tests {
             0.0,
             "到上限后边际为 0"
         );
+    }
+
+    /// 溢出层：按生效上限标记近顶轴，只放大非近顶轴；全 0 时因子恒 1
+    #[test]
+    fn overflow_tilts_away_from_capped_axis() {
+        let mut game = sample_game();
+        let limit = game.uma().five_status_limit[0];
+        game.uma_mut().five_status[0] = limit;
+        let mut cfg = game.config.trainer.clone();
+        cfg.overflow = crate::config::OverflowConfig {
+            margin: 0.01,
+            tilt: 0.5,
+            keep: 0.0,
+        };
+        let model = Model::new(&game, &cfg).expect("模型");
+        assert!(model.ctx.near_cap[0], "速顶满应标记近顶");
+        assert_eq!(model.ctx.overflow_factor[0], 1.0, "近顶轴不再额外压低");
+        assert!(
+            model.ctx.overflow_factor[3] > 1.0,
+            "非近顶轴应被放大: {:?}",
+            model.ctx.overflow_factor
+        );
+
+        cfg.overflow = crate::config::OverflowConfig::default();
+        let model = Model::new(&game, &cfg).expect("模型");
+        assert_eq!(model.ctx.overflow_factor, [1.0; 5], "全 0 = 关闭");
+    }
+
+    /// 溢出保留：主属性顶满时，速训练的副属性 / PT 仍给 `keep` 加分
+    #[test]
+    fn overflow_keep_preserves_secondary_value_when_main_capped() {
+        let mut game = sample_game();
+        game.uma_mut().five_status[0] = game.uma().five_status_limit[0];
+        let mut cfg = game.config.trainer.clone();
+        cfg.overflow = crate::config::OverflowConfig {
+            margin: 0.0,
+            tilt: 0.0,
+            keep: 0.0,
+        };
+        let without = Model::new(&game, &cfg)
+            .expect("模型")
+            .action_value(&Action::Train(0));
+        cfg.overflow.keep = 0.2;
+        let with = Model::new(&game, &cfg)
+            .expect("模型")
+            .action_value(&Action::Train(0));
+        assert!(
+            with > without,
+            "keep 应保留速训练的副属性 / PT 价值: {without} -> {with}"
+        );
+    }
+
+    /// 末段稽古：第三年合宿后～T71 的普通回合，满槽数超过剩余普通回合时给满槽加分
+    #[test]
+    fn endgame_keiko_pressure_boosts_full_gauges() {
+        let mut game = crate::testing::sample_game_with_uma(106301);
+        game.turn = 70;
+        game.plan = game.derive_plan();
+        game.acts.gauge = [5; 5];
+        game.acts.level = [9; 5];
+        let mut cfg = game.config.trainer.clone();
+        cfg.endgame = crate::config::EndgameConfig {
+            keiko: 250.0,
+            scarcity: 1.0,
+            level: 80.0,
+            normal_penalty: 120.0,
+        };
+        let model = Model::new(&game, &cfg).expect("模型");
+        assert!(model.ctx.endgame, "T70 应进入末段窗口");
+        assert!(
+            model.ctx.endgame_pressure > 0.0,
+            "满槽 5 > 剩余普通回合 1，应有超额压力"
+        );
+        assert!(
+            model.endgame_keiko_bonus(&Action::ActTrain(3)) > 0.0,
+            "满槽稽古应有加分"
+        );
+        assert_eq!(
+            model.endgame_keiko_bonus(&Action::Train(3)),
+            0.0,
+            "普通训练不吃稽古加分"
+        );
+
+        // 普通训练的机会成本：pressure 越高扣得越多
+        let before = model.action_value(&Action::Train(3));
+        cfg.endgame.normal_penalty = 0.0;
+        let model = Model::new(&game, &cfg).expect("模型");
+        let after = model.action_value(&Action::Train(3));
+        assert!(
+            before < after,
+            "普通训练应被末段机会成本压低: {before} vs {after}"
+        );
+    }
+
+    /// 末段窗口不含 URA：T72 起不进入，避免了把全稽古回合当成“浪费”
+    #[test]
+    fn endgame_window_excludes_ura() {
+        let mut game = crate::testing::sample_game_with_uma(106301);
+        game.turn = 72;
+        game.plan = game.derive_plan();
+        game.acts.gauge = [5; 5];
+        let mut cfg = game.config.trainer.clone();
+        cfg.endgame = crate::config::EndgameConfig {
+            keiko: 250.0,
+            scarcity: 1.0,
+            level: 80.0,
+            normal_penalty: 120.0,
+        };
+        let model = Model::new(&game, &cfg).expect("模型");
+        assert!(!model.ctx.endgame, "URA 回合不进入末段窗口");
+        assert_eq!(model.ctx.endgame_pressure, 0.0);
+        assert_eq!(model.endgame_keiko_bonus(&Action::ActTrain(3)), 0.0);
+    }
+
+    /// 末段窗口从第三年合宿结束时开始：T63（合宿中）不进入，T64 进入
+    #[test]
+    fn endgame_window_starts_after_third_camp() {
+        let mut game = crate::testing::sample_game_with_uma(106301);
+        game.turn = 63;
+        game.plan.camp_zone = true;
+        game.plan.race = false;
+        game.plan.ura_period = false;
+        game.forced_rest = false;
+        let cfg = game.config.trainer.clone();
+        let model = Model::new(&game, &cfg).expect("模型");
+        assert!(!model.ctx.endgame, "合宿中不进入末段窗口");
+
+        game.turn = 64;
+        game.plan.camp_zone = false;
+        let model = Model::new(&game, &cfg).expect("模型");
+        assert!(model.ctx.endgame, "第三年合宿结束时起进入末段窗口");
     }
 }

@@ -639,6 +639,22 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
 5. 策略旋钮全部来自 `MatsuriConfig [trainer]`（见 `data/matsuri_config.toml`）；`value.rs` 内的公式常数
    （失败惩罚 / 闪彩分 / 追加稽古兑现分等）为内部参数，不散落魔法数。
 
+**溢出与末段稽古（2026-11-03 新增）**
+
+- **溢出层 `[trainer.overflow]`**：按**生效上限** `five_status_limit` 判定近顶
+  （`margin` = 剩余空间比例阈值）；非近顶轴权重 `× (1 + tilt × 近顶轴数 / 5)`；
+  主属性近顶时，副属性 + PT 另给 `keep` 保留加分，避免「速训练 → 力量 / PT」被完全倾斜。
+  只作用于训练估值，事件 / 比赛 / 教诲分配不套用。
+- **末段稽古 `[trainer.endgame]`**：窗口 = 第三年合宿结束后～T71；只在普通回合生效
+  （非合宿 / 非 URA / 非比赛 / 非强制休息）。`pending` = 满槽演目数，`normal_turns` =
+  窗口内剩余普通回合数，`pressure = max(0, (pending − normal_turns) / pending)`。
+  满槽 `ActTrain` 加 `keiko × (1 + scarcity × pressure)`，未满 `act Lv` 加
+  `level × min(gap, 2)`；普通 `Train` 扣 `normal_penalty × pressure`。URA 72–77 不进入本窗口。
+- **默认档**：`margin 0.02 / tilt 0.5 / keep 0.15`；`keiko 250 / scarcity 1.0 / level 80 /
+  normal_penalty 120`。100 seed discovery（61444–61543）上 106301 +245（t=3.24），
+  但 200 seed holdout（61544–61743）未复现（三马 −33 / +7 / −7，|t|<1.2），
+  判定为**行为控制旋钮**；基准 seed 61444 的冒烟逐位不变。
+
 **事件决策（`select_event_choice`）**
 
 - 组内结果行按 `prob` 加权求期望：`ActionValue`（属性 / PT / 体力 / 干劲 / 羁绊 / 灵感）
