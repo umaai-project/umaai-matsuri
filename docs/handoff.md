@@ -1,30 +1,59 @@
 # 交接提示词
 
 > 用法：上下文过长时，新窗口只读本文件 + 下列关键文件即可续接；只写「代码 / git 状态里恢复不了」的信息。
-> **当前状态：lab 实验仓调优成果已合并在分支 `lab/adopt-r8`（工作树未提交、未 push，待用户确认后提交）**：
-> 守门链②–⑤ + 满体力闲置惩罚、动态权重层、落位先验、**冠军档成为默认层**、幸运体质（生病盾）本地接线、CI 修复。
-> 此前链：URA 全变稽古 → 显示第五轮 → 追加稽古呈现 / 社交人头唯一性（均已在 `main`，未 push）。
-> 下一步：**提交合并 → S9 基线（只录一次）→ 待量化新轴**（根演目 / `gate_clinic` / MC 100 局配对）→ **M2 搜索**。
+> **当前状态：`main` = `9203506`（lab 成果合并 4 提交 + 自选比赛义务接线 / 手写档解释模式 1 提交）**；
+> 工作树干净、**未 push**（领先 `origin/main` = `80b72f4` **5 个提交**）。
+> 本轮新增：自选比赛义务区间（freeRaces）判定 + 育成失败 + `[trainer].free_race_urgency`；
+> 手写档 `--explain` 决策解释（复用 manual 面板；只打印不改决策）。
+> 下一步：**push → S9 基线（有义务马娘会位移）→ 待量化**（`race_grades` vs 真机自选格子 #47 /
+> `free_race_urgency` 扫参 / 根演目 / MC 配对）→ **M2 搜索**。
 > 新窗口可直接按 §四 开工，不用再等确认；完成后向用户汇报 diff，**不自动 commit / push**。
 
 ## 一、git / 环境现状
 
-- **本仓（umaai-matsuri）**：`HEAD` = 2026-11-05 追加稽古呈现 / 社交人头批次提交（哈希以 `git log -1` 为准）；
-  **工作树有本轮合并改动**（分支 `lab/adopt-r8`，未提交：lab 调优成果 + 幸运体质盾 + CI 修复 + 文档同步）。
-  **未 push**（`origin/main = ea5f9ad`，**7 个提交待推**）。
-  此前链：`8aa80ac`（训练Lv 守门）→ `5fea7d7`（URA 口径修正）→ `9327da3`（S8 View + diag）→
-  `9cee735`（S7）→ `ea5f9ad`（S8 面板细化 + 教诲 T2 Begin）→ `ce6789b`（S8 升级 + T2 闸门）→
-  `8f4687e`（S6 + S8 先行）→ `00079f3`（S4+S5）→ `9995329`（S3）等。
+- **本仓（umaai-matsuri）**：`HEAD` = `9203506`（2026-11-06 自选比赛义务接线 + 手写档解释模式，见 §二）；
+  **工作树干净**（该提交已含文档同步；根目录解释模式运行产物 `game61444.txt` 已删除、未入库）；
+  **未 push**（`origin/main = 80b72f4`，**5 个提交待推**）。提交链（新 → 旧）：
+  `9203506`（自选比赛义务 + 解释模式）→ `cfaab75`（AGENTS 纪律，用户改动）→ `9f3c3a9`（文档同步）→
+  `5c673b8`（CI 修复）→ `df81937`（lab 成果：守门链/动态权重/落位先验/冠军默认层/幸运体质盾）→
+  `80b72f4`（追加稽古呈现 / 社交头唯一性）→ `fc70b9f`（显示第五轮 + 基准种子 61444）→ 更早链见 `git log`。
 - 依赖：`matsuri-cli` 仍有 `inquire = 0.9.4`（终端动作 / 事件选项；非 TTY 退回编号输入）；
   **新增 `log = { version = "0.4.34", features = ["std"] }`**（workspace 依赖，与引擎同版本；
   `matsuri-core` 因 `diag!` 宏展开需要、`matsuri-cli` 装 stderr 日志器需要）。`Cargo.lock` 只加 `log`。
 - **引擎仓 `../umaai_next`**：`HEAD = a8859e0`，**未改**（`git diff` 为空）。
-- 数据：外部 `../../UmaAI/master.mdb`（md5 `ef481f95…`，不入仓）。**本轮未新增 mdb 表 / 资产键**；
-  消费了引擎配置既有的 `[output] log_level`（默认 `info`）。
+- 数据：外部 `../../UmaAI/master.mdb`（md5 `ef481f95…`，不入仓）。**本轮新增剧本配置键**
+  `[trainer].free_race_urgency`（默认层 `data/matsuri_config.toml`，serde 缺省 1.0）；未新增 mdb 表 /
+  引擎资产键；消费了引擎配置既有的 `[output] log_level`（默认 `info`）。
 - 日常命令一律 `--offline`（`~/.cargo` 只读，`cargo add` / `fetch` 需先请用户提权）；
   从**本仓仓根**执行 cargo；同一 target 一次只跑一个 cargo。
 
 ## 二、已完成
+
+### 自选比赛义务接线 + 手写档决策解释（2026-11-06，已提交 `9203506`）
+
+> 用户拍板：这块是模拟缺陷必修；三项设计点全取推荐档（未达标跳过终局奖励 / 义务补足独立于
+> `self_race` / 软加分+硬保底）；解释模式选「复用 manual 完整面板」。
+> 详细口径：`docs/mechanism.md` §4 / §6.3 / §6.5；决策记录：`dev_plan.md` §3 / `glossary.md` §9；
+> stub：`stubs.md`「自选比赛义务区间」行；工作记录：`Matsuri_Workbench/_notes/{free-race-wiring,explain-mode}.md`。
+
+1. **自选比赛义务（freeRaces）**：只有部分马娘有义务区间（当前数据 116/272）；区间内需打满
+   `count` 场、等级门槛只放行**不低于**门槛的比赛（`grade=1` 只放 G1，G4/OP 被挡，引擎掩码口径）。
+   实现：`game/mod.rs::free_race_progress`（剩余需打 / 剩余可赛回合）→ `game/traits.rs::next()`
+   推进到「区间结束 +1」时调引擎 `check_free_race()`，未达标 → `career_failed` + 终止 +
+   `on_simulation_end` **跳过终局奖励**。通用额外自由赛逻辑不变。
+2. **训练员紧迫度**：`[trainer].free_race_urgency`（默认 1.0，范围 0–10；旧覆盖层缺省 1.0）——
+   `race_value += k × need/left × FORCED_RACE_BASE(500)`；`need ≥ left` 时守门⓪ 直接选比赛
+   （先于治病 / 合宿 / 友人截止 / 体力 / 心情守门，**不受 `self_race=false` 限制**）；
+   `self_race` 收窄为「额外多打」。
+3. **决策解释模式**：抽出 `matsuri-cli/src/panel.rs`（`BoardPanel`，manual / 手写档共用；manual
+   交互与文案不变）；`--explain` / `MATSURI_EXPLAIN=1` 每回合打印面板 +【候选打分】表
+   （`MatsuriTrainer::explain_action`，与打分同源）+【决策理由】；教诲分配 top-10、事件选项期望值；
+   只打印不改决策。新增只读 API `explain_action` / `explain_event_choice` / `explain_choice`。
+4. **健壮性**：预览 / 解释在「分布阶段未跑」的构造局面上不再越界（空 `distribution` 防御）。
+5. **测试 / 冒烟**：四档绿 **195 测例**（139 内联 + 15 L2 + 31 机制 + 1 diag + 7 CLI 内联 + 2 CLI 冒烟）；
+   100101（无义务）100 局逐位不变（**73155.0**）；102102 玉藻 lab 口径 74051.7 → **70876.0**
+   （−3175.7、≥LG 30→2、**0 局育成失败**，每局补 5 场义务赛）；explain 同 seed 终局
+   **77538 / LG2、PT 11680 逐位一致**（`--explain` 单局 stdout 约 4.6k 行）。
 
 ### 手动面板显示第五轮 + 追加稽古 / 助力支撑（2026-11-05，已提交）
 
@@ -64,11 +93,11 @@
     −285，t=−0.28 不显著），旧 seed 42 属不利样本；换参考 seed 仅影响 CLI 跑局数值，测试内部固定
     种子（`testing::sample_game` / `Repo::game` = 42）不受影响。新基准冒烟 **56210 / UA1、PT 9131**；
     `random` **23387 / UG8、PT 4693**（对齐前先看趋势，S9 前不建基线）。
-12. **追加稽古呈现调整（user 2026-11-05 拍板，未提交）**：资源行「追加稽古 掷中·演目(概率)」→
+12. **追加稽古呈现调整（user 2026-11-05 拍板；已提交 `80b72f4`）**：资源行「追加稽古 掷中·演目(概率)」→
     亮黄「**可触发追加稽古**」（不写概率 / 演目）；训练表中**该列参与者含研鑽担当**的列标题下加一行
     紫色「追加稽古」（与触发判定同口径、可多列；比赛回合等无训练位的掷中不提示）；**取消人头紫色**
     与动作后缀「追稽✓」；诊断日志保留「掷中」。实现 `manual.rs::kensan_columns` / `participant_has_act`。
-13. **训练位社交人头唯一性（user 2026-11-05 补充，未提交）**：每训练位至多 1 名「友人 / 团队 /
+13. **训练位社交人头唯一性（user 2026-11-05 补充；已提交 `80b72f4`）**：每训练位至多 1 名「友人 / 团队 /
     理事长 / 记者」（引擎 `Person::is_friend()` 口径）；修复剧本侧自定义放位漏校验导致理事长 / 记者
     同列（`distribute.rs::has_social_person`），新增 40 seed 守门测试。唯一非稽古位时按「理事长 →
     记者」先到先得，后到者本回合不出现。
@@ -177,33 +206,46 @@
 - **URA 边界**：`URA_START_TURN = 72`；`plan.ura_period` = 72–77、`plan.interlude` = 68–71（剧本结束后的
   空窗期）；**URA 期全变稽古（`all_keiko_round()` / `practice_acts` 全真）**，稽古成功仍按日常 Lv+1 / 清槽；
   本番演出训练效果只在 72–77 生效；URA 事件无 Hint；`KeyState` 含 `total_hints`（通用事件 hint 可观测）。
-- 关键接口：`MatsuriTrainer::new(MatsuriConfig)` / `config()`；估值 `Model::new(game, &TrainerConfig)`
+- 关键接口：`MatsuriTrainer::new(MatsuriConfig)` / `config()`；`explain_action` /
+  `explain_event_choice` / `explain_choice`（只读，解释模式用）；估值 `Model::new(game, &TrainerConfig)`
   （私有）；`assignment_candidates` / `apply_assignment`（401+801 硬约束）、`advice_effect_of`、
   `view()`、`kensan_act` / `roll_kensan`、`card_event_candidates`、`preview_training` /
-  `preview_action_resources`、`MatsuriView.recent_events`。
+  `preview_action_resources`、`free_race_progress`、`MatsuriView.recent_events`。
+  呈现：`matsuri-cli/src/panel.rs::BoardPanel`（手动 / 手写档共用）、`explain.rs::ExplainTrainer`。
 - 分布口径（2026-11-05）：亮起位置锁担当；**理事长 / 记者只落非稽古位（全稽古回合不出现）**；
   **吾妻只要有稽古训练就必补某个未满 5 人的稽古位**（锁位后、其余人头前补位；不判不在、不去普通位；
   唯一稽古位必中；无稽古回合走通用不在判定）。实现 `distribute.rs`（`practice_train_mask` /
   `place_guest_outside_practice`）。**每训练位至多 1 名友人 / 团队 / 理事长 / 记者**（引擎
   `Person::is_friend()` 口径；自定义放位同样校验 `has_social_person`）。
+- **自选比赛（2026-11-06 后）**：通用额外自由赛 = `self_race` 开关 + `can_self_race()`
+  （turn 13–71 且等级表非 0）；`freeRaces` 义务区间 = 部分马娘的强制场数（区间 / 场数 / 等级门槛），
+  未达标 = 育成失败；训练员用 `free_race_urgency` 紧迫度 + `need ≥ left` 硬保底补足
+  （`game/mod.rs::free_race_progress`；见 §二 / mechanism §6.5）。
 - 数据资产：`scenario_matsuri.json` 18 个顶层键（含 `scenario_events` / `event_extras`）；
   `data/events.json` 为剧本自持事件根（吾妻链 + 大胃王）。
 - **尚未接线**：S8 其余（在线外壳 / 选择器）；`FlatSearchGame` 搜索档（M2；当前 `RolloutTrainer`
   仍 `RandomTrainer`，M2 时换取手写训练员）；基线（S9）；马娘特殊事件记录（引擎改造后迁移 T65）；
-  事件⑤（TBD）；技能系统 / 粉丝不建模。
+  事件⑤（TBD）；技能系统 / 粉丝不建模。**`race_grades` 标准表与真机自选格子对齐待核
+  （dev_plan #47，影响义务区间可达性 / 场数计数）。**
 
 ## 四、下一步
 
-> S8 其余 → S9 基线 → 待量化 → M2 搜索。先手写档锁基线，再接搜索档（单独基线，不可混比）。
+> 先 push → S8 其余 → S9 基线 → 待量化 → M2 搜索。先手写档锁基线，再接搜索档（单独基线，不可混比）。
 
 1. **S8 其余**：在线外壳 `matsuri-ai`（帧段解析 / Session 接线 / 决策循环，依赖真机帧；
    渲染侧直接消费 `MatsuriView`）；训练员选择器完整化。
 2. **S9 基线**：一基线一 JSON（`input` 自持、`expect` 容差、`meta` 不含路径）；数值位移后重录。
    注意：**`random` 档口径已变**（分配 + 事件也走随机，19516 → 29396），旧基线不可直接复用；
-   基线 / 批量入口建议 `DiagGuard::suppress()` 或覆盖层 `log_level="off"`（避免日志开销与污染）。
+   **有 `freeRaces` 的马娘行为已变**（义务赛强制补足），基线需覆盖「有义务 / 无义务」两类马娘
+   （如 102102 与 100101 各录一组）；基线 / 批量入口建议 `DiagGuard::suppress()` 或覆盖层
+   `log_level="off"`（避免日志开销与污染）。
 3. **待量化（S9 前只记录，不建基线）**：
-   - 融合配对 3 套 A/B（`scenario_dev_plan.md` #46：现行 / 攻略 / 混合；用覆盖层 × N 种子配对）；
-   - `[trainer]` 策略旋钮扫参（`stubs.md` 已登记 STUB；pt_favor 已在 2.0 档定档，其余权重 / 阈值待扫）。
+   - **`race_grades` 标准表 vs 真机自选格子对齐**（`scenario_dev_plan.md` #47）：该表同时决定义务
+     区间掩码与可达性，是自选比赛口径的真机复核项；
+   - **`[trainer].free_race_urgency` 扫参**：补足时机是否应更早（当前默认 1.0 + `need ≥ left` 硬保底；
+     口径见 mechanism §6.5）；
+   - 融合配对已收口（#46：lab 120 组合穷举 + 留出确认，默认层已用「融合 #2」）；
+   - `[trainer]` 其余策略旋钮扫参（pt_favor 已在 1.7271 定档，其余权重 / 阈值待扫）。
 4. **M2 搜索（按需）**：`FlatSearchGame` 适配 + `MctsTrainer`（引擎无现成实现，需剧本仓自建；
    见引擎 `docs/scenario/dev_process.md` §3.1）；根节点可用教诲分配 top-K。
 
@@ -217,13 +259,15 @@
   19516 → 29396 → 29527 / UE1、PT 5552 → 29537 / UE1、PT 5577（seed 42）→ 23387 / UG8、PT 4693 →
   **23010 / UG8、PT 4644**（seed 61444）→ **lab 成果合并（代码层）62281 / UA8、PT 9596** → **冠军档成默认层 77538 / LG2、PT 11680**（seed 61444；100 局 seeds 61444–61543 均 **73155.0** / min 64851 / max 78080 / ≥LG 24；`random` 26858 / UF6、PT 5101）→ **自选比赛义务接线（2026-11-06）**：100101 100 局逐位不变（均 73155.0）；102102 玉藻 lab 口径 100 局 74051.7 → **70876.0 / −3175.7、≥LG 30→2、无育成失败**（每局补 5 场义务赛；`free_race_urgency=1.0`）。S9 前不建基线；一有数值占位替换 / 训练员改动就重录并记影响面。
 - **手写档解释模式（2026-11-06）**：`matsuri matsuri --explain`（或 `MATSURI_EXPLAIN=1`）= manual 同款回合面板 +
-  候选打分表 + 决策理由（教诲分配 top-10 / 事件选项期望值）；只打印不改决策，核对 / 调参时用，矩阵跑局不要开。
+  候选打分表 + 决策理由（教诲分配 top-10 / 事件选项期望值）；只打印不改决策（**同 seed 终局
+  77538 / LG2、PT 11680 逐位一致**），核对 / 调参时用，矩阵跑局不要开（单局 stdout 约 4.6k 行）。
 - **View 口径**：`MatsuriView` 结构变更属宿主契约变更（serde 结构变 = 旧 JSON 反序列化失败）；
   无持久化 consumer 前可改，S9 / 在线外壳接入后需按 `non_exhaustive` + 加字段纪律演进。
 - **待真机复核**（`stubs.md` 已登记）：变胖解除 20%、事件⑤（SSR 技能事件未接）、事件抑制基线层、
   友人事件槽位映射、memo 友人事件值为「基础值」的推断、**`400015104` 触发时机与数值（合宿直前 +15/+1
   归属：wiki 线索 1 年目 +10 / 2·3 年目 +15）**、通用事件数值、技能灵感 `hint_level` 记账、
-  turn 66 进化 hint+1、T65 之外马娘特殊事件、训练员旋钮默认值。
+  turn 66 进化 hint+1、T65 之外马娘特殊事件、**`race_grades` 标准表与真机自选格子（#47）**、
+  **`free_race_urgency` 默认值 / 补足时机**、训练员旋钮默认值。
 - **URA 待确认**：URA 期**全变稽古已确认（2026-11-04）**；但「URA 稽古成功是否也按合宿冻结 Lv / 槽」
   未逐字确认——当前按**日常稽古**（Lv+1 / 清槽，不合宿冻结）；如要冻结只改 `settle_training` 一处。
   URA 事件**无 Hint**（无技能），此前「hint 需要记入」作废。
@@ -242,6 +286,7 @@ cargo test --workspace --release --offline
 cargo run --release --offline --bin matsuri -- matsuri   # 整局冒烟（stderr 出诊断日志）
 cargo run --release --offline --bin matsuri -- random    # 引擎随机基线（对照用）
 cargo run --release --offline --bin matsuri -- manual    # 手动核对面板（交互式，q 退出）
+cargo run --release --offline --bin matsuri -- matsuri --explain  # 手写档决策解释（面板 + 候选分 + 理由）
 ```
 
 - 测试 cwd 在各 crate 目录；数据根统一经 `matsuri_core::testing::data_dir()` 取仓根
@@ -251,3 +296,5 @@ cargo run --release --offline --bin matsuri -- manual    # 手动核对面板（
 - **不改引擎仓**；需要通用能力时先与用户确认、走引擎仓流程。
 - **提交纪律**：不自动 commit / push；提交前统一更新 README 与剧本仓文档（AGENTS §文档规则），
   由用户确认。手写训练员基线未锁（S9），此前冒烟数值只作趋势参考。
+- **呈现 / 解释**：manual 与手写档共用 `matsuri-cli/src/panel.rs::BoardPanel`；手写档解释模式
+  只读（`explain_action` 等），不要为了核对而改决策路径。
