@@ -662,6 +662,22 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
   `【演目槽】T{turn} 训练#N 入槽 …` 保留）。
 - **追加稽古未兑现**：回合末仍掷中未消费 → 诊断 `【追加稽古】T{turn} 掷中未兑现（未选择追加稽古训练）`。
 
+### 6.4 幸运体质（生病盾，2026-11-06 合并）
+
+- **引擎既有**：`UmaFlags.lucky_count`（幸运体质 ×N；协议真实字段 `LuckyCount`）；`ill` 为「生病（状态异常）位集」
+  （`FAT` 变胖 / `SKIN` / `HEADACHE` / `LAZY` / `NIGHT` / `BAD_TRAINER` / `UNKNOWN`）。引擎原实现只有累加 / 扣减 / 显示，
+  **没有消费接线**（lab 实验仓曾另造 `ill_guard_count`，属误用，已弃）。
+- **本仓接线（不改引擎 / 协议）**：① `game/traits.rs::apply_event` 在 `update_flags` 前拦截事件 `add_flags` 的生病位——
+  `lucky_count > 0` 时扣 1 层，清 `bad_trainer` 与全部 `ill` 位；② `game/train.rs::apply_training_failure` 大失败同判，
+  并剥掉失败事件选项里的生病位（避免「盾扣了、事件又加回来」）。
+- **不变量**：`bad_trainer` 与 `Ill::BAD_TRAINER` 同置同清 → **一起拦（都生效或都不生效）**；
+  **变胖（`Ill::FAT`）也是生病**，一并挡（user 2026-11-03 口径）。`trainer.rs::needs_clinic` 不治变胖是**治疗策略**
+  （变胖每回合 20% 自解、不占动作），与「算不算生病」无关。
+- **数值影响**：离线 `data/events.json` 无 `lucky_count` 授予点 → 正常跑局零差；在线外壳按协议取真机值后生效。
+- **测试**：`lucky_body_blocks_training_failure_illness` / `training_failure_sets_illness_without_lucky_body` /
+  `lucky_body_blocks_event_illness_including_fat` / `lucky_body_blocks_bad_trainer_atomically` /
+  `lucky_body_not_consumed_without_illness`。
+
 ## 7. 随机轴与可复现
 
 - 局面流 / 事件流：由 `BaseGame` 持有，每回合按 `(master, turn)` 派生。

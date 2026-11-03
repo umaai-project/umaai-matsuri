@@ -152,6 +152,23 @@
   + 1 diag + 5 CLI 内联 + 1 CLI 冒烟 = 171 测例**）；整局冒烟 54683 / UB9、PT 9024 → 53083 / UB7、PT 8858 →
   **55664 / UA、PT 9136**（URA 全变稽古后位移；S9 前不建基线）。
 
+- **lab 实验仓调优成果合并（2026-11-06，user 拍板「执行合并、接受基线修改、冠军档做默认层」）**：
+  ①**训练员策略层**：守门链扩至 ②–⑤（合宿禁令 / 友人外出截止线 / 体力危险线 / 心情崩坏）+ 满体力闲置惩罚
+  （恒开，代码层最大单项；主仓默认局面实测 **+9769.8 均分 / t=21.1**）；②**调参层**：`[trainer.dynamic]`
+  动态权重（五维追赶 / 体力时间价值 / 稽古节奏）、教诲落位先验 `ROUTE_PRIOR` + `[trainer.advice].route`、
+  `status_limit` / `assist`（实测噪声或有害，锁 0）、`search_score` 口径修复 + MC 接线（搜索默认关，关搜索逐位零差）；
+  ③**冠军档成为默认层**：`data/matsuri_config.toml` 与 `config.rs::Default` 同步 = lab `ga-r2`
+  （`pt_favor_rate 1.7271` / `rest_vital 64` / fusion year3 `501→801,301→901,401→1001` /
+  dynamic `status_catchup 1.3553`、`vital_decay 0.2879`、`keiko_tempo 0.486` / `advice.route 500`）；
+  ④**幸运体质（生病盾）本地接线**：在既有 `lucky_count` 上补消费（事件 `add_flags` 拦截 + 大失败判定），
+  **含变胖**、`bad_trainer` 与 `Ill::BAD_TRAINER` 同置同清；不改引擎 / 协议，离线无授予点 → 正常跑局零差；
+  ⑤**CI 修复**：引擎检出补并列软链 + 去 `continue-on-error`、工具链钉 1.99.0、`cargo test --workspace`。
+  四档绿（**130 内联 + 15 L2 + 31 机制 + 1 diag + 7 CLI 内联 + 1 CLI 冒烟 = 185 测例**）；
+  整局冒烟（默认层 = 冠军档）**77538 / LG2、PT 11680**、`random` **26858 / UF6、PT 5101**；
+  100 局矩阵（seeds 61444–61543，仓默认局面）**均 73155.0 / min 64851 / max 78080 / ≥LG 24**；
+  lab 口径（玉藻 102102 + 卡组 A，seeds 62100–62199）**均 74051.7 / min 61076 / max 79096**（与 lab 冠军留出逐位一致）。
+  引擎仓未改（仍 `a8859e0`）；来源 = `Matsuri_Workbench`（lab 实验仓记录 R1–R8）。
+
 ## 结构
 
 | crate / 文件 | 职责 |
