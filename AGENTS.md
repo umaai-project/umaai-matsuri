@@ -109,6 +109,7 @@
 - 需要改 registry（`cargo add` / `fetch`）时**先请求提权**。
 - **同一 target 目录一次只跑一个 cargo**（并发会互等锁，表现为卡死）。
 - 从剧本仓根执行 cargo 命令；不要再套 `--manifest-path`。
+- 用户确认整理提交之前，不要执行`cargo fmt`或`cargo clippy`，因为这两个会修改代码，导致需要重新读取全部代码。
 
 ## Git 操作
 
