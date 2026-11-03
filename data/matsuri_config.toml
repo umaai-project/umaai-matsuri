@@ -1,8 +1,12 @@
 # 骏大祭剧本专属配置默认层（不进引擎配置；由宿主注入根目录，本文件是默认层）
 #
-# 内容：融合（転成）预设 + 手写训练员策略旋钮（S7；后续扫参）。
+# 内容：融合（転成）预设 + 手写训练员策略旋钮。
 # 键严格报错（拼错必须被看见）；覆盖层与默认层同构：fusion 段字段可选、列表整段替换，
 # trainer 段给了就整段替换（不按字段合并）。
+#
+# 默认档 = lab 实验仓冠军档 `ga-r2`（2026-11-03 合并；留出 seeds 62100–62199 ×100 局 74051.7）：
+#   调参口径 = 玉藻十字 102102 + 卡组 A；迁移到仓内默认卡组实测 100 局 +9936.5（t=22.1）。
+# 改这里必须同步 `config.rs` 的 `Default` 实现（`tests/data.rs::load_repo_config` 断言两者相等）。
 #
 # 融合校验：第 2 年（turn 23 结束）恰 2 组、第 3 年（turn 47 结束）恰 3 组；
 # base 只能用 101–501 且不重复（两年合计覆盖全部 5 个）；
@@ -16,8 +20,9 @@ target = 601
 base = 201
 target = 701
 
+# 第 3 年顺序 = 冠军档（「融合 #2」）：501→801 / 301→901 / 401→1001
 [[fusion.year3]]
-base = 401
+base = 501
 target = 801
 
 [[fusion.year3]]
@@ -25,43 +30,56 @@ base = 301
 target = 901
 
 [[fusion.year3]]
-base = 501
+base = 401
 target = 1001
 
-# ---------- 手写训练员策略旋钮（S7；后续扫参） ----------
+# ---------- 手写训练员策略旋钮（默认档 = lab 冠军 ga-r2） ----------
 
 [trainer]
-# 目标函数的 PT 偏好：1.0 = 官方评分；2.0 = 引擎既有定档（既有多轮扫参结论）
-pt_favor_rate = 2.0
+# 目标函数的 PT 偏好：1.0 = 官方评分；官方计分固定 ×2.0，此处只影响决策优先级
+pt_favor_rate = 1.7271
 # 体力低于此值进入「该休息了」区间（仍由打分表对比收益）
-rest_vital = 45
+rest_vital = 64
 # 発表会 / 本番达标保护的提前回合（0 = 关闭）
-checkpoint_margin = 3
+checkpoint_margin = 5
 # Senior 合宿前把「有编成卡的演目」推到的最小 Lv（0 = 关闭）
-act_level_target = 8
+act_level_target = 9
 # 是否打自选比赛（false = 只在目标赛出手）
 self_race = false
 # 友人外出是否尽早用完（攻略策略；false = 按收益打分）
 friend_outing_early = true
-# 五维策略权重（官方评分边际之外的偏好）
-status_weights = [1.0, 1.0, 1.0, 1.0, 1.0]
+# 五维策略权重（速 / 耐 / 力 / 根 / 智；官方评分边际之外的偏好）
+status_weights = [0.6465, 0.9881, 0.8387, 0.3, 2.6217]
 
 # 属性 / 资源 / 事件折算权重（单位 = 评分点）
 [trainer.weights]
-vital = 1.2
-motivation = 30.0
-friendship = 0.6
-hint = 1.0
-gauge = 25.0
-act_level = 120.0
-checkpoint = 800.0
-fat = 120.0
+vital = 1.4774
+motivation = 23.6572
+friendship = 0.5559
+hint = 1.1725
+gauge = 27.9217
+act_level = 12.9562
+checkpoint = 1105.0179
+fat = 108.4909
 
 # 教诲分配价值权重（特征系数）
 [trainer.advice]
-card = 1.0
-npc = 0.6
-train = 1.0
-keiko = 1.0
-level = 1.0
-milestone = 1.0
+card = 1.4462
+npc = 0.4246
+train = 0.2
+keiko = 0.763
+level = 0.2
+milestone = 0.2
+# 特化上限（601）/ 助力の支え（401）：实测噪声或有害，锁 0
+status_limit = 0.0
+assist = 0.0
+# 落位先验强度（0 = 关；500 = 命中一格 +500，等价于外部钉位）
+route = 500.0
+
+# 动态权重层（相对剩余空间 / 时间价值 / 稽古节奏；全 0 = 关闭）
+[trainer.dynamic]
+status_catchup = 1.3553
+act_catchup = 0.0
+vital_decay = 0.2879
+vital_idle = 0.0
+keiko_tempo = 0.486

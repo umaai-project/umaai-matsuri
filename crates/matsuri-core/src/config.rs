@@ -57,6 +57,46 @@ pub struct TrainerConfig {
     pub weights: ValueWeights,
     /// 教诲分配价值权重
     pub advice: AdviceWeights,
+    /// 动态权重（随回合 / 饱和度 / 进度调制上面三套静态权重）
+    ///
+    /// `#[serde(default)]`：默认层文件不写这一段也能解析，缺省即全 0 = 静态行为。
+    #[serde(default)]
+    pub dynamic: DynamicConfig,
+}
+
+/// 动态权重旋钮（逐回合调制；全部默认 `0.0` = 关闭，完全退化成静态打分）
+///
+/// 设计口径：官方评分表本身是凸的，贪心按边际打分已经能吃掉「越接近上限越值钱」，
+/// 所以这里**不重复建模边际**，只补三件贪心看不见的事——
+/// ① 五维之间的追赶（速先满就该把回合让给根 / 智）；
+/// ② 演目 Lv 之间的追赶（治 `10/10/10/8/8` 这种长尾）；
+/// ③ 体力与进度的时间价值（末期体力不值钱、领先就该卡回合、落后就该加速升级）。
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DynamicConfig {
+    /// 五维追赶强度：`w[i] *= 1 + 2k(head[i] − mean_head)`，`head[i]` = 剩余空间占比
+    pub status_catchup: f64,
+    /// 演目 Lv 追赶强度：`level_value *= 1 + k·max(0, mean_lv − lv[act])`
+    pub act_catchup: f64,
+    /// 体力影子价格随回合衰减：`weights.vital *= 1 − k·(turn / max_turn)`
+    pub vital_decay: f64,
+    /// 满体力闲置惩罚放大：`idle_penalty *= 1 + k·(vital − 70) / 30`
+    pub vital_idle: f64,
+    /// 稽古节奏（卡回合 ↔ 加速升级）：`level_value *= 1 + k·(达标线 − 短板 Lv) / 3`
+    pub keiko_tempo: f64,
+}
+
+impl Default for DynamicConfig {
+    /// 全 0 = 关闭全部动态调制（与上游静态行为逐位相同）
+    fn default() -> Self {
+        Self {
+            status_catchup: 0.0,
+            act_catchup: 0.0,
+            vital_decay: 0.0,
+            vital_idle: 0.0,
+            keiko_tempo: 0.0,
+        }
+    }
 }
 
 /// 属性 / 资源 / 事件的折算权重（单位 = 评分点）
@@ -97,6 +137,20 @@ pub struct AdviceWeights {
     pub level: f64,
     /// 発表会达标急迫度权重
     pub milestone: f64,
+    /// 特化上限（601 特別稽古的 `status_limit`）权重
+    ///
+    /// `#[serde(default)]`：旧覆盖层不写也能解析，缺省 `0.0` = 与既有行为逐位一致。
+    #[serde(default)]
+    pub status_limit: f64,
+    /// 助力の支え（401 的 `support_assist` 开关量）权重
+    #[serde(default)]
+    pub assist: f64,
+    /// 落位先验权重：命中一位离线搜出的落位加这么多分（0 = 关闭）
+    ///
+    /// 先验表见 [`crate::value::ROUTE_PRIOR`]，由 `scripts/tabu_route.py` 离线搜出后内化，
+    /// 目的是不再依赖 `MATSURI_ASSIGN_PIN` 外部钉位。取值足够大时等价于硬钉位。
+    #[serde(default)]
+    pub route: f64,
 }
 
 /// 融合预设：第 2 年 2 组、第 3 年剩余 3 组
@@ -312,18 +366,35 @@ fn validate_trainer(trainer: &TrainerConfig) -> Result<()> {
         );
     }
     let advice = &trainer.advice;
-    let entries: [(&str, f64); 6] = [
+    let entries: [(&str, f64); 9] = [
         ("advice.card", advice.card),
         ("advice.npc", advice.npc),
         ("advice.train", advice.train),
         ("advice.keiko", advice.keiko),
         ("advice.level", advice.level),
         ("advice.milestone", advice.milestone),
+        ("advice.status_limit", advice.status_limit),
+        ("advice.assist", advice.assist),
+        ("advice.route", advice.route),
     ];
     for (name, value) in entries {
         ensure!(
             value.is_finite() && value >= 0.0,
             "trainer.{name} 应为非负有限数"
+        );
+    }
+    let dynamic = &trainer.dynamic;
+    let entries: [(&str, f64, f64); 5] = [
+        ("dynamic.status_catchup", dynamic.status_catchup, 4.0),
+        ("dynamic.act_catchup", dynamic.act_catchup, 2.0),
+        ("dynamic.vital_decay", dynamic.vital_decay, 1.0),
+        ("dynamic.vital_idle", dynamic.vital_idle, 4.0),
+        ("dynamic.keiko_tempo", dynamic.keiko_tempo, 4.0),
+    ];
+    for (name, value, upper) in entries {
+        ensure!(
+            value.is_finite() && (0.0..=upper).contains(&value),
+            "trainer.{name} 应在 0–{upper}（实际 {value}）"
         );
     }
     Ok(())
@@ -346,7 +417,7 @@ impl Default for MatsuriConfig {
                 ],
                 year3: vec![
                     FusionPair {
-                        base: 401,
+                        base: 501,
                         target: 801,
                     },
                     FusionPair {
@@ -354,7 +425,7 @@ impl Default for MatsuriConfig {
                         target: 901,
                     },
                     FusionPair {
-                        base: 501,
+                        base: 401,
                         target: 1001,
                     },
                 ],
@@ -365,33 +436,43 @@ impl Default for MatsuriConfig {
 }
 
 impl Default for TrainerConfig {
-    /// 与仓内默认层 `[trainer]` 段同值（攻略 / memo 方向；后续扫参）
+    /// 与仓内默认层 `[trainer]` 段同值（2026-11-03 起 = lab 冠军档 `ga-r2`，见 dev_plan §3）
     fn default() -> Self {
         Self {
-            pt_favor_rate: 2.0,
-            rest_vital: 45,
-            checkpoint_margin: 3,
-            act_level_target: 8,
+            pt_favor_rate: 1.7271,
+            rest_vital: 64,
+            checkpoint_margin: 5,
+            act_level_target: 9,
             self_race: false,
             friend_outing_early: true,
-            status_weights: [1.0; 5],
+            status_weights: [0.6465, 0.9881, 0.8387, 0.3, 2.6217],
             weights: ValueWeights {
-                vital: 1.2,
-                motivation: 30.0,
-                friendship: 0.6,
-                hint: 1.0,
-                gauge: 25.0,
-                act_level: 120.0,
-                checkpoint: 800.0,
-                fat: 120.0,
+                vital: 1.4774,
+                motivation: 23.6572,
+                friendship: 0.5559,
+                hint: 1.1725,
+                gauge: 27.9217,
+                act_level: 12.9562,
+                checkpoint: 1105.0179,
+                fat: 108.4909,
             },
             advice: AdviceWeights {
-                card: 1.0,
-                npc: 0.6,
-                train: 1.0,
-                keiko: 1.0,
-                level: 1.0,
-                milestone: 1.0,
+                card: 1.4462,
+                npc: 0.4246,
+                train: 0.2,
+                keiko: 0.763,
+                level: 0.2,
+                milestone: 0.2,
+                status_limit: 0.0,
+                assist: 0.0,
+                route: 500.0,
+            },
+            dynamic: DynamicConfig {
+                status_catchup: 1.3553,
+                act_catchup: 0.0,
+                vital_decay: 0.2879,
+                vital_idle: 0.0,
+                keiko_tempo: 0.486,
             },
         }
     }
@@ -512,21 +593,87 @@ mod tests {
             MatsuriConfig::default().fusion,
             "fusion 段不受影响"
         );
+        assert_eq!(
+            cfg.trainer.dynamic,
+            DynamicConfig::default(),
+            "trainer.dynamic 缺省 = 全 0（关闭动态调制，退化成静态打分）"
+        );
+    }
+
+    /// 动态权重旋钮越界应被拒绝（扫参硬边界，不静默回退）
+    #[test]
+    fn dynamic_bad_values_rejected() {
+        let overlay = "[trainer]\n\
+                       pt_favor_rate = 2.0\n\
+                       rest_vital = 45\n\
+                       checkpoint_margin = 3\n\
+                       act_level_target = 8\n\
+                       self_race = false\n\
+                       friend_outing_early = true\n\
+                       status_weights = [1.0, 1.0, 1.0, 1.0, 1.0]\n\
+                       [trainer.weights]\n\
+                       vital = 1.2\n\
+                       motivation = 30.0\n\
+                       friendship = 0.6\n\
+                       hint = 1.0\n\
+                       gauge = 25.0\n\
+                       act_level = 120.0\n\
+                       checkpoint = 800.0\n\
+                       fat = 120.0\n\
+                       [trainer.advice]\n\
+                       card = 1.0\n\
+                       npc = 0.6\n\
+                       train = 1.0\n\
+                       keiko = 1.0\n\
+                       level = 1.0\n\
+                       milestone = 1.0\n\
+                       [trainer.dynamic]\n\
+                       vital_decay = 1.5\n";
+        assert!(
+            MatsuriConfig::parse(&repo_text(), Some(overlay)).is_err(),
+            "vital_decay 超过 1 应报错"
+        );
+        let bad = overlay.replace("vital_decay = 1.5", "status_catchup = -0.5");
+        assert!(
+            MatsuriConfig::parse(&repo_text(), Some(&bad)).is_err(),
+            "负的 status_catchup 应报错"
+        );
+        let ok = overlay.replace("vital_decay = 1.5", "keiko_tempo = 2.0");
+        let cfg = MatsuriConfig::parse(&repo_text(), Some(&ok)).expect("合法动态档应可解析");
+        assert_eq!(cfg.trainer.dynamic.keiko_tempo, 2.0);
+        assert_eq!(cfg.trainer.dynamic.act_catchup, 0.0, "未写的旋钮取 0");
     }
 
     #[test]
     fn trainer_bad_values_rejected() {
-        let bad = repo_text().replace("rest_vital = 45", "rest_vital = -1");
+        // 锚点取自 `MatsuriConfig::default()`（默认层与 Default 同步由 data 测试守门），
+        // 这样冠军档换值后本测试不需要跟着改字面量。
+        let default = MatsuriConfig::default();
+        let bad_value = |line: String, replacement: &str| {
+            let text = repo_text();
+            assert!(text.contains(&line), "默认层应包含锚点行：{line}");
+            text.replace(&line, replacement)
+        };
+        let bad = bad_value(
+            format!("rest_vital = {}", default.trainer.rest_vital),
+            "rest_vital = -1",
+        );
         assert!(
             MatsuriConfig::parse(&bad, None).is_err(),
             "体力阈值越界应报错"
         );
-        let bad = repo_text().replace("pt_favor_rate = 2.0", "pt_favor_rate = 0.0");
+        let bad = bad_value(
+            format!("pt_favor_rate = {}", default.trainer.pt_favor_rate),
+            "pt_favor_rate = 0.0",
+        );
         assert!(
             MatsuriConfig::parse(&bad, None).is_err(),
             "PT 偏好非正数应报错"
         );
-        let bad = repo_text().replace("vital = 1.2", "vital = -0.1");
+        let bad = bad_value(
+            format!("vital = {}", default.trainer.weights.vital),
+            "vital = -0.1",
+        );
         assert!(MatsuriConfig::parse(&bad, None).is_err(), "权重为负应报错");
     }
 }

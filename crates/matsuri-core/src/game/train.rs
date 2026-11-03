@@ -211,16 +211,42 @@ impl MatsuriGame {
     }
 
     /// 训练失败：二次判定大失败（生病 / 不擅长），按基础局口径直接结算失败事件
+    ///
+    /// 幸运体质（`lucky_count`）> 0 时挡一次「大失败 = 生病」，两标志同置同清（一起拦）；
+    /// 同时剥掉失败事件选项里的生病位，避免「盾扣了、又被事件加回来」。
     fn apply_training_failure(&mut self, failure_rate: f64, rng: &mut impl Rng) -> Result<()> {
-        let event = if rng.random_bool(failure_rate) {
-            self.uma_mut().flags.ill.insert(Ill::BAD_TRAINER);
-            self.uma_mut().flags.bad_trainer = true;
-            diag!("【训练失败】T{} 大失败 → 生病 / 不擅长训练", self.turn());
-            Data::get()?.system_event("training_fail_low")?.clone()
+        let (mut event, shielded) = if rng.random_bool(failure_rate) {
+            if self.uma().flags.lucky_count > 0 {
+                self.uma_mut().flags.lucky_count -= 1;
+                diag!("【训练失败】T{} 大失败 → 幸运体质挡下生病", self.turn());
+                (
+                    Data::get()?.system_event("training_fail_low")?.clone(),
+                    true,
+                )
+            } else {
+                self.uma_mut().flags.ill.insert(Ill::BAD_TRAINER);
+                self.uma_mut().flags.bad_trainer = true;
+                diag!("【训练失败】T{} 大失败 → 生病 / 不擅长训练", self.turn());
+                (
+                    Data::get()?.system_event("training_fail_low")?.clone(),
+                    false,
+                )
+            }
         } else {
             diag!("【训练失败】T{} 普通失败", self.turn());
-            Data::get()?.system_event("training_fail")?.clone()
+            (Data::get()?.system_event("training_fail")?.clone(), false)
         };
+        if shielded {
+            // 生病已被盾挡：剥掉事件选项里的生病位（不二次扣盾，也不让事件把它加回来）
+            for group in &mut event.choices {
+                for opt in group {
+                    if let Some(add) = &mut opt.add_flags {
+                        add.bad_trainer = false;
+                        add.ill = Ill::NONE;
+                    }
+                }
+            }
+        }
         self.apply_event(&event, 0, rng)
     }
 
@@ -1100,5 +1126,38 @@ mod tests {
         game.plan.camp_rest = true;
         game.do_rest(&mut rng).expect("合宿版休息");
         assert!(!game.is_fat(), "合宿版休息解除变胖");
+    }
+
+    /// 幸运体质（生病盾）：大失败时扣一层，挡下「生病 / 不擅长」（两标志都不置）
+    #[test]
+    fn lucky_body_blocks_training_failure_illness() {
+        let mut game = crate::testing::sample_game();
+        game.uma_mut().flags.lucky_count = 1;
+        game.uma_mut().flags.ill = Ill::NONE;
+        game.uma_mut().flags.bad_trainer = false;
+        let mut rng = StdRng::seed_from_u64(7);
+        game.apply_training_failure(1.0, &mut rng)
+            .expect("结算大失败");
+        assert_eq!(game.uma().flags.lucky_count, 0, "盾应扣一层");
+        assert!(!game.uma().flags.bad_trainer, "盾应挡下不擅长训练");
+        assert!(
+            !game.uma().flags.ill.contains(Ill::BAD_TRAINER),
+            "盾应挡下 Ill::BAD_TRAINER"
+        );
+    }
+
+    /// 回归：无盾时大失败照常置两个标志（同置）
+    #[test]
+    fn training_failure_sets_illness_without_lucky_body() {
+        let mut game = crate::testing::sample_game();
+        game.uma_mut().flags.lucky_count = 0;
+        let mut rng = StdRng::seed_from_u64(7);
+        game.apply_training_failure(1.0, &mut rng)
+            .expect("结算大失败");
+        assert!(game.uma().flags.bad_trainer, "无盾应照常不擅长");
+        assert!(
+            game.uma().flags.ill.contains(Ill::BAD_TRAINER),
+            "无盾应照常置病位"
+        );
     }
 }

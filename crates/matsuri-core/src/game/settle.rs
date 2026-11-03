@@ -160,13 +160,15 @@ impl MatsuriGame {
             RewardResult::Success
         };
         diag!(
-            "【终局】T{} 三场结果 {:?} → {}档奖励",
+            "【终局】T{} 三场结果 {:?} → {}档奖励｜演目Lv {:?}（上限 {}）",
             self.turn(),
             self.check_points,
             match result {
                 RewardResult::GreatSuccess => "大成功",
                 RewardResult::Success => "成功",
-            }
+            },
+            self.acts.level,
+            self.act_level_cap()
         );
         if let Some(reward) = self
             .data

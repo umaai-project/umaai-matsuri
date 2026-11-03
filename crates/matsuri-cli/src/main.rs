@@ -77,7 +77,27 @@ fn run() -> Result<()> {
     let mut runner = Runner::new(&cfg, &mut fe)?;
     match trainer_name.as_str() {
         "matsuri" => {
-            let trainer = MatsuriTrainer::new(matsuri_cfg);
+            // 蒙特卡洛（引擎 FlatSearch）由环境变量显式开启，默认关：
+            // 搜索成本 = 决策点数 × 剪枝宽度 × search_n 局终局 rollout，
+            // 开着跑 100 局矩阵不现实，只在验证 / 蒸馏时打开。
+            let search_n: usize = std::env::var("MATSURI_SEARCH_N")
+                .ok()
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
+            let topk: usize = std::env::var("MATSURI_SEARCH_TOPK")
+                .ok()
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(4);
+            let mut search = cfg.search.clone();
+            search.search_n = search_n;
+            // 激进度：内核定档 50 会把排序压到 rollout 分数的高尾，教诲只有 6 个决策点、
+            // 每点几十万次 rollout 的噪声下等于放大方差；可扫参，缺省沿用配置层
+            if let Ok(v) = std::env::var("MATSURI_SEARCH_RADICAL")
+                && let Ok(radical) = v.trim().parse::<f64>()
+            {
+                search.radical_factor_max = radical;
+            }
+            let trainer = MatsuriTrainer::new(matsuri_cfg).with_search(search, topk);
             runner.run_game(game, &trainer, None)?;
         }
         "random" => {

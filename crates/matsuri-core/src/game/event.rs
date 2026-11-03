@@ -632,4 +632,61 @@ mod tests {
         assert!(ids.contains(&809052023), "turn 77 应入队友人结局: {ids:?}");
         assert!(ids.contains(&5011), "turn 77 应入队育成结束事件: {ids:?}");
     }
+
+    /// 幸运体质（生病盾）：事件 `add_flags` 的生病位（含变胖）被挡下且盾扣一层；非生病状态照常生效
+    #[test]
+    fn lucky_body_blocks_event_illness_including_fat() {
+        let mut game = sample_game();
+        game.uma_mut().flags.lucky_count = 1;
+        let mut event = EventData::from_action_value(9902, "测试-生病事件", &Default::default());
+        event.choices[0][0].add_flags = Some(UmaFlags {
+            ill: Ill::FAT,
+            good_trainer: true,
+            ..Default::default()
+        });
+        let mut rng = StdRng::seed_from_u64(3);
+        game.apply_event(&event, 0, &mut rng).expect("结算事件");
+        assert_eq!(game.uma().flags.lucky_count, 0, "盾应扣一层");
+        assert!(
+            !game.uma().flags.ill.contains(Ill::FAT),
+            "变胖也是生病，应被盾挡下"
+        );
+        assert!(game.uma().flags.good_trainer, "非生病状态照常生效");
+    }
+
+    /// 幸运体质：`bad_trainer` 与 `Ill::BAD_TRAINER` 同置同清 → 盾一起拦（都不生效）
+    #[test]
+    fn lucky_body_blocks_bad_trainer_atomically() {
+        let mut game = sample_game();
+        game.uma_mut().flags.lucky_count = 1;
+        let mut event = EventData::from_action_value(9903, "测试-不擅长事件", &Default::default());
+        event.choices[0][0].add_flags = Some(UmaFlags {
+            bad_trainer: true,
+            ill: Ill::BAD_TRAINER,
+            ..Default::default()
+        });
+        let mut rng = StdRng::seed_from_u64(3);
+        game.apply_event(&event, 0, &mut rng).expect("结算事件");
+        assert!(!game.uma().flags.bad_trainer, "盾应挡下 bad_trainer");
+        assert!(
+            !game.uma().flags.ill.contains(Ill::BAD_TRAINER),
+            "盾应挡下 Ill::BAD_TRAINER"
+        );
+        assert_eq!(game.uma().flags.lucky_count, 0, "一次生病只扣一层");
+    }
+
+    /// 幸运体质：没有生病位的事件不消耗盾
+    #[test]
+    fn lucky_body_not_consumed_without_illness() {
+        let mut game = sample_game();
+        game.uma_mut().flags.lucky_count = 2;
+        let mut event = EventData::from_action_value(9904, "测试-无生病事件", &Default::default());
+        event.choices[0][0].add_flags = Some(UmaFlags {
+            good_trainer: true,
+            ..Default::default()
+        });
+        let mut rng = StdRng::seed_from_u64(3);
+        game.apply_event(&event, 0, &mut rng).expect("结算事件");
+        assert_eq!(game.uma().flags.lucky_count, 2, "无生病不消耗盾");
+    }
 }
