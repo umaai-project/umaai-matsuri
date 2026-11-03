@@ -2,3 +2,7 @@
 logs/
 __pycache__/
 *.pyc
+
+# 运行期覆盖层（CWD 同名文件，存在才合并；不入库）
+/ai_config.toml
+/matsuri_config.toml
