@@ -107,11 +107,15 @@ impl MatsuriGame {
 
     /// 随机事件是否抑制：合宿规则层优先，其次引擎 `no_event_turns` 基线层
     ///
-    /// 合宿规则（user 2026-10-30）：第 1 年合宿两类随机事件都发生；第 2/3 年常规合宿回合
-    /// 两类都不发生；延长段只抑制随机事件、固定事件不经过本判定。引擎基线层为 STUB，
-    /// 等剧本专属禁事件回合表出来只替换第二层。
+    /// 合宿规则（user 2026-10-30；延长段 2026-11-03 确认）：第 1 年合宿两类随机事件都发生；
+    /// 第 2/3 年**常规**合宿回合两类都不发生；**延长段事件轴等同正常回合**——支援卡连续 /
+    /// 普通马娘 / 掉心情等随机事件均可触发（仅训练全变稽古），故不经过合宿抑制层、只按引擎
+    /// 基线判定。固定事件不经过本判定。引擎基线层为 STUB，等剧本专属禁事件回合表出来只替换第二层。
     pub(crate) fn random_events_suppressed(&self) -> bool {
-        if self.plan.camp_zone && self.plan.camp_year.is_some_and(|year| year >= 1) {
+        if self.plan.camp_zone
+            && self.plan.camp_regular
+            && self.plan.camp_year.is_some_and(|year| year >= 1)
+        {
             return true;
         }
         Data::get()
@@ -317,11 +321,12 @@ mod tests {
     use super::*;
     use crate::testing::sample_game;
 
-    /// 合宿抑制：第 1 年允许；第 2/3 年常规与延长段都抑制；非合宿按引擎基线
+    /// 合宿抑制：第 1 年允许；第 2/3 年**常规**抑制；**延长段等同正常回合**；非合宿按引擎基线
     #[test]
     fn camp_rule_suppresses_random_events() {
         let mut game = sample_game();
         game.plan.camp_zone = true;
+        game.plan.camp_regular = true;
         game.plan.camp_year = Some(0);
         game.base.turn = 12;
         assert!(
@@ -331,14 +336,18 @@ mod tests {
 
         game.plan.camp_year = Some(1);
         game.base.turn = 36;
-        assert!(game.random_events_suppressed(), "第 2 年合宿应抑制随机事件");
+        assert!(
+            game.random_events_suppressed(),
+            "第 2 年常规合宿应抑制随机事件"
+        );
 
         game.plan.camp_year = Some(2);
+        game.plan.camp_regular = false;
         game.plan.camp_extended = true;
         game.base.turn = 64;
         assert!(
-            game.random_events_suppressed(),
-            "第 3 年延长段仍抑制随机事件"
+            !game.random_events_suppressed(),
+            "第 3 年延长段按正常回合（不抑制随机事件）"
         );
 
         game.plan.camp_zone = false;
@@ -349,6 +358,47 @@ mod tests {
             !game.random_events_suppressed(),
             "非合宿回合按引擎基线（turn 40 不在 no_event_turns）"
         );
+    }
+
+    /// 延长段事件轴 = 正常回合：随机分布可抽出支援卡连续事件等；常规合宿仍抑制
+    #[test]
+    fn extended_camp_runs_normal_event_axis() {
+        let mut game = sample_game();
+        game.base.friend.out_state = FriendOutState::AfterUnlock;
+        game.plan.camp_zone = true;
+        game.plan.camp_year = Some(1);
+        game.plan.camp_regular = false;
+        game.plan.camp_extended = true;
+        game.base.turn = 40;
+
+        let mut non_empty = 0;
+        let mut card = 0;
+        for seed in 0..200_u64 {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let events = game.begin_events(&mut rng);
+            if !events.is_empty() {
+                non_empty += 1;
+            }
+            if events.iter().any(|event| (8001..=8003).contains(&event.id)) {
+                card += 1;
+            }
+        }
+        assert!(
+            non_empty > 0,
+            "延长段应能触发随机事件（实际 {non_empty}/200）"
+        );
+        assert!(card > 0, "延长段应能触发支援卡连续事件（实际 {card}/200）");
+
+        game.plan.camp_regular = true;
+        game.plan.camp_extended = false;
+        game.base.turn = 39;
+        for seed in 0..50_u64 {
+            let mut rng = StdRng::seed_from_u64(seed);
+            assert!(
+                game.begin_events(&mut rng).is_empty(),
+                "第 2 年常规合宿回合仍应抑制随机事件"
+            );
+        }
     }
 
     /// 固定事件存在时不抽随机事件；剧本固定事件按回合命中

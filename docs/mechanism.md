@@ -22,16 +22,18 @@
     不随顺延推迟；视频「3 个演目各 +1」按样本截断，不采用。
   - **延长回合属性（U18，2026-10-31）**：**所有年份的延长回合都算合宿（全部为排练）**；
     第 1 年的延长回合也按第 1 年合宿规则（正常休息 / 可外出 / 可有支援卡事件）。
+  - **延长段事件轴（U19，user 2026-11-03）**：**等同正常回合**——支援卡连续 / 普通马娘 / 掉心情等
+    随机事件均可触发，仅训练全变演目稽古；第 2/3 年常规 4 回合的无事件抑制不延伸到延长段。
   - **离线模拟口径（2026-10-31）**：本阶段只做离线模拟，只需与在线行为一致，不依赖在线数据下发；
     合宿窗口与所有年份的延长回合按**硬编码**判定，`summer_camp_remain_turn_num` 只作对照。
 - **合宿外出 / 休息（U33，2026-10-31；休息范围 2026-11-01 细化）**：**第 2/3 年合宿不能普通 / 友人外出**；
   **合宿版休息只在原本夏合宿期间＝Classic/Senior 的 7–8 月，延长回合休息为普通休息**
   （`shuntaisai_memo` 2026-10-31；外出仍按 U33 全程不可，含延长段）；
   **第 1 年正常休息，可普通 / 友人外出，可有支援卡事件**。
-- **合宿期事件**（user 2026-10-30）：**第 1 年**合宿支援卡连续事件 + 普通马娘事件都发生；
-  **第 2/3 年**常规合宿回合两类都不发生；**延长段的个体固定事件仍发生**；
-  延长段是否触发支援卡连续事件待测（U19）。**抑制表 / 不可发生连续事件回合表由剧本自持重做，
-  不复用引擎 `no_event_turns`**（见 §5.3）。
+- **合宿期事件**（user 2026-10-30；延长段 2026-11-03 确认）：**第 1 年**合宿支援卡连续事件 + 普通马娘事件都发生；
+  **第 2/3 年**常规合宿回合两类都不发生；**延长段事件轴等同正常回合**——支援卡连续 / 普通马娘 /
+  掉心情等各种随机事件均可触发，仅训练全变演目稽古（U19 结项）。**抑制表由剧本自持**：合宿规则层
+  只盖第 2/3 年常规窗口，延长段回落引擎 `no_event_turns` 基线（见 §5.3 / §5.4）。
 - 本番后：剧情结束，先进入 **68–71 的空窗期**（剧本已结束、尚未进 URA；按日常机制），
   **72–77 才是 URA 回合**。**URA 期全变演目稽古（类似合宿，2026-11-04 确认）**：5 个训练位全部
   `ActTrain`（`practice_acts` 全真），可休息 / 普通出行 / 治病；**稽古成功仍按日常稽古结算
@@ -376,10 +378,17 @@
 - **口径边界（2026-11-01）**：以上是**基础值**表，只建模基础值；**有馬記念等特殊比赛自带额外数值，
   不属于本表、不建模**。memo 的「有馬 全ステ 21 / SP 200」观察可能用于验证**第三年底目标赛的
   剧本加成（レスボ）**，登记为验证点（真机复核）。
-- **比赛加成合并口径（2026-11-01 拍板）**：支援卡「赛后」`uma.race_bonus` 与発表会 / 本番 `check_point_effect 204`
-  **同表加算**成一个百分比：`scale = (100 + uma.race_bonus + check_points.race_bonus) / 100`（floor 在引擎）。
-  引擎 `push_race_event` 文档的「剧本可在此基础上再倍乘自己的机制系数」用于温泉 `career_race_multiplier`
-  这类**独立倍率**，不适用于同类 レスボ；S4 阶段 204 恒 0（`check_points` 未结算），S5 发布会生效后按本口径计。
+- **比赛加成乘算口径（2026-11-03 更正；原 2026-11-01「同表加算」作废）**：支援卡「赛后」`uma.race_bonus`
+  与発表会 / 本番 `check_point_effect 204` **分别作为百分比倍率相乘**：
+  `scale = (100 + uma.race_bonus) / 100 × (100 + check_points.race_bonus) / 100`（引擎在面板乘完后统一 floor 一次）。
+  例：测试配卡 55% × 本番大成功 +100% = 1.55 × 2.00 = 3.10；目标赛 5/72 → **15 / 223**。
+  S4 阶段 204 恒 0（`check_points` 未结算），此时退化为卡面赛后单乘；S5 发布会生效后按本口径计。
+- **特殊状态「铁心的挑战者」（生野狄杜斯 106301 / 106302，2026-11-03 实测反推）**：**出道战后（turn 12–71）**对
+  **所有生涯比赛** 五维 **×2.5**（+150%）、PT **×0.46**；五维与卡面赛后**乘算**、在剧本赛后**乘算之前**，
+  PT 折扣由引擎 `pt_rate` 单独缩放（净 PT ×1.15）。**自选赛 / 出道战 T11 / URA 73+ 不生效**。
+  状态 `31` 尚未建模，先按马娘 ID 硬编码（`game/mod.rs::special_race_stats_bonus` / `race_pt_rate`）；
+  `MatsuriView.uma.special_race_stats_bonus` / `special_race_pt_rate` 同步、manual 面板显示「铁心 五维×2.5 / PT×0.46」。
+  测试配卡 55%：T22/T58 **19/128**；T68/T69/T71（本番大成功 ×2）**38/256**。
 - 属性上限：**2200 / 1850 / 1800 / 1700 / 1800**（official + memo 一致），上限突破后 2500。
   机制包 Wiki 的 2150 / 1800 / 1700 / 1700 / 1800 与因子上浮 +950 / +600 / +500 / +500 / +600
   属另一层口径，**不采用为主口径**。❓`single_mode_scenario.max_*` 与运行时 `max_stats` 的关系。
@@ -389,7 +398,7 @@
 | 机制点 | 数据字段 | 阶段 / 动作 | 结算函数 | 测试 | 文档 |
 |---|---|---|---|---|---|
 | 合宿延长 | 剧本资产 `camp` | 回合边界 | `CampState`（S3） | `<机制测试>` | §4 |
-| 比赛结算（目标 / URA / 自选） | `data/events.json` + `check_points[].race_bonus` | `Race` | `do_race` / `BaseGame::push_race_event`；`scenario_race_bonus`（S4；**204 与卡面赛后同表加算**，见 §4 口径注） | `tests/mechanics.rs` `target_race_reward_applied` / `self_race_reward_applied` / `forced_rest_turn_does_not_race` | §4 |
+| 比赛结算（目标 / URA / 自选） | `data/events.json` + `check_points[].race_bonus` | `Race` | `do_race` / `BaseGame::push_race_event`；`race_scale` / `race_pt_rate` / `scenario_race_bonus` / `special_race_stats_bonus`（S4；**204 与卡面赛后按乘算**，铁心五维 ×2.5、PT ×0.46，见 §4 口径注） | `tests/mechanics.rs` `target_race_reward_applied` / `self_race_reward_applied` / `dictus_iron_heart_race_bonus_applied` / `forced_rest_turn_does_not_race` | §4 |
 | 自选比赛义务区间 | `umaDB.json` `freeRaces`（区间 / 场数 / 等级门槛） | `End → next()` 边界 / `Race` | `game/mod.rs` `free_race_progress` + `game/traits.rs` `next()`（`check_free_race` → `career_failed`）+ `on_simulation_end`；训练员守门⓪ + `value.rs::race_value` 紧迫度 | `free_race_*`（4 个）+ trainer / value 各 1 | §4 / §6.5 |
 | 休息 / 出行 / 治病 | 引擎 `consts.rest_probs` / `is_xiahesu`；`outing` 资产 + `matsuri_outing_1..5` 事件 | `Rest` / `NormalOuting` / `FriendOuting` / `Clinic` | `do_rest` / `do_normal_outing` / `do_friend_outing` / `do_clinic`（S4） | `rest_normal_and_camp_versions` / `outing_actions` | §1 / §6 |
 
@@ -466,7 +475,9 @@
   **turn 66** 5 神駒 + 吾妻 进化技能事件（10 月前半，0 基）；67 本番。
 - 育成终了全大成功：五维 +30、SP +350、「名にし負う夢」Lv2。
 - 育成终了非全大成功：memo 调查项记为「无额外效果」；待真机。
-- ❓延长合宿回合是否触发支援卡连续事件（U19，先按抑制实现）；合宿结束事件的演目 Lv +1 已定在 8 月后半结算。
+- 延长合宿回合触发支援卡连续事件（U19 已结项，user 2026-11-03）：**延长段事件轴等同正常回合**，
+  支援卡连续 / 普通马娘 / 掉心情等随机事件均可触发，仅训练全变演目稽古；合宿结束事件的演目 Lv +1
+  已定在 8 月后半结算。
 - ❓其他事件触发回合仍需故事脚本 / 正式帧复核；10 月前半进化事件已定为 **turn 66**。
 
 ### 5.4 事件管线（S6 已落，2026-11-01）
@@ -475,8 +486,9 @@
 1. **固定事件**：引擎通用 `data/events.json` `story_events` + 剧本 `scenario_events`
    （`400015104` Fixed [11,35,59]；`400015106` Code、由训练后触发）；有固定事件的回合不抽随机事件。
 2. **合宿抑制（合并为单一判定 `random_events_suppressed`）**：合宿规则层优先——第 1 年合宿允许随机事件；
-   第 2/3 年常规与**延长段**都抑制随机事件；非合宿回合沿用引擎 `no_event_turns` 基线（STUB，
-   等剧本专属禁事件回合表只替换该层）。固定事件不经过此判定。
+   **第 2/3 年只抑制常规窗口**；**延长段不经过合宿层**（事件轴等同正常回合，回落引擎 `no_event_turns`
+   基线；延长回合不在该表内 ⇒ 正常抽事件）。非合宿回合沿用引擎基线（STUB，等剧本专属禁事件回合表
+   只替换该层）。固定事件不经过此判定。
 3. **友人出行解锁**：首次点击后（`BeforeUnlock`）按羁绊高低取 `friend_unlock_low/high`，
    命中推 `809052004`（上 / 下双选项）→ `AfterUnlock` + 疲劳回复 flag。
 4. **随机分布**：引擎 `get_event_distribution`（支援卡 35% / 马娘 25% / 掉心情 10% / 无事 30%）；

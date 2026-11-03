@@ -1228,6 +1228,107 @@ fn target_race_reward_applied() -> Result<()> {
     Ok(())
 }
 
+/// 生野狄杜斯「铁心的挑战者」：出道战后（T12–71）生涯赛 五维×2.5 / PT×0.46
+#[test]
+fn dictus_iron_heart_race_bonus_applied() -> Result<()> {
+    let repo = Repo::load()?;
+    let mut game = repo.game(106301)?;
+
+    // 出道战 T11：不生效
+    drive_to_turn(&mut game, 11)?;
+    assert!(game.plan.race, "T11 是出道战");
+    let base = (100 + game.uma().race_bonus) as f64 / 100.0;
+    let before = Stats::of(&game);
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Race,
+            choice: 0,
+        },
+    )?;
+    let after = Stats::of(&game);
+    for axis in 0..5 {
+        assert_eq!(
+            after.five[axis] - before.five[axis],
+            (5.0 * base).floor() as i32,
+            "T11 出道战五维 axis {axis} 不吃铁心加成"
+        );
+    }
+    assert_eq!(
+        after.pt - before.pt,
+        (72.0 * base).floor() as i32,
+        "T11 出道战 SP 不吃铁心加成"
+    );
+
+    // T22 生涯赛：五维 ×2.5、PT ×0.46（测试配卡 55% → 3.875 / 1.7825）
+    drive_to_turn(&mut game, 22)?;
+    assert!(game.plan.race, "T22 是生涯赛");
+    let view = game.view();
+    let stats_scale = (100 + game.uma().race_bonus) as f64 / 100.0
+        * (1.0 + f64::from(view.uma.special_race_stats_bonus) / 100.0);
+    let pt_scale = stats_scale * f64::from(view.uma.special_race_pt_rate) / 100.0;
+    let before = Stats::of(&game);
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Race,
+            choice: 0,
+        },
+    )?;
+    let after = Stats::of(&game);
+    for axis in 0..5 {
+        assert_eq!(
+            after.five[axis] - before.five[axis],
+            (5.0 * stats_scale).floor() as i32,
+            "T22 生涯赛五维 axis {axis} 应吃铁心 ×2.5"
+        );
+    }
+    assert_eq!(
+        after.pt - before.pt,
+        (72.0 * pt_scale).floor() as i32,
+        "T22 生涯赛 SP 应吃铁心 PT×0.46"
+    );
+
+    // T68（本番后）：剧本赛后按当前值乘算（大成功 +100% → 再 ×2）
+    drive_to_turn(&mut game, 68)?;
+    assert!(game.plan.race, "T68 是生涯赛");
+    let view = game.view();
+    let scenario = 1.0 + f64::from(view.resources.presentation_race_bonus) / 100.0;
+    let stats_scale = (100 + game.uma().race_bonus) as f64 / 100.0
+        * (1.0 + f64::from(view.uma.special_race_stats_bonus) / 100.0)
+        * scenario;
+    let pt_scale = stats_scale * f64::from(view.uma.special_race_pt_rate) / 100.0;
+    let before = Stats::of(&game);
+    finish_turn(
+        &mut game,
+        &ScriptedTrainer {
+            action: Action::Race,
+            choice: 0,
+        },
+    )?;
+    let after = Stats::of(&game);
+    for axis in 0..5 {
+        assert_eq!(
+            after.five[axis] - before.five[axis],
+            (5.0 * stats_scale).floor() as i32,
+            "T68 生涯赛五维 axis {axis} 应吃铁心 ×2.5 ×剧本赛后"
+        );
+    }
+    assert_eq!(
+        after.pt - before.pt,
+        (72.0 * pt_scale).floor() as i32,
+        "T68 生涯赛 SP 应吃铁心 PT×0.46 ×剧本赛后"
+    );
+    println!(
+        "狄杜斯铁心：T11 不加 / T22 五维+{} SP+{} / T68 五维+{} SP+{}",
+        (5.0 * (100 + game.uma().race_bonus) as f64 / 100.0 * 2.5).floor() as i32,
+        (72.0 * (100 + game.uma().race_bonus) as f64 / 100.0 * 2.5 * 0.46).floor() as i32,
+        (5.0 * stats_scale).floor() as i32,
+        (72.0 * pt_scale).floor() as i32
+    );
+    Ok(())
+}
+
 /// 自选比赛结算：非目标赛随机 1 项属性 + 面板 SP，两者都吃比赛加成
 #[test]
 fn self_race_reward_applied() -> Result<()> {

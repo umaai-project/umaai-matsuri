@@ -46,6 +46,21 @@ use crate::data::{ActLevelEffect, CheckPointResult, MatsuriData};
 /// 0–1 回合剧本系统还没开始：没有担当分配，训练 / 休息 / 出行 / 事件也都不获取演目槽等剧本资源。
 pub const SCENARIO_START_TURN: i32 = 2;
 
+/// 「铁心的挑战者」：生野狄杜斯系马娘（106301 / 106302）的生涯赛比赛加成
+///
+/// 状态 `31` 目前未建模，先按马娘 ID + 回合窗硬编码：**出道战后（turn 12–71）对生涯比赛**
+/// 五维 ×2.5、PT ×0.46；五维与卡面赛后**乘算**、在本番 / 発表会剧本赛后**乘算之前**，
+/// PT 折扣由引擎 `pt_rate` 单独缩放（user 2026-11-03 实测反推：属性多、PT 相对少）。
+const IRON_HEART_UMA_IDS: [u32; 2] = [106301, 106302];
+/// 「铁心的挑战者」五维加成 %（+150 = ×2.5）
+const IRON_HEART_STATS_BONUS: i32 = 150;
+/// 「铁心的挑战者」PT 倍率 %（46 = ×0.46）
+const IRON_HEART_PT_RATE: i32 = 46;
+/// 出道战后的首个回合（0 基）
+const IRON_HEART_FROM_TURN: i32 = 12;
+/// 生涯赛窗口末回合（0 基；其后为 URA）
+const IRON_HEART_END_TURN: i32 = 71;
+
 /// 演目资源账本（5 条演目的 gauge 与等级）
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActLedger {
@@ -291,9 +306,45 @@ impl MatsuriGame {
         bonus
     }
 
-    /// 比赛加成 %（支援卡赛后 + 発表会累计 race_bonus，**同表加算**；2026-11-01 拍板）
+    /// 剧本侧比赛加成 %（発表会 / 本番累计值；与支援卡赛后**分开计算**，2026-11-03 起乘算）
     pub(crate) fn scenario_race_bonus(&self) -> i32 {
         self.presentation_bonus().race_bonus
+    }
+
+    /// 比赛奖励实际系数（五维）：**卡面赛后 × 铁心五维倍率 × 剧本赛后**
+    ///
+    /// 五维与 PT 的倍率不同（铁心 PT ×0.46，由 [`Self::race_pt_rate`] 交给引擎单独缩放）；
+    /// 取整（floor）由引擎 [`umasim::game::base::BaseGame::push_race_event`] 在面板乘完后统一做一次。
+    pub(crate) fn race_scale(&self) -> f64 {
+        let card = (100 + self.base.uma.race_bonus) as f64 / 100.0;
+        let stats = (100 + self.special_race_stats_bonus()) as f64 / 100.0;
+        let scenario = (100 + self.scenario_race_bonus()) as f64 / 100.0;
+        card * stats * scenario
+    }
+
+    /// PT 缩放（引擎 `pt_rate`）：铁心生效时 ×0.46，否则 1.0
+    pub(crate) fn race_pt_rate(&self) -> f64 {
+        if self.iron_heart_active() {
+            f64::from(IRON_HEART_PT_RATE) / 100.0
+        } else {
+            1.0
+        }
+    }
+
+    /// 特殊状态「铁心的挑战者」五维加成 %（生野狄杜斯 106301 / 106302）
+    pub(crate) fn special_race_stats_bonus(&self) -> i32 {
+        if self.iron_heart_active() {
+            IRON_HEART_STATS_BONUS
+        } else {
+            0
+        }
+    }
+
+    /// 状态生效条件：指定马娘 + 出道战后 turn 12–71 + 生涯比赛
+    fn iron_heart_active(&self) -> bool {
+        IRON_HEART_UMA_IDS.contains(&self.base.uma.uma_id)
+            && (IRON_HEART_FROM_TURN..=IRON_HEART_END_TURN).contains(&self.turn())
+            && self.plan.race
     }
 
     /// 判定一场発表会 / 本番结果：`need_act_num` 个演目达到 `need_act_level` → 大成功，否则成功
@@ -707,6 +758,95 @@ mod tests {
             (5, 40, 50, 0),
             "第 2 回成功行"
         );
+    }
+
+    /// 比赛系数：支援卡赛后 × 剧本赛后（乘算）；本番前剧本 0 / 本番大成功 ×2.0
+    #[test]
+    fn race_scale_multiplies_deck_and_scenario_bonus() {
+        let mut game = crate::testing::sample_game();
+        let deck = (100 + game.base.uma.race_bonus) as f64 / 100.0;
+        assert_eq!(game.scenario_race_bonus(), 0, "本番前剧本赛后为 0");
+        assert!((game.race_scale() - deck).abs() < 1e-12);
+
+        game.check_points[2] = CheckPointResult::GreatSuccess;
+        assert_eq!(game.scenario_race_bonus(), 100, "本番大成功 +100%");
+        assert!(
+            (game.race_scale() - deck * 2.0).abs() < 1e-12,
+            "剧本赛后应与卡组赛后乘算"
+        );
+        assert_eq!((5.0 * game.race_scale()).floor() as i32, 15);
+        assert_eq!((72.0 * game.race_scale()).floor() as i32, 223);
+
+        game.check_points[2] = CheckPointResult::Success;
+        assert!(
+            (game.race_scale() - deck * 1.3).abs() < 1e-12,
+            "本番成功 ×1.3"
+        );
+        assert_eq!((5.0 * game.race_scale()).floor() as i32, 10);
+        assert_eq!((72.0 * game.race_scale()).floor() as i32, 145);
+    }
+
+    /// 「铁心的挑战者」：狄杜斯 106301/106302 出道战后（T12–71）生涯赛 五维×2.5 / PT×0.46
+    #[test]
+    fn dictus_iron_heart_bonus_window_and_kind() {
+        let mut game = crate::testing::sample_game_with_uma(106301);
+        game.base.turn = 11;
+        game.plan.race = true;
+        assert_eq!(game.special_race_stats_bonus(), 0, "出道战 T11 不生效");
+        assert!((game.race_pt_rate() - 1.0).abs() < 1e-12, "T11 无 PT 折扣");
+
+        game.base.turn = 12;
+        assert_eq!(game.special_race_stats_bonus(), 150, "T12 起五维 +150%");
+        assert!(
+            (game.race_pt_rate() - 0.46).abs() < 1e-12,
+            "T12 起 PT ×0.46"
+        );
+        game.plan.race = false;
+        assert_eq!(game.special_race_stats_bonus(), 0, "自选赛不生效");
+        game.plan.race = true;
+        game.base.turn = 71;
+        assert_eq!(game.special_race_stats_bonus(), 150, "T71 仍生效");
+        game.base.turn = 72;
+        assert_eq!(game.special_race_stats_bonus(), 0, "URA 期起不生效");
+
+        game.base.turn = 30;
+        assert_eq!(
+            game.view().uma.special_race_stats_bonus,
+            150,
+            "View 同步五维加成"
+        );
+        assert_eq!(
+            game.view().uma.special_race_pt_rate,
+            46,
+            "View 同步 PT 倍率"
+        );
+        let deck = (100 + game.base.uma.race_bonus) as f64 / 100.0;
+        assert!(
+            (game.race_scale() - deck * 2.5).abs() < 1e-12,
+            "铁心五维 ×2.5 与卡面赛后乘算、在剧本赛后之前"
+        );
+        assert_eq!((5.0 * game.race_scale()).floor() as i32, 19);
+        assert_eq!(
+            (72.0 * game.race_scale() * game.race_pt_rate()).floor() as i32,
+            128
+        );
+
+        game.check_points[2] = CheckPointResult::GreatSuccess;
+        assert!((game.race_scale() - deck * 2.5 * 2.0).abs() < 1e-12);
+        assert_eq!((5.0 * game.race_scale()).floor() as i32, 38);
+        assert_eq!(
+            (72.0 * game.race_scale() * game.race_pt_rate()).floor() as i32,
+            256
+        );
+
+        let other = crate::testing::sample_game();
+        assert_eq!(other.special_race_stats_bonus(), 0, "非狄杜斯不生效");
+        assert!((other.race_pt_rate() - 1.0).abs() < 1e-12);
+
+        let mut second = crate::testing::sample_game_with_uma(106302);
+        second.base.turn = 30;
+        second.plan.race = true;
+        assert_eq!(second.special_race_stats_bonus(), 150, "106302 同款加成");
     }
 
     #[test]

@@ -804,9 +804,18 @@ impl BoardPanel {
                 paint(&text, near_limit.then_some(ANSI_BRIGHT_YELLOW), color)
             })
             .collect();
+        let special = if uma.special_race_stats_bonus > 0 {
+            format!(
+                "（铁心 五维×{:.1} / PT×{:.2}）",
+                1.0 + f64::from(uma.special_race_stats_bonus) / 100.0,
+                f64::from(uma.special_race_pt_rate) / 100.0
+            )
+        } else {
+            String::new()
+        };
         let _ = writeln!(
             out,
-            "【数值】{vital_text}  干劲 {motivation_text}  PT {}  灵感合计 {}  比赛加成 +{}%",
+            "【数值】{vital_text}  干劲 {motivation_text}  PT {}  灵感合计 {}  比赛加成 +{}%{special}",
             uma.skill_pt, uma.total_hints, uma.race_bonus
         );
         let _ = writeln!(out, "       {}", axes.join("  "));
@@ -1288,7 +1297,16 @@ impl BoardPanel {
                 if view.turn.ura_race {
                     "URA 决赛（奖励按引擎）".to_string()
                 } else if view.turn.race {
-                    format!("目标赛（比赛加成 +{}%）", view.uma.race_bonus)
+                    let special = if view.uma.special_race_stats_bonus > 0 {
+                        format!(
+                            "（铁心 五维×{:.1} / PT×{:.2}）",
+                            1.0 + f64::from(view.uma.special_race_stats_bonus) / 100.0,
+                            f64::from(view.uma.special_race_pt_rate) / 100.0
+                        )
+                    } else {
+                        String::new()
+                    };
+                    format!("目标赛（比赛加成 +{}%{special}）", view.uma.race_bonus)
                 } else {
                     format!("自选比赛（比赛加成 +{}%）", view.uma.race_bonus)
                 }

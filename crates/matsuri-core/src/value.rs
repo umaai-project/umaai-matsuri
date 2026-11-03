@@ -502,7 +502,7 @@ impl<'a> Model<'a> {
         value
     }
 
-    /// 比赛奖励期望（目标赛 / URA 决赛 / 自选赛按等级取事件；吃比赛加成 scale）
+    /// 比赛奖励期望（目标赛 / URA 决赛 / 自选赛按等级取事件；五维与 PT 分别吃倍率）
     fn estimated_race_reward(&self) -> f64 {
         let key = if self.game.plan.ura_race {
             match self.game.turn() {
@@ -520,22 +520,29 @@ impl<'a> Model<'a> {
                 _ => "race_g4",
             }
         };
-        let Some(event) = Data::get()
+        let Some(mut event) = Data::get()
             .ok()
             .and_then(|data| data.events.system_events.get(key).cloned())
         else {
             return 80.0;
         };
-        let base = event
+        // 五维与 PT 倍率不同（铁心 PT ×0.46）：先按结算口径缩放面板，再估值
+        let stats_scale = self.game.race_scale();
+        let pt_scale = stats_scale * self.game.race_pt_rate();
+        for group in &mut event.choices {
+            for row in group {
+                for axis in 0..5 {
+                    row.value.status_pt[axis] =
+                        (f64::from(row.value.status_pt[axis]) * stats_scale).floor() as i32;
+                }
+                row.value.status_pt[5] =
+                    (f64::from(row.value.status_pt[5]) * pt_scale).floor() as i32;
+            }
+        }
+        event
             .choices
             .first()
-            .map_or(0.0, |group| self.event_choice_value(event.id, 0, group));
-        let scale = (100.0
-            + f64::from(self.game.uma().race_bonus)
-            + f64::from(self.game.scenario_race_bonus()))
-            / 100.0;
-        // 属性 / PT 吃 scale，体力不吃；体力项占比小，统一乘只影响排序而不改变量纲
-        base * scale
+            .map_or(0.0, |group| self.event_choice_value(event.id, 0, group))
     }
 
     // ------------------------------------------------------------------

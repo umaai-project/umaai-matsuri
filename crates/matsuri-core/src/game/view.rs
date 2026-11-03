@@ -208,8 +208,12 @@ pub struct UmaView {
     pub skill_pt: i32,
     /// 累计灵感等级（面板「灵感合计」）
     pub total_hints: i32,
-    /// 比赛加成 %
+    /// 比赛加成 %（支援卡赛后）
     pub race_bonus: i32,
+    /// 特殊状态五维加成 %（「铁心的挑战者」+150 = ×2.5；0 = 无）
+    pub special_race_stats_bonus: i32,
+    /// 特殊状态 PT 倍率 %（「铁心的挑战者」46 = ×0.46；100 = 无折扣）
+    pub special_race_pt_rate: i32,
     /// Buff / 生病状态（Display 含「变胖」等病名）
     pub flags: UmaFlags,
     /// 最近一次训练的训练下标（0–4）；未训练过为 `None`
@@ -400,6 +404,8 @@ impl MatsuriGame {
                 skill_pt: self.uma().skill_pt,
                 total_hints: self.uma().total_hints,
                 race_bonus: self.uma().race_bonus,
+                special_race_stats_bonus: self.special_race_stats_bonus(),
+                special_race_pt_rate: (self.race_pt_rate() * 100.0).round() as i32,
                 flags: self.uma().flags.clone(),
                 last_train: self.base.last_train,
             },

@@ -108,13 +108,15 @@ impl MatsuriGame {
 
     /// 比赛结算：目标赛 / URA 决赛 / 自选比赛统一走 [`BaseGame::push_race_event`]
     ///
-    /// `scale = (100 + 支援卡赛后加成 + 発表会 / 本番永久比赛加成) / 100`；取整（floor）在引擎。
+    /// 五维系 = [`MatsuriGame::race_scale`]（卡面赛后 × 铁心五维倍率 × 剧本赛后）；
+    /// PT 另按 [`MatsuriGame::race_pt_rate`] 缩放。取整（floor）由引擎统一做一次。
     /// 演目槽：目标赛（含 URA 决赛）+4（按 4 次 +1 三则落点）；自选比赛（非目标）+1。
     pub(crate) fn do_race(&mut self) -> Result<()> {
         let before = self.key_state();
         let goal = self.plan.race;
-        let scale = (100 + self.base.uma.race_bonus + self.scenario_race_bonus()) as f64 / 100.0;
-        self.base.push_race_event(scale, 1.0)?;
+        let scale = self.race_scale();
+        let pt_rate = self.race_pt_rate();
+        self.base.push_race_event(scale, pt_rate)?;
         let gain = if goal {
             self.data.rules.act_gauge_gain.target_race
         } else {
@@ -129,8 +131,13 @@ impl MatsuriGame {
         };
         self.gain_lowest_act_gauge(gain);
         self.diag_gauge_gain(kind, &before.gauge);
+        let pt_note = if (pt_rate - 1.0).abs() > f64::EPSILON {
+            format!(" PT×{pt_rate:.2}")
+        } else {
+            String::new()
+        };
         diag!(
-            "【动作】T{} {kind} 加成×{scale:.2}｜变化 {}",
+            "【动作】T{} {kind} 加成×{scale:.2}{pt_note}｜变化 {}",
             self.turn(),
             before.diff(&self.key_state())
         );
