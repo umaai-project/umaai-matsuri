@@ -51,6 +51,12 @@ pub struct TrainerConfig {
     pub self_race: bool,
     /// 友人外出是否尽早用完（攻略策略；false = 按收益打分）
     pub friend_outing_early: bool,
+    /// 自选比赛（freeRaces 义务区间）补足紧迫度的软加分权重
+    ///
+    /// 区间内少打 1 场即育成失败（引擎通用规则）；`0` = 关闭软加分，
+    /// 但 `need ≥ left`（再不打赢不了）的硬保底不受此开关影响。
+    #[serde(default = "default_free_race_urgency")]
+    pub free_race_urgency: f64,
     /// 五维策略权重（官方评分边际之外的偏好；默认全 1）
     pub status_weights: [f64; 5],
     /// 属性 / 资源 / 事件的折算权重
@@ -97,6 +103,11 @@ impl Default for DynamicConfig {
             keiko_tempo: 0.0,
         }
     }
+}
+
+/// `free_race_urgency` 的缺省值（旧覆盖层不写该键时按 1.0，保持补足行为开启）
+fn default_free_race_urgency() -> f64 {
+    1.0
 }
 
 /// 属性 / 资源 / 事件的折算权重（单位 = 评分点）
@@ -342,6 +353,10 @@ fn validate_trainer(trainer: &TrainerConfig) -> Result<()> {
         (0..=10).contains(&trainer.act_level_target),
         "trainer.act_level_target 应在 0–10"
     );
+    ensure!(
+        trainer.free_race_urgency.is_finite() && (0.0..=10.0).contains(&trainer.free_race_urgency),
+        "trainer.free_race_urgency 应在 0–10"
+    );
     for (index, weight) in trainer.status_weights.iter().enumerate() {
         ensure!(
             weight.is_finite() && *weight >= 0.0,
@@ -445,6 +460,7 @@ impl Default for TrainerConfig {
             act_level_target: 9,
             self_race: false,
             friend_outing_early: true,
+            free_race_urgency: 1.0,
             status_weights: [0.6465, 0.9881, 0.8387, 0.3, 2.6217],
             weights: ValueWeights {
                 vital: 1.4774,
@@ -642,6 +658,20 @@ mod tests {
         let cfg = MatsuriConfig::parse(&repo_text(), Some(&ok)).expect("合法动态档应可解析");
         assert_eq!(cfg.trainer.dynamic.keiko_tempo, 2.0);
         assert_eq!(cfg.trainer.dynamic.act_catchup, 0.0, "未写的旋钮取 0");
+    }
+
+    /// 自选比赛紧迫度：默认层必须带键，越界应被拒绝
+    #[test]
+    fn free_race_urgency_range_checked() {
+        let text = repo_text();
+        assert!(
+            text.contains("free_race_urgency = 1.0"),
+            "默认层应包含 free_race_urgency"
+        );
+        let bad = text.replace("free_race_urgency = 1.0", "free_race_urgency = -0.5");
+        assert!(MatsuriConfig::parse(&bad, None).is_err(), "负紧迫度应报错");
+        let bad = text.replace("free_race_urgency = 1.0", "free_race_urgency = 11.0");
+        assert!(MatsuriConfig::parse(&bad, None).is_err(), "超 10 应报错");
     }
 
     #[test]

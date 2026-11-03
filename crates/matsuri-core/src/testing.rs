@@ -34,9 +34,17 @@ pub fn sample_game() -> MatsuriGame {
     let root = data_dir();
     Data::init(&root).expect("引擎静态数据初始化失败");
     let cfg = umaai::Config::load_with_overlay_file(&root, ".").expect("载入引擎配置失败");
+    sample_game_with_uma(cfg.sim.uma)
+}
+
+/// 用指定马娘建一局（自选比赛义务区间等按马娘差异的机制测试用；固定主种子 42）
+pub fn sample_game_with_uma(uma_id: u32) -> MatsuriGame {
+    let root = data_dir();
+    Data::init(&root).expect("引擎静态数据初始化失败");
+    let cfg = umaai::Config::load_with_overlay_file(&root, ".").expect("载入引擎配置失败");
     let data = Arc::new(MatsuriData::load(&root).expect("载入剧本数据失败"));
     let mut game = MatsuriGame::newgame(
-        cfg.sim.uma,
+        uma_id,
         &cfg.sim.cards,
         cfg.inherit(),
         cfg.race_grades().expect("赛程等级表加载失败"),

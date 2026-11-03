@@ -43,7 +43,7 @@ pub use game::{
     ResourceView, SCENARIO_START_TURN, ScheduleView, SelfRace, Stage, TrainingPreview, TurnPlan,
     TurnView, URA_START_TURN, UmaView, build_game,
 };
-pub use trainer::MatsuriTrainer;
+pub use trainer::{ActionExplanation, MatsuriTrainer};
 
 /// 诊断日志宏（引擎 `umaai_core::diag!` 的统一入口）
 ///

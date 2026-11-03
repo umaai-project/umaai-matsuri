@@ -358,6 +358,10 @@
 
 - 赛程：各马娘固有目标赛事 + URA 决赛收尾（**URA 回合 72–77**；68–71 为空窗期）；Senior 10 月後半本番
   为剧本最终结算，不是育成结束。
+- **自选比赛义务区间（`freeRaces`，2026-11-06 接线）**：部分马娘在指定区间内需打满 `count` 场
+  **不低于门槛等级**的比赛（`grade=1` 只放 G1 …，更低的等级被挡）；区间结束 +1 回合未达标 =
+  **育成失败（终止 + 跳过终局奖励）**。训练员用 `free_race_urgency` 紧迫度 + `need ≥ left` 硬保底补足；
+  通用额外自由赛（`self_race` 开关）不受影响。详见 §6.5。
 - 合宿期间有目标比赛则合宿延长：**不产生额外回合**，把后续正常回合改标为合宿回合；
   规则是**每年保证 4 个非比赛合宿回合**，比赛 / 强制休息回合不计入，按回合顺延。
 - 合宿产出实测约 **2.59×** 普通回合（964 份报文：普通 n=63 中位 +56 / 合宿 n=12 中位 +145）；
@@ -386,6 +390,7 @@
 |---|---|---|---|---|---|
 | 合宿延长 | 剧本资产 `camp` | 回合边界 | `CampState`（S3） | `<机制测试>` | §4 |
 | 比赛结算（目标 / URA / 自选） | `data/events.json` + `check_points[].race_bonus` | `Race` | `do_race` / `BaseGame::push_race_event`；`scenario_race_bonus`（S4；**204 与卡面赛后同表加算**，见 §4 口径注） | `tests/mechanics.rs` `target_race_reward_applied` / `self_race_reward_applied` / `forced_rest_turn_does_not_race` | §4 |
+| 自选比赛义务区间 | `umaDB.json` `freeRaces`（区间 / 场数 / 等级门槛） | `End → next()` 边界 / `Race` | `game/mod.rs` `free_race_progress` + `game/traits.rs` `next()`（`check_free_race` → `career_failed`）+ `on_simulation_end`；训练员守门⓪ + `value.rs::race_value` 紧迫度 | `free_race_*`（4 个）+ trainer / value 各 1 | §4 / §6.5 |
 | 休息 / 出行 / 治病 | 引擎 `consts.rest_probs` / `is_xiahesu`；`outing` 资产 + `matsuri_outing_1..5` 事件 | `Rest` / `NormalOuting` / `FriendOuting` / `Clinic` | `do_rest` / `do_normal_outing` / `do_friend_outing` / `do_clinic`（S4） | `rest_normal_and_camp_versions` / `outing_actions` | §1 / §6 |
 
 ## 5. 事件
@@ -617,6 +622,7 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
    - 休息：普通档按 `rest_probs` 期望体力 + 演目槽 +1；合宿版 +40 体 / +1 干劲；低于 `rest_vital` 再加权；
    - 普通出行 / 友人出行：出行事件期望值 + 演目槽 / Lv 资源；`friend_outing_early` 时友人出行加分；
    - 比赛：强制回合给保底；自选比赛由 `self_race` 开关控制（默认关），开时按等级事件期望 × 比赛加成估算；
+     `freeRaces` 义务区间另加紧迫度软加分与硬保底（§6.5）；
    - 治疗：生病 / 不擅长时给保底，否则 0。
 5. 策略旋钮全部来自 `MatsuriConfig [trainer]`（见 `data/matsuri_config.toml`）；`value.rs` 内的公式常数
    （失败惩罚 / 闪彩分 / 追加稽古兑现分等）为内部参数，不散落魔法数。
@@ -661,6 +667,12 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
   比赛 / 休息 / 普通出行 / 友人出行入槽时输出 `【演目槽】T{turn} {动作} 入槽 …`（训练原有
   `【演目槽】T{turn} 训练#N 入槽 …` 保留）。
 - **追加稽古未兑现**：回合末仍掷中未消费 → 诊断 `【追加稽古】T{turn} 掷中未兑现（未选择追加稽古训练）`。
+- **手写档「决策解释」模式（2026-11-06）**：`matsuri matsuri --explain`（或 `MATSURI_EXPLAIN=1`）。
+  与 `manual` 档**共用** `matsuri-cli/src/panel.rs` 的完整回合面板（`BoardPanel`），每回合在面板末尾追加
+  「【候选打分】」表（与手写打分同源，`MatsuriTrainer::explain_action`）+「【决策理由】」；
+  教诲分配打印 **top-10 方案分**（120 候选不刷屏）；事件选项打印各选项**期望值**。
+  只打印、不改决策（同 seed 与非 explain 档终局逐位一致）；默认关闭，矩阵 / 基线不受影响。
+  面板与打分表都走 `MatsuriView` + 只读预览，不消耗随机流。
 
 ### 6.4 幸运体质（生病盾，2026-11-06 合并）
 
@@ -677,6 +689,30 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
 - **测试**：`lucky_body_blocks_training_failure_illness` / `training_failure_sets_illness_without_lucky_body` /
   `lucky_body_blocks_event_illness_including_fat` / `lucky_body_blocks_bad_trainer_atomically` /
   `lucky_body_not_consumed_without_illness`。
+
+### 6.5 自选比赛义务区间（freeRaces，2026-11-06 接线）
+
+- **数据语义**（`umaDB.json` `freeRaces`）：`startTurn`/`endTurn` 区间、`count` 需打场数、可选 `grade`
+  等级门槛；**只有部分马娘有**（当前数据 116/272）。区间掩码由引擎载入时按比赛等级表算好
+  （`update_turn_mask`）：**只放行不低于门槛的比赛**——`grade=1` 只放 G1（`*grade <= g`，1=G1 最高），
+  `grade=3` 放 G1–G3，更低的 G4/OP 被挡。区间外 / 无 `freeRaces` 的马娘没有义务。
+- **判定与失败**：`Game::next()` 推进到「区间结束 +1」回合时调 `BaseGame::check_free_race()`；
+  未达标 → `career_failed = true`、diag「【自选比赛】…育成失败（终止）」、`next()` 返回 `false`
+  直接终止；`on_simulation_end` 检测失败标记并**跳过育成终了奖励**（真机口径「育成终止并结算当前评分」）。
+- **可用性**：通用额外自由赛逻辑不变（`self_race` 开关 + `can_self_race()`：turn 13–71 且等级表非 0）；
+  义务区间不额外限制「只能在这里打」，区间外的额外赛也不计入义务场数。
+- **训练员**：
+  - 紧迫度 `urgency = need / left`（`free_race_progress()` = 当前区间剩余需打场数 / 掩码内剩余可赛回合数，
+    封顶 1.0）；`race_value += [trainer].free_race_urgency × urgency × FORCED_RACE_BASE(500)`；
+  - **硬保底**：`need ≥ left`（再不打赢不了）→ 守门⓪ 直接选「比赛」，优先于治病 / 合宿 / 友人截止 /
+    体力危险 / 心情崩坏等其它守门，且**不受 `self_race=false` 限制**（义务补足与「额外多打」分开）；
+  - `self_race=false` 时纯额外自由赛仍不参与比较（`race_value = −∞`）。
+- **验收数字**：100101（无 `freeRaces`）100 局**逐位不变**（均 73155.0）；
+  102102 玉藻（12–28 需 1 场 + 29–48 需 4 场且 ≤G3）100 局 74051.7 → **70876.0（−3175.7）**、
+  ≥LG 30 → 2、**无育成失败**（每局补 5 场义务赛）；seed 62100 冒烟 75460 / US9 → **64686 / US1**。
+  有义务马娘评分下降属预期（回合用于比赛而非训练）。
+- ❓`race_grades` 标准表与真机自由赛格子分布的对齐（尤其 G1/G2 格子）待真机复核；该表同时决定
+  区间掩码与可达性。
 
 ## 7. 随机轴与可复现
 

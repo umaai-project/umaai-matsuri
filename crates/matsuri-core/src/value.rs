@@ -453,16 +453,39 @@ impl<'a> Model<'a> {
         value
     }
 
+    /// 自选比赛义务紧迫度（0–1）：区间剩余需打场数 / 剩余可赛回合数
+    ///
+    /// `1.0` = 再不打赢不了（训练员另有硬保底守门）；不在义务区间 / 已达标 → `0`。
+    fn free_race_urgency(&self) -> f64 {
+        self.game.free_race_progress().map_or(0.0, |(need, left)| {
+            if need >= left {
+                1.0
+            } else {
+                f64::from(need) / f64::from(left.max(1))
+            }
+        })
+    }
+
     /// 比赛估值（强制比赛回合给保底；自选比赛受 `self_race` 开关控制）
+    ///
+    /// 义务自选赛（`freeRaces` 区间）另加紧迫度软加分：
+    /// `free_race_urgency × urgency × 保底分`；`self_race = false` 时只保留义务补足相关价值，
+    /// 纯额外自由赛不参与比较。
     fn race_value(&self) -> f64 {
         let forced = self.game.plan.race;
-        if !forced && !self.cfg.self_race {
+        let urgency = if forced {
+            0.0
+        } else {
+            self.free_race_urgency()
+        };
+        if !forced && !self.cfg.self_race && urgency <= 0.0 {
             return f64::NEG_INFINITY;
         }
         let mut value = self.estimated_race_reward() + self.resource_value(&Action::Race);
         if forced {
             value += FORCED_RACE_BASE;
         }
+        value += self.cfg.free_race_urgency * urgency * FORCED_RACE_BASE;
         value
     }
 
@@ -954,6 +977,28 @@ impl<'a> Model<'a> {
 mod tests {
     use super::*;
     use crate::testing::sample_game;
+
+    /// 义务自选赛参与打分：有 freeRaces 的马娘在区间内 Race 可比较；无义务 + self_race=false 时不参与
+    #[test]
+    fn race_value_uses_free_race_urgency() {
+        let mut game = crate::testing::sample_game_with_uma(102102);
+        game.turn = 47;
+        game.plan = game.derive_plan();
+        let model = Model::new(&game, &game.config.trainer).expect("模型");
+        assert!(
+            model.action_value(&Action::Race).is_finite(),
+            "义务补足时自选赛应参与打分"
+        );
+
+        let mut plain = crate::testing::sample_game();
+        plain.turn = 47;
+        plain.plan = plain.derive_plan();
+        let model = Model::new(&plain, &plain.config.trainer).expect("模型");
+        assert!(
+            model.action_value(&Action::Race).is_infinite(),
+            "无义务 + self_race=false 时自选赛不参与比较"
+        );
+    }
 
     /// 大胃王：体力充足时避开变胖风险；体力见底时吃大份
     #[test]

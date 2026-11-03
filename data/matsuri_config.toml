@@ -48,6 +48,8 @@ act_level_target = 9
 self_race = false
 # 友人外出是否尽早用完（攻略策略；false = 按收益打分）
 friend_outing_early = true
+# 自选比赛（freeRaces 义务区间）补足紧迫度软加分（0 = 关；硬保底不受此开关影响）
+free_race_urgency = 1.0
 # 五维策略权重（速 / 耐 / 力 / 根 / 智；官方评分边际之外的偏好）
 status_weights = [0.6465, 0.9881, 0.8387, 0.3, 2.6217]
 

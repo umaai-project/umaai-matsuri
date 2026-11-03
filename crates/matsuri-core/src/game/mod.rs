@@ -132,6 +132,8 @@ pub struct MatsuriGame {
     pub plan: TurnPlan,
     /// 本回合是否被强制休息事件占用（S6 事件管线设置；合宿计数排除用）
     pub forced_rest: bool,
+    /// 育成失败标记（自选比赛区间未达标 → 终止；终局跳过奖励，2026-11-06 接线）
+    pub career_failed: bool,
     /// 友人出行解锁时获得的「疲劳回复」flag（剧本自持；体力 ≤49 时一次 +15，S6）
     pub fatigue_recovery: bool,
     /// 進捗発表会 / 本番结果（3 场；`End` 阶段结算，S5 落地）
@@ -199,6 +201,7 @@ impl MatsuriGame {
             camp: CampState::default(),
             plan: TurnPlan::default(),
             forced_rest: false,
+            career_failed: false,
             fatigue_recovery: false,
             check_points: [CheckPointResult::NotReached; 3],
             finals_done: false,
@@ -230,6 +233,33 @@ impl MatsuriGame {
     #[must_use]
     pub fn act_level_cap(&self) -> i32 {
         self.data.rules.act_level_max_with_friend
+    }
+
+    /// 当前回合所在「自选比赛义务区间」的达标进度：`(剩余需打场数, 区间内剩余可赛回合数)`
+    ///
+    /// 返回 `None`：不在任何 `freeRaces` 区间 / 该区间已达标 / 该回合被区间等级门槛挡掉
+    /// （载入时按比赛等级表算好的掩码未置位）。
+    ///
+    /// 口径（引擎 `docs/game/game_rules.md` §6.4）：区间结束后的下一回合检查场数，
+    /// 未达标 = 育成失败；等级门槛只放行**不低于**门槛的比赛（`grade=1` 只放 G1）。
+    /// `left` 统计掩码内 ≥ 当前回合的回合数；未来被强制休息等占用不预扣（保守）。
+    pub(crate) fn free_race_progress(&self) -> Option<(u32, u32)> {
+        let free = self
+            .base
+            .uma
+            .free_races
+            .iter()
+            .find(|free| free.mask.contains_turn(self.turn))?;
+        let need = free
+            .count
+            .saturating_sub(self.base.uma.count_free_race(free));
+        if need == 0 {
+            return None;
+        }
+        let left = (self.turn..=free.end_turn as i32)
+            .filter(|turn| free.mask.contains_turn(*turn))
+            .count() as u32;
+        Some((need, left))
     }
 
     /// 普通训练等级上限（剧本资产规则；`train_level` 的夹取来源）
@@ -560,6 +590,79 @@ mod tests {
         game.acts.level = [cap; 5];
         game.add_lowest_act_level(1);
         assert_eq!(game.acts.level, [cap; 5]);
+    }
+
+    /// 自选比赛义务进度：玉藻十字（102102）第二区间 29–48 需 4 场
+    #[test]
+    fn free_race_progress_reports_need_and_left() {
+        let mut game = crate::testing::sample_game_with_uma(102102);
+        game.turn = 29;
+        let (need, left) = game.free_race_progress().expect("T29 应在义务区间内");
+        assert_eq!(need, 4);
+        assert!((1..=20).contains(&left), "剩余可赛回合 {left}");
+        // 在区间掩码内记录一场比赛 → 需求减 1；区间外的比赛不计入
+        let mask_turn = (29..=48)
+            .find(|turn| game.base.uma.free_races[1].mask.contains_turn(*turn))
+            .expect("区间内应有可赛回合");
+        game.base.uma.set_race(mask_turn);
+        assert_eq!(game.free_race_progress().map(|(need, _)| need), Some(3));
+        assert!(
+            game.base.uma.free_races[1].mask.contains_turn(mask_turn),
+            "掩码应命中"
+        );
+    }
+
+    /// 无 freeRaces 的马娘（100101 特别周）：无义务进度，育成不会被终止
+    #[test]
+    fn free_race_progress_none_without_free_races() {
+        let mut game = crate::testing::sample_game();
+        game.turn = 29;
+        assert!(game.free_race_progress().is_none());
+        game.turn = 28;
+        game.stage = Stage::End;
+        assert!(game.next(), "无义务区间的马娘应正常推进");
+        assert!(!game.career_failed);
+    }
+
+    /// 育成失败标记：`on_simulation_end` 跳过终局奖励
+    #[test]
+    fn career_failed_skips_end_reward() {
+        use rand::SeedableRng;
+        use rand::rngs::StdRng;
+
+        let mut game = crate::testing::sample_game_with_uma(102102);
+        let before = game.base.uma.skill_pt;
+        game.career_failed = true;
+        let trainer = crate::MatsuriTrainer::new(crate::MatsuriConfig::default());
+        let mut rng = StdRng::seed_from_u64(1);
+        game.on_simulation_end(&trainer, &mut rng)
+            .expect("终局结算");
+        assert_eq!(game.base.uma.skill_pt, before, "育成失败局不应发放终局奖励");
+    }
+
+    /// 区间未达标：下一回合推进即育成失败（终止），且终局跳过奖励
+    #[test]
+    fn free_race_deadline_failure_terminates_career() {
+        let mut game = crate::testing::sample_game_with_uma(102102);
+        game.turn = 28;
+        game.stage = Stage::End;
+        assert!(!game.next(), "第一区间未达标应在 T29 终止");
+        assert!(game.career_failed);
+        assert_eq!(game.turn, 29, "终止发生在区间结束的下一回合");
+    }
+
+    /// 区间达标：正常推进到下一回合
+    #[test]
+    fn free_race_deadline_met_continues() {
+        let mut game = crate::testing::sample_game_with_uma(102102);
+        let mask_turn = (13..=28)
+            .find(|turn| game.base.uma.free_races[0].mask.contains_turn(*turn))
+            .expect("第一区间应有可赛回合");
+        game.base.uma.set_race(mask_turn);
+        game.turn = 28;
+        game.stage = Stage::End;
+        assert!(game.next(), "第一区间已达标，应继续");
+        assert!(!game.career_failed);
     }
 
     #[test]

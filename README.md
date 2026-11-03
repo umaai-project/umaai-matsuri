@@ -168,6 +168,18 @@
   100 局矩阵（seeds 61444–61543，仓默认局面）**均 73155.0 / min 64851 / max 78080 / ≥LG 24**；
   lab 口径（玉藻 102102 + 卡组 A，seeds 62100–62199）**均 74051.7 / min 61076 / max 79096**（与 lab 冠军留出逐位一致）。
   引擎仓未改（仍 `a8859e0`）；来源 = `Matsuri_Workbench`（lab 实验仓记录 R1–R8）。
+- **自选比赛义务区间接线（2026-11-06）**：按引擎通用规则接 `freeRaces`——部分马娘在指定区间内需打满 N 场
+  **不低于门槛等级**的比赛（`grade=1` 只放 G1，更低的 G4/OP 被挡）；区间结束 +1 回合未达标 = 育成失败
+  （`next()` 终止 + `on_simulation_end` 跳过终局奖励）。训练员新增 `[trainer].free_race_urgency`（默认 1.0）
+  紧迫度软加分 + `need ≥ left` 硬保底守门⓪（不受 `self_race` 限制；`self_race` 收窄为「额外多打」）。
+  四档绿（**139 内联 + 15 L2 + 31 机制 + 1 diag + 7 CLI 内联 + 2 CLI 冒烟 = 195 测例**）；
+  100101 100 局**逐位不变**（均 73155.0）；102102 玉藻 lab 口径 74051.7 → **70876.0（−3175.7）**、无育成失败（预期内）。
+- **手写档「决策解释」模式（2026-11-06，user 拍板「复用 manual 完整面板」）**：`matsuri matsuri --explain`
+  （或 `MATSURI_EXPLAIN=1`）——`matsuri-cli/src/panel.rs` 抽出 manual 的**完整回合面板**（`BoardPanel`），手写档每回合
+  打印面板 + 「【候选打分】」表（与手写打分同源 `explain_action`）+「【决策理由】」；教诲分配 top-10 方案分、
+  事件选项期望值。只打印、不改决策（同 seed 终局 **77538 / LG2、PT 11680 逐位一致**），默认关闭；
+  `manual` 档同步改用共用面板；四档绿 **195 测例**（+核心解释 API、+explain 冒烟）。
+
 
 ## 结构
 
@@ -191,8 +203,10 @@
 | `crates/matsuri-core/src/data.rs` | 剧本资产 schema / 载入 / 校验（`scenario_matsuri.json` 18 节：+ `scenario_events` / `event_extras`；稽古两档 / S5·S6 规则常量） |
 | `crates/matsuri-core/src/config.rs` | 剧本配置段（融合 / 転成预设 + 覆盖层） |
 | `crates/matsuri-core/src/trainer.rs` | 样例训练员 `MatsuriTrainer` |
-| `crates/matsuri-cli/src/main.rs` | 终端前端：bin `matsuri`（跑局；`matsuri` / `random` / `manual` 训练员选择） |
-| `crates/matsuri-cli/src/manual.rs` | 手动核对面板（S8）：状态全部从 `MatsuriView` 取（纯呈现）；育成配置 + 彩色训练明细表（人物着色：彩圈 / 助力黄 / Hint 叹号 / 羁绊；掷中时含研鑽担当的列标题加紫「追加稽古」行）+ 剧本资源与教诲分配结果（含教诲名称；资源行亮黄「可触发追加稽古」）+ 合宿（仅合宿回合）·友人链·赛程 + 五维与上限显示压缩（>1200 减半）+ 动作槽增量 / 助力支撑标记 + 演目槽变化行 + 事件名亮蓝 + Inquire 动作 / 事件选择 |
+| `crates/matsuri-cli/src/main.rs` | 终端前端：bin `matsuri`（跑局；`matsuri` / `random` / `manual` 训练员选择；`--explain` / `MATSURI_EXPLAIN` 开手写档决策解释） |
+| `crates/matsuri-cli/src/panel.rs` | 手写档 / 手动档**共用回合面板** `BoardPanel`（2026-11-06 抽出）：状态全部从 `MatsuriView` 取（纯呈现）；育成配置 + 彩色训练明细表（人物着色：彩圈 / 助力黄 / Hint 叹号 / 羁绊；掷中时含研鑽担当的列标题加紫「追加稽古」行）+ 剧本资源与教诲分配结果 + 合宿·友人链·赛程 + 五维与上限显示压缩（>1200 减半）+ 动作槽增量 / 助力支撑标记 + 演目槽变化行 + 事件名亮蓝；`render(..., scores)` 可追加候选打分表 |
+| `crates/matsuri-cli/src/explain.rs` | 手写档决策解释包装（`--explain`）：复用 `panel.rs` 面板，面板后追加候选打分表（`explain_action` 同源）与决策理由；教诲分配 top-10、事件选项期望值；**只打印不改决策** |
+| `crates/matsuri-cli/src/manual.rs` | 手动核对面板（S8；面板渲染已抽出到 `panel.rs`）：逐决策人机交互（Inquire / 非 TTY 编号输入），教诲分配只支持「保持现状」；事件选项组回显 |
 | `crates/matsuri-cli/src/logging.rs` | stderr 日志器：消费 `[output] log_level`，承接引擎 / 剧本 `diag!` 记录（默认 `info`、`off` 静默） |
 | `crates/matsuri-sim` | 模拟器与基线裁判（骨架） |
 | `crates/matsuri-ai` | 在线决策核心（骨架） |
@@ -220,6 +234,7 @@
 cargo run --release --bin matsuri --            # 样例训练员
 cargo run --release --bin matsuri -- random     # 引擎随机基线（对照用）
 cargo run --release --bin matsuri -- manual     # 手动核对面板（动作 Inquire；Esc 退出，非 TTY 退回编号输入）
+cargo run --release --bin matsuri -- matsuri --explain   # 手写档决策解释：回合面板 + 候选打分 + 决策理由
 # 诊断日志级别见 data/ai_config.toml [output] log_level（默认 info；工作目录覆盖层可设 off 静默）
 
 cargo fmt --all --check

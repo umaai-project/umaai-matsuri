@@ -107,6 +107,15 @@ impl Game for MatsuriGame {
             // 新回合：两条引擎流与自持的策略流一起按 `(master, 新回合)` 重新派生（CRN 配对来源）
             self.base.reset_rule_streams();
             self.reset_strategy_stream();
+            // 自选比赛区间达标判定（引擎通用规则：区间结束 +1 回合检查场数；未达标 = 育成失败）
+            if !self.base.check_free_race() {
+                self.career_failed = true;
+                diag!(
+                    "【自选比赛】T{} 义务区间未达标 → 育成失败（终止）",
+                    self.turn
+                );
+                return false;
+            }
         } else {
             return false;
         }
@@ -460,6 +469,11 @@ impl Game for MatsuriGame {
         _trainer: &T,
         _rng: &mut StdRng,
     ) -> Result<()> {
+        // 育成失败（自选比赛未达标）：按真机口径不发育成终了奖励，直接结算当前状态
+        if self.career_failed {
+            diag!("【终局】育成失败（自选比赛未达标）→ 跳过终局奖励");
+            return Ok(());
+        }
         self.apply_career_end_reward();
         Ok(())
     }

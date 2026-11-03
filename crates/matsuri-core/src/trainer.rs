@@ -116,13 +116,23 @@ impl MatsuriTrainer {
     }
 }
 
-impl Trainer<MatsuriGame> for MatsuriTrainer {
-    fn select_action(
-        &self,
-        game: &MatsuriGame,
-        actions: &[Action],
-        _rng: &mut StdRng,
-    ) -> Result<usize> {
+/// 一次决策的解释（只读；手动核对 / 离线分析用，正常跑局不调用）
+#[derive(Debug, Clone)]
+pub struct ActionExplanation {
+    /// 中选动作下标
+    pub chosen: usize,
+    /// 中选原因（唯一候选 / 守门链 / 打分 / 教诲分配 / 搜索）
+    pub reason: String,
+    /// 全部候选评分 `(下标, 分数)`（按候选顺序；守门链命中时为空）
+    pub candidates: Vec<(usize, f64)>,
+}
+
+impl MatsuriTrainer {
+    /// 决策入口（动作 / 教诲分配共用）：返回 `(中选下标, 原因)`；诊断日志在此输出一次
+    ///
+    /// [`Trainer::select_action`] 与 [`Self::explain_action`] 共用本函数，保证「解释」与
+    /// 实际决策同源（同一模型、同一守门顺序），不会出现两套口径。
+    fn choose_action(&self, game: &MatsuriGame, actions: &[Action]) -> Result<(usize, String)> {
         if actions.is_empty() {
             bail!("候选动作为空，无法选择");
         }
@@ -132,7 +142,7 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
                 game.turn(),
                 actions[0]
             );
-            return Ok(0);
+            return Ok((0, "唯一候选".to_string()));
         }
         // 教诲分配决策点：候选全是分配方案 → 价值矩阵择优（确定性）
         if actions
@@ -168,7 +178,22 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
                     .map(ToString::to_string)
                     .unwrap_or_default()
             );
-            return Ok(best);
+            return Ok((best, format!("教诲分配 值={best_value:.1}")));
+        }
+
+        // 守门 ⓪：自选比赛义务补足（区间未达标 = 育成失败，优先于其它守门）
+        if let Some((need, left)) = game.free_race_progress()
+            && need >= left
+            && let Some(index) = actions.iter().position(|action| *action == Action::Race)
+        {
+            diag!(
+                "【决策】T{} 守门·自选比赛补足（剩{need}场 / 可赛{left}回合）",
+                game.turn()
+            );
+            return Ok((
+                index,
+                format!("守门·自选比赛补足（剩{need}场 / 可赛{left}回合）"),
+            ));
         }
 
         // 守门 ①：生病 / 不擅长且可选治病时优先治病
@@ -176,7 +201,7 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
             && let Some(index) = actions.iter().position(|action| *action == Action::Clinic)
         {
             diag!("【决策】T{} 守门·治病优先（不擅长 / 生病）", game.turn());
-            return Ok(index);
+            return Ok((index, "守门·治病优先".to_string()));
         }
 
         // 守门 ②：合宿禁令（合宿训练回合内休息 / 比赛 = 浪费训练等级 buff，强制不选）
@@ -212,7 +237,7 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
                         .unwrap_or_default(),
                     best_value
                 );
-                return Ok(best);
+                return Ok((best, format!("守门·合宿全练 值={best_value:.1}")));
             }
         }
 
@@ -232,7 +257,10 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
                     remaining_uses,
                     usable_turns
                 );
-                return Ok(index);
+                return Ok((
+                    index,
+                    format!("守门·友人外出截止（剩{remaining_uses}次/可用{usable_turns}回合）"),
+                ));
             }
         }
 
@@ -246,7 +274,10 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
                 game.turn(),
                 game.uma().vital
             );
-            return Ok(index);
+            return Ok((
+                index,
+                format!("守门·体力危险（{}<32）强制休息", game.uma().vital),
+            ));
         }
 
         // 守门 ⑤：心情崩坏（干劲≤2 且体力>50 → 强制出行修心情）
@@ -261,14 +292,14 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
                 .position(|action| *action == Action::FriendOuting)
             {
                 diag!("【决策】T{} 守门·心情崩坏→友人出行", game.turn());
-                return Ok(index);
+                return Ok((index, "守门·心情崩坏→友人出行".to_string()));
             }
             if let Some(index) = actions
                 .iter()
                 .position(|action| *action == Action::NormalOuting)
             {
                 diag!("【决策】T{} 守门·心情崩坏→普通出行", game.turn());
-                return Ok(index);
+                return Ok((index, "守门·心情崩坏→普通出行".to_string()));
             }
         }
 
@@ -295,9 +326,90 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
                 .unwrap_or_default(),
             best_value
         );
-        Ok(best)
+        Ok((best, format!("打分 {best_value:.1}")))
     }
 
+    /// 解释一次动作决策：中选原因 + 全部候选打分（与 [`Trainer::select_action`] 同源）
+    pub fn explain_action(
+        &self,
+        game: &MatsuriGame,
+        actions: &[Action],
+    ) -> Result<ActionExplanation> {
+        let (chosen, reason) = self.choose_action(game, actions)?;
+        let candidates = self.score_actions(game, actions)?;
+        Ok(ActionExplanation {
+            chosen,
+            reason,
+            candidates,
+        })
+    }
+
+    /// 候选动作全量打分（只读；与 `choose_action` 的打分表同源）
+    ///
+    /// 教诲分配候选返回方案分；普通动作返回 `action_value`（NaN / 负无穷原样返回，
+    /// 呈现层自行决定怎么显示）。
+    fn score_actions(&self, game: &MatsuriGame, actions: &[Action]) -> Result<Vec<(usize, f64)>> {
+        let model = Model::new(game, &self.config.trainer)?;
+        if actions
+            .first()
+            .is_some_and(|action| matches!(action, Action::AssignAdvice(_)))
+        {
+            return Ok(actions
+                .iter()
+                .enumerate()
+                .map(|(index, action)| match action {
+                    Action::AssignAdvice(assign) => (index, model.assignment_value(assign)),
+                    _ => (index, f64::NAN),
+                })
+                .collect());
+        }
+        Ok(actions
+            .iter()
+            .enumerate()
+            .map(|(index, action)| (index, model.action_value(action)))
+            .collect())
+    }
+
+    /// 事件选项期望值（与 `select_event_choice` 同源；供手动核对）
+    pub fn explain_event_choice(
+        &self,
+        game: &MatsuriGame,
+        event: &EventData,
+        choices: &[Vec<EventChoice>],
+    ) -> Result<Vec<f64>> {
+        let model = Model::new(game, &self.config.trainer)?;
+        Ok(choices
+            .iter()
+            .enumerate()
+            .map(|(index, group)| model.event_choice_value(event.id, index, group))
+            .collect())
+    }
+
+    /// 旧接口选项期望值（与 `select_choice` 同源；供手动核对）
+    pub fn explain_choice(
+        &self,
+        game: &MatsuriGame,
+        choices: &[Vec<EventChoice>],
+    ) -> Result<Vec<f64>> {
+        let model = Model::new(game, &self.config.trainer)?;
+        Ok(choices
+            .iter()
+            .enumerate()
+            .map(|(index, group)| model.event_choice_value(0, index, group))
+            .collect())
+    }
+}
+
+impl Trainer<MatsuriGame> for MatsuriTrainer {
+    fn select_action(
+        &self,
+        game: &MatsuriGame,
+        actions: &[Action],
+        _rng: &mut StdRng,
+    ) -> Result<usize> {
+        let (index, _) = self.choose_action(game, actions)?;
+        Ok(index)
+    }
     fn select_choice(
         &self,
         game: &MatsuriGame,
@@ -391,5 +503,72 @@ mod tests {
         let trainer = MatsuriTrainer::new(config);
         // 2026-11-03 合并 lab 冠军档后默认值 = 1.7271（见 dev_plan §3）
         assert_eq!(trainer.config().trainer.pt_favor_rate, 1.7271);
+    }
+    /// 解释 API：候选评分与中选同源；守门原因可读；教诲分配 120 候选全有方案分
+    #[test]
+    fn explain_action_reports_candidates_and_reason() {
+        let mut game = crate::testing::sample_game_with_uma(102102);
+        let last = (29..=48)
+            .rev()
+            .find(|turn| game.base.uma.free_races[1].mask.contains_turn(*turn))
+            .expect("第二区间应有可赛回合");
+        game.turn = last;
+        game.plan = game.derive_plan();
+        let trainer = MatsuriTrainer::new(MatsuriConfig::default());
+        let actions = vec![Action::Train(0), Action::Race, Action::Rest];
+        let explain = trainer.explain_action(&game, &actions).expect("解释动作");
+        assert_eq!(explain.chosen, 1, "应命中守门·自选比赛补足");
+        assert!(
+            explain.reason.contains("自选比赛补足"),
+            "原因: {}",
+            explain.reason
+        );
+        assert_eq!(explain.candidates.len(), actions.len());
+        assert!(explain.candidates[1].1.is_finite(), "比赛候选应有分数");
+
+        // 教诲分配：120 个排列全部给出方案分
+        game.turn = 23;
+        game.advice.acquired = true;
+        game.advice.slots = [101, 201, 301, 401, 501];
+        game.advice.fused = [0; 5];
+        let assigns = game.assignment_candidates();
+        let actions: Vec<Action> = assigns
+            .iter()
+            .map(|assign| Action::AssignAdvice(*assign))
+            .collect();
+        let explain = trainer
+            .explain_action(&game, &actions)
+            .expect("解释教诲分配");
+        assert_eq!(explain.candidates.len(), 120);
+        assert!(
+            explain
+                .candidates
+                .iter()
+                .all(|(_, value)| value.is_finite()),
+            "120 个候选都应有方案分"
+        );
+    }
+
+    /// 自选比赛义务补足：临近截止（need ≥ left）时守门直接选比赛
+    #[test]
+    fn trainer_forces_free_race_when_deadline_critical() {
+        let mut game = crate::testing::sample_game_with_uma(102102);
+        let last = (29..=48)
+            .rev()
+            .find(|turn| game.base.uma.free_races[1].mask.contains_turn(*turn))
+            .expect("第二区间应有可赛回合");
+        game.turn = last;
+        game.plan = game.derive_plan();
+        let actions = vec![Action::Train(0), Action::Race, Action::Rest];
+        let trainer = MatsuriTrainer::new(MatsuriConfig::default());
+        let mut rng = StdRng::seed_from_u64(1);
+        let index = trainer
+            .select_action(&game, &actions, &mut rng)
+            .expect("选择动作");
+        assert_eq!(
+            actions[index],
+            Action::Race,
+            "截止前必须补足义务赛（need ≥ left）"
+        );
     }
 }

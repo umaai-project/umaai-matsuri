@@ -8,8 +8,10 @@
 //! （缺省 `matsuri`；可切 `random`——引擎随机基线、`manual`——机制核对面板（人工逐决策）；
 //! 数据根是代码级配置 [`DATA_ROOT`]，不暴露在命令行）
 
+mod explain;
 mod logging;
 mod manual;
+mod panel;
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -46,6 +48,10 @@ fn run() -> Result<()> {
         .nth(1)
         .unwrap_or_else(|| "matsuri".to_string());
 
+    // explain：手写档每回合打印与 manual 共用面板 + 候选打分表（默认关；不改任何数值）
+    let explain = std::env::args().any(|arg| arg == "--explain")
+        || std::env::var("MATSURI_EXPLAIN").is_ok_and(|value| value != "0");
+
     // 配置两份同名不同位：默认层在数据根、覆盖层在当前目录（与引擎约定一致）
     let cfg = Config::load_with_overlay_file(DATA_ROOT, ".").context("载入配置失败")?;
     // 诊断日志：级别来自 `[output] log_level`（默认 info；`off` 关闭，batch / 基线可静音）
@@ -59,7 +65,7 @@ fn run() -> Result<()> {
     let mut out = std::io::stdout();
     // 手动档由面板自持逐回合 / 逐事件信息（Quiet 只出终局块），避免引擎行与面板交错
     let opts = PrintOptions {
-        verbosity: if trainer_name == "manual" {
+        verbosity: if trainer_name == "manual" || explain {
             Verbosity::Quiet
         } else {
             Verbosity::Normal
@@ -98,7 +104,12 @@ fn run() -> Result<()> {
                 search.radical_factor_max = radical;
             }
             let trainer = MatsuriTrainer::new(matsuri_cfg).with_search(search, topk);
-            runner.run_game(game, &trainer, None)?;
+            if explain {
+                let trainer = explain::ExplainTrainer::new(trainer);
+                runner.run_game(game, &trainer, None)?;
+            } else {
+                runner.run_game(game, &trainer, None)?;
+            }
         }
         "random" => {
             runner.run_game(game, &RandomTrainer, None)?;

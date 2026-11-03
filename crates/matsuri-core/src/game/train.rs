@@ -562,7 +562,10 @@ impl MatsuriGame {
     /// 普通训练成功后按参与担当入账演目槽（担当归集；闪彩 +2、其余 +1）
     fn gain_training_gauge(&mut self, train: usize) {
         let gauge_before = self.acts.gauge;
-        let touches = self.base.distribution[train].clone();
+        // 预览 / 解释可能在「分布阶段尚未跑」的构造局面上调用（空分布按无参与处理，避免越界）
+        let Some(touches) = self.base.distribution.get(train).cloned() else {
+            return;
+        };
         for index in touches {
             if index < 0 {
                 continue;
