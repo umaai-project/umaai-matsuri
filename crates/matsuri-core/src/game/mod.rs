@@ -238,9 +238,18 @@ impl MatsuriGame {
     }
 
     /// 注入剧本配置（宿主载入 `matsuri_config.toml` 后调用；未注入时用默认层）
+    ///
+    /// 育成前状态（`[pre]`）也在这里落到局面上：小切是**局外**状态，须在首回合前注入；
+    /// 局内获得切者时由引擎互斥清掉（`gain_qiezhe`），此处不重复判定。
     #[must_use]
     pub fn with_config(mut self, config: crate::MatsuriConfig) -> Self {
         self.config = config;
+        if self.config.pre.xiaoqie && !self.base.uma.flags.qiezhe {
+            self.base.uma.flags.xiaoqie = true;
+        }
+        if self.config.pre.positive_thinking > 0 {
+            self.base.uma.flags.positive_thinking_count = self.config.pre.positive_thinking;
+        }
         self
     }
 
@@ -255,8 +264,9 @@ impl MatsuriGame {
     /// 返回 `None`：不在任何 `freeRaces` 区间 / 该区间已达标 / 该回合被区间等级门槛挡掉
     /// （载入时按比赛等级表算好的掩码未置位）。
     ///
-    /// 口径（引擎 `docs/game/game_rules.md` §6.4）：区间结束后的下一回合检查场数，
-    /// 未达标 = 育成失败；等级门槛只放行**不低于**门槛的比赛（`grade=1` 只放 G1）。
+    /// 口径（2026-11-04 真机修正）：**区间最后一回合的 `End` 判定**场数（引擎默认写在
+    /// 下一回合开始检查，本仓前移至 End）；未达标 = 育成失败；达标 = 触发一次
+    /// 「生涯比赛胜利」奖励事件（吃比赛与剧本赛后加成）。等级门槛只放行**不低于**门槛的比赛。
     /// `left` 统计掩码内 ≥ 当前回合的回合数；未来被强制休息等占用不预扣（保守）。
     pub(crate) fn free_race_progress(&self) -> Option<(u32, u32)> {
         let free = self
@@ -691,18 +701,19 @@ mod tests {
         assert_eq!(game.base.uma.skill_pt, before, "育成失败局不应发放终局奖励");
     }
 
-    /// 区间未达标：下一回合推进即育成失败（终止），且终局跳过奖励
+    /// 区间未达标：在区间最后一回合的 End 判定失败（终止），终局跳过奖励
     #[test]
     fn free_race_deadline_failure_terminates_career() {
         let mut game = crate::testing::sample_game_with_uma(102102);
         game.turn = 28;
         game.stage = Stage::End;
-        assert!(!game.next(), "第一区间未达标应在 T29 终止");
-        assert!(game.career_failed);
-        assert_eq!(game.turn, 29, "终止发生在区间结束的下一回合");
+        game.settle_turn_end().expect("End 结算");
+        assert!(game.career_failed, "T28 End 判定第一区间未达标");
+        assert!(!game.next(), "育成失败后应终止");
+        assert_eq!(game.turn, 28, "终止发生在区间最后一回合");
     }
 
-    /// 区间达标：正常推进到下一回合
+    /// 区间达标：End 入队生涯比赛胜利奖励，随后正常推进到下一回合
     #[test]
     fn free_race_deadline_met_continues() {
         let mut game = crate::testing::sample_game_with_uma(102102);
@@ -712,8 +723,29 @@ mod tests {
         game.base.uma.set_race(mask_turn);
         game.turn = 28;
         game.stage = Stage::End;
-        assert!(game.next(), "第一区间已达标，应继续");
+        let scale = game.race_scale();
+        game.settle_turn_end().expect("End 结算");
         assert!(!game.career_failed);
+        assert_eq!(
+            game.unresolved_events.len(),
+            1,
+            "达标应入队一次生涯比赛胜利事件"
+        );
+        let event = &game.unresolved_events[0];
+        assert_eq!(event.id, 4001, "生涯比赛胜利事件 id");
+        let value = &event.choices[0][0].value;
+        assert_eq!(
+            value.status_pt[0],
+            (5.0 * scale).floor() as i32,
+            "五维吃比赛 / 剧本赛后加成"
+        );
+        assert_eq!(
+            value.status_pt[5],
+            (72.0 * scale).floor() as i32,
+            "SP 同口径"
+        );
+        assert!(game.next(), "第一区间已达标，应继续");
+        assert_eq!(game.turn, 29);
     }
 
     #[test]

@@ -21,8 +21,8 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 use umaai::Config;
 use umaai_core::Data;
-use umaai_core::gamedata::EventChoice;
-use umasim::game::{FriendOutState, Game, Person, SupportCard, Trainer};
+use umaai_core::gamedata::{EventChoice, EventData};
+use umasim::game::{FriendOutState, Game, InheritInfo, Person, SupportCard, Trainer};
 
 /// 5 段友人出行的演目 Lv 期望：每段 Lv+1（三则落点）→ 槽+1（满槽跳过，三则落点）
 fn expected_outing_levels(level: [i32; 5], gauge: [i32; 5], gauge_max: i32) -> [i32; 5] {
@@ -449,7 +449,7 @@ fn roster_and_act_assignment() -> Result<()> {
     Ok(())
 }
 
-/// 人头可用回合：吾妻与第 1 批神驹 turn 2 起、第 2 批需大成功、理事长 / 记者按引擎默认
+/// 人头可用回合：吾妻与第 1 批神驹 turn 2 起、第 2 批需大成功、理事长 turn 1 起、记者 turn 13 起
 #[test]
 fn person_availability_by_turn() -> Result<()> {
     let repo = Repo::load()?;
@@ -477,7 +477,16 @@ fn person_availability_by_turn() -> Result<()> {
                     avail(PersonOrigin::Reporter).iter().all(|ok| !*ok),
                     "记者 turn 13 前不可用"
                 );
-                assert!(avail(PersonOrigin::Yayoi).iter().all(|ok| *ok));
+                assert!(
+                    avail(PersonOrigin::Yayoi).iter().all(|ok| !*ok),
+                    "理事长 turn 0 不出现（2026-11-04 真机修正）"
+                );
+            }
+            1 => {
+                assert!(
+                    avail(PersonOrigin::Yayoi).iter().all(|ok| *ok),
+                    "理事长 turn 1 起可用"
+                );
             }
             2 => {
                 assert!(avail(PersonOrigin::Friend).iter().all(|ok| *ok));
@@ -1277,10 +1286,12 @@ fn dictus_iron_heart_race_bonus_applied() -> Result<()> {
     )?;
     let after = Stats::of(&game);
     for axis in 0..5 {
+        let expect = (5.0 * stats_scale).floor() as i32;
+        let room = (game.uma().five_status_limit[axis] - before.five[axis]).max(0);
         assert_eq!(
             after.five[axis] - before.five[axis],
-            (5.0 * stats_scale).floor() as i32,
-            "T22 生涯赛五维 axis {axis} 应吃铁心 ×2.5"
+            expect.min(room),
+            "T22 生涯赛五维 axis {axis} 应吃铁心 ×2.5（上限附近按夹取后计）"
         );
     }
     assert_eq!(
@@ -1308,10 +1319,12 @@ fn dictus_iron_heart_race_bonus_applied() -> Result<()> {
     )?;
     let after = Stats::of(&game);
     for axis in 0..5 {
+        let expect = (5.0 * stats_scale).floor() as i32;
+        let room = (game.uma().five_status_limit[axis] - before.five[axis]).max(0);
         assert_eq!(
             after.five[axis] - before.five[axis],
-            (5.0 * stats_scale).floor() as i32,
-            "T68 生涯赛五维 axis {axis} 应吃铁心 ×2.5 ×剧本赛后"
+            expect.min(room),
+            "T68 生涯赛五维 axis {axis} 应吃铁心 ×2.5 ×剧本赛后（上限附近按夹取后计）"
         );
     }
     assert_eq!(
@@ -2221,5 +2234,155 @@ fn handwritten_trainer_is_deterministic() -> Result<()> {
         first.uma().skill_pt,
         first.turn().max(0)
     );
+    Ok(())
+}
+
+/// 继承（T30 第二年 / T54 第三年）：零值事件按公式结算属性、PT 与上限
+#[test]
+fn inheritance_settles_stats_pt_and_limit() -> Result<()> {
+    let repo = Repo::load()?;
+    let inherit = InheritInfo {
+        blue_count: [15, 0, 0, 0, 0],
+        extra_count: [0, 0, 0, 0, 0, 1000],
+    };
+    let mut game = MatsuriGame::newgame(
+        repo.cfg.sim.uma,
+        &repo.cfg.sim.cards,
+        inherit,
+        repo.cfg.race_grades()?,
+        Arc::clone(&repo.data),
+    )?;
+    game.set_rule_master(42);
+    let mut rng = StdRng::seed_from_u64(9);
+    for event_id in [4012_u32, 4013] {
+        let event = Data::get()?
+            .events
+            .story_events
+            .iter()
+            .find(|event| event.id == event_id)
+            .cloned()
+            .ok_or_else(|| anyhow!("story_events 缺事件 {event_id}"))?;
+        let speed = game.uma().five_status[0];
+        let limit = game.uma().five_status_limit[0];
+        let pt = game.uma().skill_pt;
+        game.apply_event(&event, 0, &mut rng)?;
+        assert_eq!(
+            game.uma().five_status[0] - speed,
+            90,
+            "{event_id} 速增 = 蓝因子 15 × 6"
+        );
+        assert_eq!(
+            game.uma().five_status_limit[0] - limit,
+            79,
+            "{event_id} 上限 = floor(15 × 5.33)"
+        );
+        let gain = game.uma().skill_pt - pt;
+        assert!(
+            (500..=1500).contains(&gain),
+            "{event_id} PT = 剧本因子 1000 × (0.5 + 0.5 scale) → 500–1500，实际 {gain}"
+        );
+    }
+    println!("继承结算：T30 / T54 速 +90、上限 +79、PT 500–1500");
+    Ok(())
+}
+
+/// 育成前小切：配置开启 → 建局即带小切，评分 PT 项 ×1.04
+#[test]
+fn pre_xiaoqie_flag_and_score_factor() -> Result<()> {
+    let repo = Repo::load()?;
+    let plain = repo.game(repo.cfg.sim.uma)?;
+    let mut cfg = MatsuriConfig::default();
+    cfg.pre.xiaoqie = true;
+    let small = repo.game(repo.cfg.sim.uma)?.with_config(cfg);
+
+    assert!(
+        !plain.uma().flags.xiaoqie && !plain.uma().flags.qiezhe,
+        "默认无小切 / 切者"
+    );
+    assert!(
+        small.uma().flags.xiaoqie && !small.uma().flags.qiezhe,
+        "小切应在建局后带出"
+    );
+
+    // 评分 PT 项 = total_pt × 2.0 × 折算系数（切者 1.1 / 小切 1.04）
+    let pt = plain.uma().total_pt()? as f32;
+    let expect = (pt * 2.0 * 1.04) as i32 - (pt * 2.0) as i32;
+    let diff = small.uma().calc_score()? - plain.uma().calc_score()?;
+    assert_eq!(
+        diff, expect,
+        "小切 PT 项增量应为 total_pt × 2.0 × 0.04（截断）"
+    );
+    println!("育成前小切：标志成立，评分 +{diff}（PT {pt}）");
+    Ok(())
+}
+
+/// 通用切：事件数据 add_flags.qiezhe 接线，切者 / 小切互斥（切者清小切）
+#[test]
+fn qiezhe_event_flag_clears_xiaoqie() -> Result<()> {
+    let repo = Repo::load()?;
+    // 数据层：5007「马娘事件-通用切」带切者档（剧本侧只走数据，不等同引擎样例局的 5% 近似）
+    let real = Data::get()?
+        .events
+        .uma_events
+        .iter()
+        .find(|event| event.id == 5007)
+        .cloned()
+        .ok_or_else(|| anyhow!("uma_events 缺事件 5007"))?;
+    assert!(
+        real.choices
+            .iter()
+            .flatten()
+            .any(|choice| choice.add_flags.as_ref().is_some_and(|flags| flags.qiezhe)),
+        "5007 应有 add_flags.qiezhe 档"
+    );
+
+    let mut cfg = MatsuriConfig::default();
+    cfg.pre.xiaoqie = true;
+    let mut game = repo.game(repo.cfg.sim.uma)?.with_config(cfg);
+    assert!(game.uma().flags.xiaoqie);
+
+    let event = EventData {
+        id: 5007,
+        name: "测试-通用切".to_string(),
+        choices: vec![vec![EventChoice {
+            prob: 100,
+            add_flags: Some(umaai_core::UmaFlags {
+                qiezhe: true,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }]],
+        ..Default::default()
+    };
+    let mut rng = StdRng::seed_from_u64(11);
+    game.apply_event(&event, 0, &mut rng)?;
+    assert!(game.uma().flags.qiezhe, "事件 add_flags 应置切者");
+    assert!(!game.uma().flags.xiaoqie, "获得切者应清掉小切");
+    println!("通用切：数据层 5007 有切者档，事件结算置切者并清小切");
+    Ok(())
+}
+
+/// 育成前心情盾 ×2：抵消两次干劲下降（一次扣减无论几级只消耗 1 层）
+#[test]
+fn pre_motivation_shield_blocks_drops() -> Result<()> {
+    let repo = Repo::load()?;
+    let mut cfg = MatsuriConfig::default();
+    cfg.pre.positive_thinking = 2;
+    let mut game = repo.game(repo.cfg.sim.uma)?.with_config(cfg);
+    assert_eq!(
+        game.uma().flags.positive_thinking_count,
+        2,
+        "建局注入 2 层盾"
+    );
+    let base = game.uma().motivation;
+    game.uma_mut().add_motivation(-1);
+    assert_eq!(game.uma().motivation, base, "第 1 层盾挡住掉干劲");
+    assert_eq!(game.uma().flags.positive_thinking_count, 1);
+    game.uma_mut().add_motivation(-2);
+    assert_eq!(game.uma().motivation, base, "一次扣多级也只消耗 1 层盾");
+    assert_eq!(game.uma().flags.positive_thinking_count, 0);
+    game.uma_mut().add_motivation(-1);
+    assert_eq!(game.uma().motivation, base - 1, "盾用尽后正常掉干劲");
+    println!("育成前心情盾 ×2：挡两次干劲下降，盾尽后正常掉干劲");
     Ok(())
 }

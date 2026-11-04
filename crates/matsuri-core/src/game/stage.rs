@@ -328,8 +328,13 @@ impl MatsuriGame {
                         self.camp.counted
                     );
                 }
-                // 剧本结算：発表会 / 本番 → 合宿结束全演目 Lv+1
+                // 剧本结算：発表会 / 本番 → 合宿结束全演目 Lv+1 → 自选比赛区间判定
                 self.settle_turn_end()?;
+                // End 阶段挂出的事件（自选比赛达标的生涯比赛胜利奖励）在本回合内结算
+                let end_events = std::mem::take(&mut self.unresolved_events);
+                for event in &end_events {
+                    self.run_event(event, trainer, decision, &mut streams.event)?;
+                }
                 // 教诲窗口：先应用融合（配置预设），再把 120 个分配候选交给 Trainer（S7）
                 self.settle_advice_window(trainer, decision)?;
                 // turn 66（Senior 10 月前半行动后）进化技能：只记 hint_level + 1

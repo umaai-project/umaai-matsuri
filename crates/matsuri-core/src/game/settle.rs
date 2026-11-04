@@ -6,6 +6,7 @@
 
 use anyhow::Result;
 use rand::rngs::StdRng;
+use umaai_core::Data;
 use umaai_core::gamedata::ActionValue;
 use umasim::game::{Game, PersonType, Trainer};
 
@@ -32,6 +33,59 @@ impl MatsuriGame {
                 self.turn(),
                 self.acts.level
             );
+        }
+        // 3) 自选比赛义务区间：在区间最后一回合的 End 判定
+        self.settle_free_race_deadline()?;
+        Ok(())
+    }
+
+    /// 自选比赛义务区间判定（**区间最后一回合的 End**，2026-11-04 真机修正）
+    ///
+    /// - 达标：入队「生涯比赛胜利」奖励事件（同目标赛：五维 / PT 吃比赛与剧本赛后加成）；
+    /// - 未达标：置 `career_failed`，`next()` 终止育成（终局跳过奖励）。
+    fn settle_free_race_deadline(&mut self) -> Result<()> {
+        let turn = self.turn();
+        let mut failed = false;
+        let mut met = 0usize;
+        for free in &self.base.uma.free_races {
+            if free.end_turn as i32 != turn {
+                continue;
+            }
+            let won = self.base.uma.count_free_race(free);
+            if won >= free.count {
+                met += 1;
+            } else {
+                failed = true;
+                diag!(
+                    "【自选比赛】T{} 义务区间未达标（需 {} 场，已 {} 场）→ 育成失败（终止）",
+                    turn,
+                    free.count,
+                    won
+                );
+            }
+        }
+        if failed {
+            self.career_failed = true;
+            return Ok(());
+        }
+        if met == 0 {
+            return Ok(());
+        }
+        let data = Data::get()?;
+        let scale = self.race_scale();
+        let pt_rate = self.race_pt_rate();
+        for _ in 0..met {
+            let mut event = data.system_event("race_career")?.clone();
+            event.map_status(|x| (f64::from(x) * scale).floor() as i32);
+            if (pt_rate - 1.0).abs() > f64::EPSILON {
+                let value = &mut event.choices[0][0].value;
+                value.status_pt[5] = (f64::from(value.status_pt[5]) * pt_rate).floor() as i32;
+            }
+            diag!(
+                "【自选比赛】T{} 义务区间达标 → 生涯比赛胜利奖励（scale={scale:.2} pt×{pt_rate:.2}）",
+                turn
+            );
+            self.base.unresolved_events.push(event);
         }
         Ok(())
     }

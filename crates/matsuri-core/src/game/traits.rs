@@ -7,8 +7,8 @@ use crate::trainer::MatsuriTrainer;
 use anyhow::{Result, anyhow};
 use rand::Rng;
 use rand::rngs::StdRng;
-use umaai_core::Ill;
 use umaai_core::gamedata::{ActionValue, EventData};
+use umaai_core::{AttributeArray, Ill};
 use umasim::game::{
     CardTrainingEffect, Game, Person, PersonType, StageId, SupportCard, Trainer,
     TrainingBasicTable, TrainingValueSource, Uma,
@@ -99,6 +99,10 @@ impl Game for MatsuriGame {
     }
 
     fn next(&mut self) -> bool {
+        // 育成失败（自选比赛区间未达标，在区间最后一回合的 End 判定）→ 终止
+        if self.career_failed {
+            return false;
+        }
         if let Some(stage) = self.stage.next() {
             self.stage = stage;
         } else if self.turn < self.max_turn() {
@@ -107,15 +111,6 @@ impl Game for MatsuriGame {
             // 新回合：两条引擎流与自持的策略流一起按 `(master, 新回合)` 重新派生（CRN 配对来源）
             self.base.reset_rule_streams();
             self.reset_strategy_stream();
-            // 自选比赛区间达标判定（引擎通用规则：区间结束 +1 回合检查场数；未达标 = 育成失败）
-            if !self.base.check_free_race() {
-                self.career_failed = true;
-                diag!(
-                    "【自选比赛】T{} 义务区间未达标 → 育成失败（终止）",
-                    self.turn
-                );
-                return false;
-            }
         } else {
             return false;
         }
@@ -261,7 +256,27 @@ impl Game for MatsuriGame {
                 );
             }
         }
-        // ④ 剧本特例：友人出行解锁 + 疲劳回复 flag
+        // ④ 引擎继承特殊结算（4012 第二年 / 4013 第三年）：事件数据为零值，属性、PT 与
+        //    上限由公式结算（蓝因子 × 6 + 剧本因子 × scale；上限 = floor(蓝因子 × 5.33)）。
+        //    引擎把这段写在样例局 BasicGame 的 apply_event 里，剧本侧（BaseGame 底座）需自持。
+        if matches!(event.id, 4012 | 4013) {
+            let value = ActionValue {
+                status_pt: self.base.inherit.inherit(rng),
+                ..Default::default()
+            };
+            let limit = self.base.inherit.inherit_limit(rng);
+            self.uma_mut().add_value(&value);
+            self.uma_mut().five_status_limit.add_eq(&limit);
+            diag!(
+                "【继承】T{} #{} {}｜属性 {:?} 上限 {:?}",
+                self.turn(),
+                event.id,
+                event.name,
+                value.status_pt,
+                limit
+            );
+        }
+        // ⑤ 剧本特例：友人出行解锁 + 疲劳回复 flag
         if event.id == super::event::FRIEND_OUT_EVENT_ID {
             self.base.friend.out_state = umasim::game::FriendOutState::AfterUnlock;
             self.fatigue_recovery = true;
@@ -270,7 +285,7 @@ impl Game for MatsuriGame {
                 self.turn()
             );
         }
-        // ⑤ 事件额外效果（演目 gauge / 解 debuff）
+        // ⑥ 事件额外效果（演目 gauge / 解 debuff）
         self.apply_event_extra(event.id, choice);
         diag!(
             "【事件结算】T{} #{} {} 选项{}｜变化 {}",
@@ -280,7 +295,7 @@ impl Game for MatsuriGame {
             choice,
             before.diff(&self.key_state())
         );
-        // ⑥ 事件记录（S8 手动 / 前端核对）：记录实际到账数值与状态变化
+        // ⑦ 事件记录（S8 手动 / 前端核对）：记录实际到账数值与状态变化
         let mut detail = result
             .as_ref()
             .map(|result| result.value.to_string())
@@ -341,8 +356,8 @@ impl Game for MatsuriGame {
                     && (!person.needs_great_success
                         || self.check_points[1] == CheckPointResult::GreatSuccess)
             }
-            // 理事长 / 记者按引擎基础局默认
-            PersonOrigin::Yayoi => true,
+            // 理事长：本剧本 T1 起才出现（2026-11-04 真机修正；引擎基础局默认 T0 起）
+            PersonOrigin::Yayoi => self.turn() >= 1,
             PersonOrigin::Reporter => self.turn() >= 13,
         }
     }

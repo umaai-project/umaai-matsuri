@@ -11,7 +11,7 @@
 
 | crate | 测试面 | 现状 |
 |---|---|---|
-| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成）+ `tests/diag.rs`（诊断守门） | 内联单测 **147** 个 + L2 数据层 **15** 个 + 机制集成 **32** 个 + 诊断 **1** 个 |
+| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成）+ `tests/diag.rs`（诊断守门） | 内联单测 **147** 个 + L2 数据层 **15** 个 + 机制集成 **36** 个 + 诊断 **1** 个 |
 | `matsuri-sim` | `tests/baseline.rs`（固定种子基线） | 待补 |
 | `matsuri-cli` | 内联（呈现件纯函数）+ `tests/manual_smoke.rs`（手动档管道输入跑满整局 + 面板关键块）+ `tests/explain_smoke.rs`（手写档 `--explain` 跑满整局 + 面板 / 候选表 / 理由标记） | 内联 **7** 个 + 冒烟 **2** 个（manual / explain）；策略档冒烟 / 基线待补 |
 | `matsuri-ai` / `matsuri-tools` | 骨架，暂无 | — |
@@ -68,7 +68,7 @@
 | `keis_miracle_t65_forced_rest` | 凯斯奇迹 T65 仍是目标赛回合但实际强制休息（T64 / T66 无标记） | §1 |
 | `friend_must_be_ssr_azuma` | 仅 SSR 吾妻可建局：R 吾妻 / 其他友人 / 不带友人报错；SSR 吾妻 → Lv 上限 10 | §2.1 / 建局门禁 |
 | `roster_and_act_assignment` | 19 人头名单：前缀同序 / 同 chara 唯一 / 参考卡组卡落位 2-1-1-0-1 / 余额与第 2 批神驹 / link 卡顶替冲突神驹 |
-| `person_availability_by_turn` | 吾妻 / 第 1 批神驹 turn 2、第 2 批需 Classic 大成功、记者 turn 13、理事长恒可用 |
+| `person_availability_by_turn` | 吾妻 / 第 1 批神驹 turn 2、第 2 批需 Classic 大成功、记者 turn 13、**理事长 turn 1 起（T0 不出现）** |
 | `trained_uma_link_replaces_fixed_guest` | 育成马娘本身是 link 角色时，该演目固定神驹换成随机非 link 顶替 |
 | `deck_rules_rejected` | 团队卡 / 同角色两张卡 / 普通卡数量不对 → 建局报错 |
 | `deck_inspection` | 编成自查：参照卡组无禁止项且无警告；缺吾妻 / R 吾妻 / 团队卡 / 重复人物 / 多友人 / 含担当马娘均能报出 |
@@ -95,6 +95,10 @@
 | `unresolved_events_drained_each_turn` | 78 回合每回合 `AfterTrain` / `End` 后无待结算事件泄漏 | §1 |
 | `handwritten_trainer_covers_all_decision_points` | 整局：教诲分配决策恰好 6 次（T2 Begin + 11/23/35/47/59 End）、融合已应用、事件选项决策被调用 | §6 / §6.2 |
 | `handwritten_trainer_is_deterministic` | 同种子同配置两次跑局：五维 / PT / 演目账本 / 発表会结果逐位一致 | §6.2 |
+| `inheritance_settles_stats_pt_and_limit` | 继承（T30 第二年 / T54 第三年）零值事件按公式结算：速 += 蓝因子 15×6 = 90、上限 += floor(15×5.33) = 79、PT ∈ 500–1500（剧本因子 1000） | §5.4 |
+| `pre_xiaoqie_flag_and_score_factor` | 育成前小切：`[pre] xiaoqie = true` → 建局即带小切；评分 PT 项增量 = total_pt × 2.0 × 0.04（截断） | §5.5 |
+| `qiezhe_event_flag_clears_xiaoqie` | 通用切：`5007` 数据带 `add_flags.qiezhe` 档；事件结算置切者并清掉小切（切者优先互斥） | §5.5 |
+| `pre_motivation_shield_blocks_drops` | 育成前心情盾 ×2：挡两次干劲下降；一次扣多级只耗 1 层；盾尽后正常掉干劲 | §5.5 |
 
 ### 3.1 诊断守门（`core/tests/diag.rs`）
 
@@ -149,4 +153,8 @@
 | 2026-11-03 | 合宿延长段事件轴 = 正常回合（U19 结项） | 用户 + Agent | 用户确认：第 2/3 年合宿**延长段**可触发支援卡连续事件等各种事件（**事件轴等同正常回合，仅训练全变演目稽古**）。实现：`random_events_suppressed` 合宿层由「第 2/3 年整个合宿区」收窄为「第 2/3 年**常规窗口**」，延长段回落引擎 `no_event_turns` 基线；新增内联测试 `extended_camp_runs_normal_event_axis`（200 seed 抽样：延长段可抽支援卡连续事件；常规回合仍抑制）。四档绿 **199 测例**（142 内联 + 15 L2 + 32 机制 + 1 diag + 7 CLI 内联 + 2 CLI 冒烟）；基准 seed 61444 无合宿延长 ⇒ 冒烟 **77538 / LG2、PT 11680** 逐位不变；109301 凯斯奇迹 T39–41 目标赛触发 2 年延长，实测 T40 马娘事件 / T41 支援卡连续事件 / T42 全稽古训练正常 | 有（有合宿延长的局事件数量变化；无延长局零差） |
 | 2026-11-03 | 比赛加成改为乘算（支援卡赛后 × 剧本赛后） | 用户 + Agent | 用户确认：発表会 / 本番 `check_point_effect 204` 的 30/100 更可能是**乘算**（×130% / ×200%），floor 位置存疑、先按**一次性 floor**（222–223 更接近游戏实际）。实现 `MatsuriGame::race_scale`：`(100+卡面赛后)/100 × (100+剧本赛后)/100`，结算 `do_race` 与训练员 `value.rs::estimated_race_reward` 共用；新增内联 `race_scale_multiplies_deck_and_scenario_bonus`（本番前 / 成功 ×1.3 / 大成功 ×2.0）。测试配卡 55% × 大成功 2.0 = 3.10：T71 生涯赛 **15/223**（原加算 2.55 → 12/183）。四档绿 **199 测例**（142 内联 + 15 L2 + 32 机制 + 1 diag + 7 CLI 内联 + 2 CLI 冒烟）；冒烟 **77538 / LG2、PT 11680 → 78397 / LG3、PT 11793** | 有（本番后比赛收益：T69/T71 与 URA 决赛；S9 前不建基线） |
 | 2026-11-03 | 狄杜斯「铁心的挑战者」：五维×2.5 / PT×0.46 | 用户 + Agent | 用户实测反推：状态 `31`「铁心的挑战者」对生野狄杜斯 106301 / 106302 生效，出道战后（T12–71）对所有生涯比赛 **五维 ×2.5**（+150%）、**PT ×0.46**（属性多、PT 相对少；与温泉 1063 的 2.7 / 0.45 同型），与卡面赛后**乘算**、在剧本赛后**乘算之前**。实现按马娘 ID 硬编码 `MatsuriGame::special_race_stats_bonus` / `race_pt_rate`：`race_scale = (100+卡面)/100 × 2.5 × (100+剧本)/100`，PT 另乘 0.46；`value.rs::estimated_race_reward` 按同一口径分别缩放面板后再估值。自选赛 / T11 / URA 不生效。View 增 `uma.special_race_stats_bonus` / `special_race_pt_rate`，manual 面板显示「铁心 五维×2.5 / PT×0.46」。新增内联 `dictus_iron_heart_bonus_window_and_kind` + 机制 `dictus_iron_heart_race_bonus_applied`（T11 7/111；T22 19/128；T68/T69/T71 38/256）。四档绿 **199 测例**（142 内联 + 15 L2 + 32 机制 + 1 diag + 7 CLI 内联 + 2 CLI 冒烟）；100101 等其余马娘冒烟不变 **78397 / LG3、PT 11793**；106301 单局探针 79929/LG6、PT 11500（非基线） | 有（狄杜斯生涯赛收益；其他马娘零差） |
+| 2026-11-04 | 理事长出场回合 + 自选比赛区间判定/达标奖励（真机修正） | 用户 + Agent | ①理事长改为 **T1 起出现**（`person_is_available` 的 Yayoi 分支）；②自选比赛区间判定从「结束 +1 回合」前移到**区间最后一回合的 `End`**（`settle_free_race_deadline`）：未达标 → `career_failed` 终止；达标 → **「生涯比赛胜利」奖励事件**（5 / 72 × `race_scale` / `race_pt_rate`），同回合 End 结算、每区间一次；③更新 4 个既有测试（可用回合 / 失败终止 / 达标继续 / 达标奖励）。四档绿 **208 测例**；100101 100 局 **77792.2 → 78124.5**；102102 100 局均 **76406.6**（≥LG 57、`career_failed` 0，每局 T28 / T48 各一次奖励） | README 数字待提交准备；`race_grades` 与真机自由赛格子对齐仍待核 |
+| 2026-11-04 | 局外状态收益专项（小切 / 心情盾×2） | 用户 + Agent | 100101 100 局（61444–61543）对照基线 77792.2：**+小切 78672.0（+879.8，t=251，100/100 局）**——纯评分 PT 项 ×1.04，PT 数量与五维不变；**+心情盾×2 78280.0（+487.8，t=2.11，71/100）**——掉干劲被挡后行为位移，PT 均 +106、五维小幅上移；两者叠加 79168.3（+1376.1，t=5.93，82/100） | 心情盾 t 值边缘，换种子块需复验；均为局外状态专项，不改默认档 |
+| 2026-11-04 | 狄杜斯专项复测（新配置） | 用户 + Agent | 换新因子并接通继承后复测 106301 / 106302（100 局 61444–61543）：106301 均 **82015.7**、PT 11802.9、≥LG 95（旧档同种子 77388.1，**+4627.6** / t=18.9）；106302 均 **82176.9**、PT 11826.5、≥LG 98；两马 `career_failed` 0；冒烟 61444 分别 84252 / LG12、85672 / LG15（旧 79929 / LG6、PT 11500） | 铁心专项，不作普适基线；README 数字待提交准备同步 |
+| 2026-11-04 | 继承 / 切者 / 小切补接 | 用户 + Agent | 查明 T30/T54 继承事件未结算（剧本侧未移植引擎特殊结算 ⇒ `extra_count` 全无效）、切者只有数据层 3% 档、小切无入口；补 4012/4013 结算、`[pre] xiaoqie` 注入与 3 个机制测试；四档绿 **208 测例**（147 内联 + 15 L2 + 36 机制 + 1 diag + 7 CLI 内联 + 2 CLI 冒烟）；冒烟 81567 / LG8、PT 11497；100 局基线 **77792.2 / PT 11003.7** | 小切 / 心情盾默认关（按账号开启）；README 状态待提交准备 |
 | 2026-11-03 | 溢出处理 + 末段稽古兑现旋钮 | 用户 + Agent | 新增 `[trainer.overflow]`（`margin` / `tilt` / `keep`）：按生效上限判定近顶、非近顶轴加权、主属性近顶时保留副属性 / PT；新增 `[trainer.endgame]`（`keiko` / `scarcity` / `level` / `normal_penalty`）：窗口 = 第三年合宿结束后～T71，只作用普通回合，满槽数超过剩余普通回合时优先满槽稽古，URA 72–77 不参与。默认档 `0.02/0.5/0.15` + `250/1.0/80/120`；100 seed discovery 上 106301 +245；200 seed holdout 未复现（三马 −33/+7/−7），定位为行为旋钮。新增 5 个内联测试；四档绿 **204 测例**（147 内联 + 15 L2 + 32 机制 + 1 diag + 7 CLI 内联 + 2 CLI 冒烟）；基准 seed 61444 冒烟不变（matsuri 78397 / LG3、PT 11793；random 27150 / UF6、PT 5153） | 有（部分 seed 的 T64–71 稽古选择位移；S9 前不建基线） |

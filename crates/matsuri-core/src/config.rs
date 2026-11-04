@@ -31,8 +31,23 @@ const YEAR3_TARGETS: [i32; 3] = [801, 901, 1001];
 pub struct MatsuriConfig {
     /// 融合（転成）预设
     pub fusion: FusionConfig,
+    /// 育成前（局外）状态
+    #[serde(default)]
+    pub pre: PreConfig,
     /// 手写训练员策略旋钮（S7；后续扫参）
     pub trainer: TrainerConfig,
+}
+
+/// 育成前（局外）状态
+///
+/// 与引擎 `[sim]` 的种马因子同属**建局前**输入；剧本自持，不进引擎配置。
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PreConfig {
+    /// 小切（勉強家）：技能花费 PT −4%（评分 PT 项 ×1.04）；局内获得切者后失效（默认关）
+    pub xiaoqie: bool,
+    /// 心情盾（ポジティブ思考）次数：抵消 N 次干劲下降（引擎 `positive_thinking_count`）
+    pub positive_thinking: i32,
 }
 
 /// 手写训练员策略旋钮（全部可扫参；默认档 = 攻略 / memo 方向）
@@ -248,6 +263,8 @@ pub struct FusionPair {
 #[serde(deny_unknown_fields)]
 pub struct MatsuriConfigOverlay {
     fusion: Option<FusionOverlay>,
+    /// 育成前状态：给了就**整段替换**
+    pre: Option<PreConfig>,
     /// 训练员段：给了就**整段替换**（不按字段合并，避免半套旋钮交叉污染）
     trainer: Option<TrainerConfig>,
 }
@@ -271,6 +288,9 @@ impl OverlayConfig for MatsuriConfig {
             if let Some(year3) = fusion.year3 {
                 self.fusion.year3 = year3;
             }
+        }
+        if let Some(pre) = overlay.pre {
+            self.pre = pre;
         }
         if let Some(trainer) = overlay.trainer {
             self.trainer = trainer;
@@ -529,6 +549,7 @@ impl Default for MatsuriConfig {
                     },
                 ],
             },
+            pre: PreConfig::default(),
             trainer: TrainerConfig::default(),
         }
     }

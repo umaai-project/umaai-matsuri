@@ -167,7 +167,7 @@
   引擎只看 `PersonType`、剧本只看 `PersonOrigin`，互不反推。
 - **名单布局**：卡组人头（`persons` 前缀与 `deck` 同序，含友人卡）→ 理事长 → 记者 → 编成外神驹
   「第 1 批 5 名固定 + 带吾妻余额 1」→「第 2 批 5 名」。**两批神驹规则上同质**（`PersonOrigin::Guest`），
-  只靠 `avail_turn`（2 / 48）与 `needs_great_success` 区分；理事长 / 记者按引擎基础局默认处理。
+  只靠 `avail_turn`（2 / 48）与 `needs_great_success` 区分；**理事长 T1 起出现（2026-11-04 真机修正，T0 不出现）、记者 T13 起**，其余按引擎基础局默认处理。
 - **担当 ≠ 站位**：`act` 是建局一次性分配结果（link 钉位 → 卡按类型本位 → 外派链 → NPC 每演目 1 人 →
   余额），不随回合变；每回合站位（`distribution`）归 S5。
 - **同 `chara_id` 约束（模拟口径）**：不允许两个不同人头同 `chara_id`（同 chara 只能以
@@ -399,7 +399,7 @@
 |---|---|---|---|---|---|
 | 合宿延长 | 剧本资产 `camp` | 回合边界 | `CampState`（S3） | `<机制测试>` | §4 |
 | 比赛结算（目标 / URA / 自选） | `data/events.json` + `check_points[].race_bonus` | `Race` | `do_race` / `BaseGame::push_race_event`；`race_scale` / `race_pt_rate` / `scenario_race_bonus` / `special_race_stats_bonus`（S4；**204 与卡面赛后按乘算**，铁心五维 ×2.5、PT ×0.46，见 §4 口径注） | `tests/mechanics.rs` `target_race_reward_applied` / `self_race_reward_applied` / `dictus_iron_heart_race_bonus_applied` / `forced_rest_turn_does_not_race` | §4 |
-| 自选比赛义务区间 | `umaDB.json` `freeRaces`（区间 / 场数 / 等级门槛） | `End → next()` 边界 / `Race` | `game/mod.rs` `free_race_progress` + `game/traits.rs` `next()`（`check_free_race` → `career_failed`）+ `on_simulation_end`；训练员守门⓪ + `value.rs::race_value` 紧迫度 | `free_race_*`（4 个）+ trainer / value 各 1 | §4 / §6.5 |
+| 自选比赛义务区间 | `umaDB.json` `freeRaces`（区间 / 场数 / 等级门槛） | `End`（区间末回合）/ `Race` | `game/settle.rs::settle_free_race_deadline`（达标 → 生涯比赛胜利奖励；未达标 → `career_failed`）+ `stage.rs` End 排空 + `game/mod.rs` `free_race_progress`；训练员守门⓪ + `value.rs::race_value` 紧迫度 | `free_race_*`（4 个）+ trainer / value 各 1 | §4 / §6.5 |
 | 休息 / 出行 / 治病 | 引擎 `consts.rest_probs` / `is_xiahesu`；`outing` 资产 + `matsuri_outing_1..5` 事件 | `Rest` / `NormalOuting` / `FriendOuting` / `Clinic` | `do_rest` / `do_normal_outing` / `do_friend_outing` / `do_clinic`（S4） | `rest_normal_and_camp_versions` / `outing_actions` | §1 / §6 |
 
 ## 5. 事件
@@ -503,6 +503,10 @@
 - 剧本侧补：`add_flags/remove_flags`（引擎 `apply_event` 不结，变胖等状态在此生效）、事件羁绊归属、
   剧本事件额外效果（`event_extras`：(event_id, choice) → 最低演目 gauge / 解 debuff，走上限拦截）、
   友人出行解锁特例（`809052004` → `AfterUnlock` + 疲劳回复 flag）。
+- **继承（`4012` 第二年 / `4013` 第三年，2026-11-04 补接）**：两个事件的数据为零值，特殊结算由剧本侧补
+  引擎样例局 `BasicGame` 的同款逻辑——五维 `+= 蓝因子 × 6 + round(剧本因子 × scale)`、
+  PT `+= round(剧本因子[PT] × (0.5 + 0.5 × scale))`、上限 `+= floor(蓝因子 × 5.33)`；
+  `scale` 每场继承抽一次 `[0, 2)`（五维与 PT 共用）。
 - **事件记录（S8）**：事件结算后追加 `EventRecord`（回合 / id / 名称 / 选项 / 实际到账摘要，
   容量 32 滚动），供手动面板 / 前端回显；`MatsuriView.recent_events` 同步（呈现辅助，不参与结算）。
 - **事件 hint 收益**：选项 `hint_level` 统一计入 `total_hints`（引擎 `add_value`），S8 起诊断「变化」与
@@ -541,6 +545,21 @@
 | 友人链 | `friend_events` + `FriendOutState` | `AfterTrain` / `Begin` / `Train` | `train.rs::after_train` / `event.rs` / `action.rs::do_friend_outing` | 内联 + `mechanics.rs` | §5.4 |
 | 追加稽古 | `scenario_events[400015106]` + `event_extras` | `Begin` 预掷 → 训练后 | `advice.rs::roll_kensan` / `train.rs::try_kensan` / `event.rs::trigger_kensan_event` | 内联 | §5.4 |
 | 变胖 | `Ill::FAT` / `rules.fat_recovery_prob` | 回合开始 / 训练 / 休息 / 治病 | `event.rs` / `train.rs::settle_training` / `action.rs::do_rest` | 内联 | §5.4 |
+| 继承 | `ai_config` `blue_count` / `extra_count`（引擎 `InheritInfo`） | `Begin`（T30 / T54 固定事件） | `traits.rs::apply_event` | `mechanics.rs::inheritance_settles_stats_pt_and_limit` | §5.4 |
+
+### 5.5 状态：切者 / 小切 / 心情盾（2026-11-04 接线）
+
+| 状态 | 获得 | 效果 | 实现落点 |
+|---|---|---|---|
+| 切者 | 局内事件 `5007`「马娘事件-通用切」的 3% 档（`add_flags.qiezhe`） | 技能花费 PT −10%，评分 PT 项 ×1.1 | 事件 `add_flags` → `Uma::update_flags` → `UmaFlagsExt::gain_qiezhe`（清小切） |
+| 小切 | 局外（育成前），由 `matsuri_config.toml` `[pre] xiaoqie = true` 注入 | 技能花费 PT −4%，评分 PT 项 ×1.04 | 建局后 `MatsuriGame::with_config` 置 `UmaFlags::xiaoqie` |
+| 心情盾 | 局外（育成前），由 `matsuri_config.toml` `[pre] positive_thinking = N` 注入 | 抵消 N 次干劲下降（一次扣减无论几级只消耗 1 层） | 建局后 `MatsuriGame::with_config` 置 `UmaFlags::positive_thinking_count` |
+
+- 两者互斥（切者优先）；评分按引擎 `Uma::calc_score` 的 PT 项折算（`pt_score_rate` ×2.0 × 系数），
+  不改变 `total_pt` 的 PT 数量口径。
+- 与引擎样例局 `BasicGame` 的差异：样例局不结算事件 `add_flags`，用「5007 + 5% 判定」近似；
+  本仓走事件数据自带 3% 档，**不叠加**该 5%，避免双计。
+- 小切 / 心情盾是局外状态，默认关闭（`[pre]` 全 0）；按自己的种马 / 局外状态开启。
 
 ## 6. 决策点与训练员
 
@@ -724,9 +743,13 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
   等级门槛；**只有部分马娘有**（当前数据 116/272）。区间掩码由引擎载入时按比赛等级表算好
   （`update_turn_mask`）：**只放行不低于门槛的比赛**——`grade=1` 只放 G1（`*grade <= g`，1=G1 最高），
   `grade=3` 放 G1–G3，更低的 G4/OP 被挡。区间外 / 无 `freeRaces` 的马娘没有义务。
-- **判定与失败**：`Game::next()` 推进到「区间结束 +1」回合时调 `BaseGame::check_free_race()`；
-  未达标 → `career_failed = true`、diag「【自选比赛】…育成失败（终止）」、`next()` 返回 `false`
-  直接终止；`on_simulation_end` 检测失败标记并**跳过育成终了奖励**（真机口径「育成终止并结算当前评分」）。
+- **判定时机（2026-11-04 真机修正）**：在**区间最后一回合的 `End`** 判定（`settle.rs::settle_free_race_deadline`），
+  不再等到下一回合开始；未达标 → `career_failed = true`、diag「【自选比赛】…育成失败（终止）」、
+  `next()` 返回 `false` 直接终止；`on_simulation_end` 检测失败标记并**跳过育成终了奖励**
+  （真机口径「育成终止并结算当前评分」）。
+- **达标奖励**：区间达标即触发**一次「生涯比赛胜利」事件**（`system_events.race_career`，面板值 5/72）：
+  五维与 PT 吃 `race_scale`（卡面赛后 × 剧本赛后）与 `race_pt_rate`（铁心等），在**同一回合的 `End`**
+  结算（`stage.rs` End 阶段排空 `unresolved_events`）；每个区间一次，不改变 `freeRaces` 场数统计。
 - **可用性**：通用额外自由赛逻辑不变（`self_race` 开关 + `can_self_race()`：turn 13–71 且等级表非 0）；
   义务区间不额外限制「只能在这里打」，区间外的额外赛也不计入义务场数。
 - **训练员**：
@@ -739,6 +762,9 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
   102102 玉藻（12–28 需 1 场 + 29–48 需 4 场且 ≤G3）100 局 74051.7 → **70876.0（−3175.7）**、
   ≥LG 30 → 2、**无育成失败**（每局补 5 场义务赛）；seed 62100 冒烟 75460 / US9 → **64686 / US1**。
   有义务马娘评分下降属预期（回合用于比赛而非训练）。
+  **2026-11-04 更新（新因子 + 继承 + 本修正后）**：100101 均 **78124.5**（PT 11052.2）；
+  102102 均 **76406.6**（≥LG 57、PT 10979.2、`career_failed` 0；每局 T28 / T48 各入账一次
+  「生涯比赛胜利」奖励），seed 61444 冒烟 **76002**。
 - ❓`race_grades` 标准表与真机自由赛格子分布的对齐（尤其 G1/G2 格子）待真机复核；该表同时决定
   区间掩码与可达性。
 
