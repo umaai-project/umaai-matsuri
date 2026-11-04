@@ -548,13 +548,15 @@ impl FlatSearchGame for MatsuriGame {
         game
     }
 
-    /// 搜索口径 = 官方评分本体（技能 + PT×`pt_score_rate` + 五维查表）
+    /// 搜索口径 = 引擎默认单轴：技能 + PT×`pt_score_rate`×`pt_favor_rate` + 五维查表
     ///
-    /// 内核默认实现会把 PT **再乘一次** `pt_favor_rate`，而本剧本 `pt_score_rate`
-    /// 已是 2.0 —— 沿用等于按 PT×4 排序，与验收指标（终局「评分」）分叉。
-    /// 验收口径就是官方评分，故显式对齐，`pt_favor_rate` 不参与搜索排序。
-    fn search_score(&self, _pt_favor_rate: f64) -> Result<f64> {
-        Ok(self.uma().calc_score()? as f64)
+    /// `pt_favor_rate = 1.0` 即官方评分；生产取 `[trainer].pt_favor_rate`，与手写剪枝
+    /// 的目标函数同口径。引擎默认实现会先乘 `pt_score_rate` 再乘 `pt_favor_rate`，
+    /// 这里显式展开，避免不同调用方对「PT 二次乘算」的理解分叉。
+    fn search_score(&self, pt_favor_rate: f64) -> Result<f64> {
+        let parts = self.uma().score_parts()?;
+        let pt = (parts.pt as f32 * pt_favor_rate as f32) as i32;
+        Ok((parts.skill + pt + parts.five_status.iter().sum::<i32>()) as f64)
     }
 }
 
@@ -580,5 +582,29 @@ mod tests {
         assert_eq!(a.key_state(), b.key_state(), "根动作不应取决于调用方 rng");
         let mut probe = StdRng::seed_from_u64(1);
         assert_eq!(rng1.next_u64(), probe.next_u64(), "调用方 rng 不应被消费");
+    }
+
+    /// 搜索口径：1.0 = 官方评分；PT 偏好越大，PT 项越值钱；失败分支按实际分
+    #[test]
+    fn search_score_uses_pt_favor_knob_and_actual_failed_score() {
+        let mut game = sample_game();
+        let official = f64::from(game.uma().calc_score().expect("官方评分"));
+        assert_eq!(
+            game.search_score(1.0).expect("搜索评分"),
+            official,
+            "pt_favor=1.0 应等于官方评分"
+        );
+        if game.uma().total_pt().expect("PT") > 0 {
+            assert!(
+                game.search_score(2.0).expect("搜索评分") > official,
+                "PT 偏好 > 1 时应放大 PT 项"
+            );
+        }
+        game.career_failed = true;
+        assert_eq!(
+            game.search_score(1.0).expect("失败分支实际分"),
+            official,
+            "失败分支不额外罚，按实际 calc_score"
+        );
     }
 }

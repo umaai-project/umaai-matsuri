@@ -4,7 +4,7 @@
 //! 默认层字段齐全、未知键严格报错；覆盖层同构、字段全 `Option`，段缺失整段沿用。
 //! 根目录由宿主注入，本模块不写死路径。
 //!
-//! 段：融合（転成）预设（默认固定、在线可覆盖一次）、育成前状态（`[pre]`）与手写训练员旋钮（`[trainer]`）。
+//! 段：融合（転成）预设、育成前状态（`[pre]`）、搜索作用面与预算（`[search]`）与手写训练员旋钮（`[trainer]`）。
 
 use std::path::Path;
 
@@ -35,6 +35,39 @@ pub struct MatsuriConfig {
     pub pre: PreConfig,
     /// 手写训练员策略旋钮（全部可扫参）
     pub trainer: TrainerConfig,
+    /// 搜索档作用面（`search_n > 0` 时生效）
+    #[serde(default)]
+    pub search: SearchScopeConfig,
+}
+
+/// 搜索档作用面：预算 + 每一类决策走搜索还是手写
+///
+/// `search_n` 归剧本配置（每候选 rollout 次数，`0` = 手写档）；其余内核参数
+/// （`max_depth` / UCB / 激进度）仍取引擎 `[search]`。候选剪枝宽度不进配置，
+/// 由搜索训练员的常量决定（Train 全量、教诲 16）。
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SearchScopeConfig {
+    /// 每个候选的 rollout 次数（0 = 手写档；测试 1024/2048；生产 8192）
+    pub search_n: usize,
+    /// Train 主动作是否走搜索
+    pub train: bool,
+    /// 教诲分配是否走搜索（120 候选先按手写分剪枝）
+    pub advice: bool,
+    /// 事件选项是否走搜索（应用当前选项后从同 stage 的下一事件继续）
+    pub event: bool,
+}
+
+impl Default for SearchScopeConfig {
+    /// 与仓内默认层 `[search]` 段同值
+    fn default() -> Self {
+        Self {
+            search_n: 0,
+            train: true,
+            advice: true,
+            event: true,
+        }
+    }
 }
 
 /// 育成前（局外）状态
@@ -265,6 +298,8 @@ pub struct MatsuriConfigOverlay {
     pre: Option<PreConfig>,
     /// 训练员段：给了就**整段替换**（不按字段合并，避免半套旋钮交叉污染）
     trainer: Option<TrainerConfig>,
+    /// 搜索作用面：给了就**整段替换**
+    search: Option<SearchScopeConfig>,
 }
 
 /// `fusion` 段的覆盖层（整段替换；配对列表不按元素合并）
@@ -292,6 +327,9 @@ impl OverlayConfig for MatsuriConfig {
         }
         if let Some(trainer) = overlay.trainer {
             self.trainer = trainer;
+        }
+        if let Some(search) = overlay.search {
+            self.search = search;
         }
     }
 
@@ -549,6 +587,7 @@ impl Default for MatsuriConfig {
             },
             pre: PreConfig::default(),
             trainer: TrainerConfig::default(),
+            search: SearchScopeConfig::default(),
         }
     }
 }
@@ -728,6 +767,24 @@ mod tests {
             DynamicConfig::default(),
             "trainer.dynamic 缺省 = 全 0（关闭动态调制，退化成静态打分）"
         );
+    }
+
+    /// 搜索作用面：给了就整段替换；未知键报错
+    #[test]
+    fn search_scope_overlay_and_unknown_key() {
+        let overlay = "[search]\n\
+                       search_n = 1024\n\
+                       train = false\n\
+                       advice = false\n\
+                       event = false\n";
+        let cfg = MatsuriConfig::parse(&repo_text(), Some(overlay)).expect("整段覆盖应可合并");
+        assert_eq!(cfg.search.search_n, 1024);
+        assert!(!cfg.search.train);
+        assert!(!cfg.search.advice);
+        assert!(!cfg.search.event);
+
+        let bad_key = repo_text().replace("[search]", "[search]\nunknown = 1");
+        assert!(MatsuriConfig::parse(&bad_key, None).is_err());
     }
 
     /// 动态权重旋钮越界应被拒绝（扫参硬边界，不静默回退）

@@ -13,6 +13,7 @@
 pub mod config;
 pub mod data;
 pub mod game;
+pub mod search;
 pub mod testing;
 pub mod trainer;
 mod value;
@@ -26,6 +27,7 @@ pub use game::{
     ResourceView, SCENARIO_START_TURN, ScheduleView, SelfRace, Stage, TrainingPreview, TurnPlan,
     TurnView, URA_START_TURN, UmaView, build_game,
 };
+pub use search::{LeafEvaluator, MatsuriSearchTrainer, ScoreLeaf};
 pub use trainer::{ActionExplanation, MatsuriTrainer};
 
 /// 诊断日志宏（引擎 `umaai_core::diag!` 的统一入口）

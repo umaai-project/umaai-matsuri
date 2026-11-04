@@ -573,8 +573,9 @@
 - 非回合决策：伝受分配 / 転成组合 / 出行；中间状态放局面字段。**担当分配不是决策点**（建局 / NPC 加入时的一次性动作）。
 - **教诲分配 / 融合**：融合走配置；分配每窗口 120 排列且全部交 Trainer（T2 Begin 首次也走），见 §6.1 / §6.2。
 - **手写训练员（S7 已落，2026-11-02）**：守门链 + 打分表 + 事件选项期望值策略 + 教诲分配价值矩阵，见 §6.2。
-- 搜索档：是否接 MCTS、预算与配置段待定（M2 另开；引擎无现成 `MctsTrainer`，需剧本仓自建）；
-  当前 `FlatSearchGame::RolloutTrainer` 仍是 `RandomTrainer`，M2 时换手写训练员。
+- 搜索档：`MatsuriSearchTrainer` 包引擎 `FlatSearch`（扁平 MC + UCB + CRN），
+  `matsuri_config [search].search_n` = 每候选 rollout 次数；`train` / `advice` / `event`
+  分开关，见 §6.6。
 
 ### 6.1 教诲分配 / 融合决策方案（2026-10-31 拍板）
 
@@ -768,6 +769,44 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
   「生涯比赛胜利」奖励），seed 61444 冒烟 **76002**。
 - ❓`race_grades` 标准表与真机自由赛格子分布的对齐（尤其 G1/G2 格子）待真机复核；该表同时决定
   区间掩码与可达性。
+
+### 6.6 搜索训练员（FlatSearch 集成层，2026-11-04）
+
+- **形态**：`MatsuriSearchTrainer` 包一层 `FlatSearch<MatsuriGame>`（引擎现成内核：均匀 / UCB
+  分配、CRN 配对种子、并行 rollout），手写 `MatsuriTrainer` 作 fallback 与 rollout 基策；
+  **rollout 基策不带搜索**，防递归。
+- **预算**：`matsuri_config [search].search_n` = **每个候选**的 rollout 次数（引擎口径）；
+  `0` = 手写档。单局验证 1024 / 2048，生产目标 8192；一个决策点总量 = 候选数 × `search_n`
+  （UCB 开时是每候选预算上限，实际按 UCB 动态分配）。
+- **三类作用面**（`[search] train` / `advice` / `event`）：
+  - `train`：全部 `Train` 候选直接 `FlatSearch::search`（ramen 口径，不剪枝）；
+  - `advice`：120 排列先按手写价值矩阵剪到 top-16，再对子集搜索，结果映射回原下标；
+  - `event`：事件不是 `Action`，用 dummy action token 走 `FlatSearch::search_with`，闭包内
+    应用当前选项后，从 `event_queue` 的下一个事件继续（`event_cursor` 留在局面上），
+    再跑后续 stage 到终局。
+- **搜索口径**：`MatsuriGame::search_score(pt_favor_rate)` = 技能 + PT×`pt_score_rate`×`pt_favor_rate`
+  + 五维查表；`pt_favor_rate` 取 `[trainer].pt_favor_rate`，与手写剪枝同一目标函数。
+  失败分支（`career_failed`）按实际 `calc_score`，不加额外罚。
+- **排序与激进度**：中选下标用 `weighted_mean(radical_factor)`（`rank_ratio^rf` 加权）。
+  `radical_factor_max = 0.0` 即普通均值；越大越偏高尾。理想测试（106301 + 小切 + 心情盾×2，
+  seed 61444）Train-only 1024：`radical=1.0` 84209、`radical=0.0` **86711 / LG17**；
+  Train-only 4096 `radical=0.0` **86955 / LG17**。普通马娘 100101（同 pre、Train-only、
+  `radical=0.0`）：手写 82807 / LG10 → 1024 **85095 / LG14** → 4096 **85184 / LG14**；
+  比狄杜斯多涨约 800 分，符合「铁心后五维接近上限、面板分边际小」的预期。当前仓默认引擎值
+  50 只作内核缺省，搜索档实跑前应显式设为 0.0 或扫参；`expected_search_stdev` 只进 UCB
+  探索项，不改排序。
+- **随机流**：与 ramen 一致，`FlatSearch` 每次恰好从调用方决策流取一个 `next_u64`
+  派生 rollout 种子；局面规则流由 `fork_for_rollout(seed)` 按 `(seed, 回合)` 独立派生，
+  搜索不读 / 不改真实局面的规则流。`search_consumes_one_decision_draw` 守门。
+- **日志**：搜索 interval 由 `DiagGuard` 静默，结束后每个决策点一行 `【搜索】` 摘要
+  （候选数 / `search_n` / 中选 / 加权均值 / 耗时）。
+- **叶子估值器**：`LeafEvaluator` trait + `ScoreLeaf` 占位已预留；引擎当前没有截断 leaf hook，
+  `max_depth > 0` 在构造搜索训练员时直接报错；生产 `max_depth = 0`（跑到终局）。
+- **单局验证**（seed 61444，默认档）：手写 81553 / LG8、PT 11490；1024 档 83326 / LG11、
+  PT 11602、90.8 s；2048 档 83519 / LG11、PT 11901、180 s。单局冒烟，不是基线；
+  同种子两次逐位一致由 `tests/search.rs` 守门。
+- **已知口径**：事件搜索应用当前选项后从下一事件继续；同一 stage 内的事件顺序与主路径
+  一致，但搜索分支的后续事件由手写基策选择（不是逐事件再展开）。
 
 ## 7. 随机轴与可复现
 

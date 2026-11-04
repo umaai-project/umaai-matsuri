@@ -32,7 +32,7 @@ fn explain_mode_runs_full_game_with_panels() {
         assert!(
             stdout.contains(marker),
             "缺少 {marker}；stdout 前 600 字：\n{}",
-            &stdout.chars().take(600).collect::<String>()
+            stdout.chars().take(600).collect::<String>()
         );
     }
     // 78 个动作面板 + 6 个教诲分配窗口都应有候选表

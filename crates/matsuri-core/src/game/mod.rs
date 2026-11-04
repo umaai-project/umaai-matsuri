@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use umaai::Config;
-use umaai_core::gamedata::ActionValue;
+use umaai_core::gamedata::{ActionValue, EventData};
 use umaai_core::rng::StrategyRng;
 use umaai_core::{Array5, Data};
 use umasim::game::base::BaseGame;
@@ -159,6 +159,10 @@ pub struct MatsuriGame {
     pub deck_warnings: Vec<DeckWarning>,
     /// 最近事件记录（手动 / 前端核对用；事件结算后追加，容量上限 [`EVENT_LOG_CAPACITY`]）
     pub event_log: Vec<EventRecord>,
+    /// 当前 stage 待结算事件队列（事件搜索从下一事件继续用；正常推进逐项消费）
+    pub event_queue: Vec<EventData>,
+    /// 当前事件队列游标（下标 = 正在决策的事件）
+    pub event_cursor: usize,
     /// 助力支撑剩余次数（0 = 无；演目稽古获得「助力の支え」时重置为规则上限）
     pub assist_support_left: i32,
     /// 本回合研鑽「追加の稽古」是否掷中（`Begin` 用策略流预掷；本回合未点对应训练则作废）
@@ -222,6 +226,8 @@ impl MatsuriGame {
             finals_done: false,
             deck_warnings: Vec::new(),
             event_log: Vec::new(),
+            event_queue: Vec::new(),
+            event_cursor: 0,
             assist_support_left: 0,
             kensan_pending: false,
             train_level_bonus: [0; 5],

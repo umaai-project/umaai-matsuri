@@ -74,7 +74,7 @@ cargo test --workspace --release --offline
 | S7 训练员 | ☑ | 手写训练员（2026-11-02）：pt_favor 目标口径（官方评分 + PT×`pt_favor_rate`，1.0 = 官方评分）+ `MatsuriConfig [trainer]` 旋钮 + 守门链 / 打分表 + 事件选项期望值策略 + 教诲分配（T2 Begin + 5 个 End 窗口，每窗口合并 120 候选）全部走 Trainer；融合仍走配置预设（`fusion_plan` 留「将来交 Trainer」替换点）；落点 `core/src/{trainer,value}.rs`；四档绿（157 测例，整局冒烟 54683 / UB9、PT 9024，同种子两次逐位一致；S9 前不建基线）；**2026-11-06 合并 lab 实验仓成果**：守门链②–⑤ + 满体力闲置惩罚 + 动态权重层 + 落位先验 + 冠军档成默认层（见 §3） |
 | S8 装配与呈现 | ◐ | `core/src/game/{view,diag}.rs` + `cli`（**手动核对面板已落，2026-11-01；育成配置 / 彩色训练明细表 / 剧本资源与教诲 / 演目短名 / Inquire 动作与事件选择 / 教诲分配结果 / T2 闸门与 T2 Begin 教诲生效**；**2026-11-02：View 补全为回合信息完整快照（分节重构）+ diag 诊断接线与埋点已落**；在线外壳 / 训练员选择器待做） |
 | S9 基线、文档与验收 | ☐ | `baselines/` + `docs/` |
-| 扩展：MCTS | ▶ 下一步 | M2 全量搜索；NN 暂不做 |
+| 扩展：搜索（FlatSearch） | ◐ | M2 搜索档已接（`MatsuriSearchTrainer`）：Train / 教诲 / 事件三路、`search_n` 每候选、事件队列续跑、叶估接口；单局 1024/2048 已验证（seed 61444：83326 / PT 11602；83519 / PT 11901）；8192 待机制完全实现后；NN 暂不做 |
 | 优化轨 O0–O4 | ☐ | 按需；方法见引擎 `perf_plan.md` |
 
 ## 3. 决策记录
@@ -231,6 +231,7 @@ cargo test --workspace --release --offline
 | 2026-11-06 | **新增 `[trainer].free_race_urgency` 紧迫度旋钮**：`race_value += k × need/left × 500`（默认 1.0，范围 0–10）；`need ≥ left` 硬保底守门⓪ 恒开、先于其它守门、不受 `self_race` 限制 | 同上；默认档开启 | 有（补足时机 / 比赛回合占用） |
 | 2026-11-04 | **理事长出场回合修正**：本剧本 T0 不出现、T1 起出现（引擎基础局默认 T0 起）；`person_is_available` 的 `PersonOrigin::Yayoi` 改 `turn >= 1` | user 2026-11-04 真机修正 | 有（T0 分布 / 训练参与；100101 基线 +332.3） |
 | 2026-11-04 | **自选比赛区间判定前移到区间末回合 `End` + 达标奖励**：判定不再等下一回合（`check_free_race`），改 `settle_turn_end` → `settle_free_race_deadline`；达标触发一次「生涯比赛胜利」事件（`race_career` 5 / 72 × 比赛 / 剧本加成），同回合 End 结算 | user 2026-11-04「判定应在区间结束的那一回合结束阶段」 | 有（102102 每局 +2 次奖励；均 76406.6、无失败） |
+| 2026-11-04 | **搜索档按 ramen FlatSearch 集成层落地（不自建树 MCTS）**：`MatsuriSearchTrainer` 包 `FlatSearch<MatsuriGame>`；`matsuri_config [search].search_n` 每候选；`train` / `advice` / `event` 分开关（默认全开）；教诲 120 候选剪枝 top-16；事件 dummy token + `search_with`，应用当前选项后从 `event_queue` 下一事件继续；排序 `search_score(pt_favor_rate)`，失败分支按实际分；叶估 `LeafEvaluator` 预留，生产 `max_depth=0`；默认 `search_n=0` 手写零差 | user 2026-11-04 逐项拍板：每候选 8192、事件默认开、教诲扫 16、生产 max_depth=0、先单局 1024/2048 | 有（搜索档新增；seed 61444 单局 1024 → 83326 / PT 11602、90.8 s） |
 
 ## 4. 待决事项
 
@@ -426,9 +427,14 @@ cargo test --workspace --release --offline
   （≥LG 57、`career_failed` 0；每局 T28 / T48 各一次奖励）。
 
 
-- **下一步（2026-11-04）**：进入 **M2 MCTS 搜索**。既有接线：`FlatSearchGame` + 教诲分配 MC（默认关）；
-  前置修复与实现顺序见 [`handoff.md`](../handoff.md) `2–`3（`apply_root_action` 随机流、`search_n` 覆盖、
-  手写档教诲下标隐式契约、搜索基线测试、排序目标函数口径）。
+- **搜索档（2026-11-04）**：M2 按 ramen 的 FlatSearch 集成层落地，不自建树 MCTS。
+  `matsuri_config [search]`：`search_n`（每候选）+ `train` / `advice` / `event` 开关；
+  教诲 120 候选剪枝 top-16；事件用 dummy token + `search_with`，应用当前选项后从
+  `event_queue` 下一事件继续；排序口径 `search_score(pt_favor_rate)`；失败分支按实际分；
+  叶子估值器仅预留 `LeafEvaluator` 接口，生产 `max_depth=0`。
+  单局 1024/2048 已验证；默认 `search_n=0` 保持手写基线。
+- **下一步**：单局 1024/2048 调优（作用面开关 / `radical_factor_max` / 事件续跑口径）→
+  机制完全实现后跑 8192 → S9 基线（只录一次）。
 
 ## 6. 剧本专属实现项（状态）
 

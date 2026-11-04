@@ -10,12 +10,10 @@
 //! - `select_choice`：无事件数据时的通用期望值兜底。
 
 use anyhow::{Result, bail};
-use rand::SeedableRng;
 use rand::rngs::StdRng;
 use umaai_core::Ill;
 use umaai_core::gamedata::{EventChoice, EventData};
 use umasim::game::{Game, Trainer};
-use umasim::search::{FlatSearch, NoTerminal, SearchConfig};
 
 use crate::config::MatsuriConfig;
 use crate::diag;
@@ -26,87 +24,18 @@ use crate::value::Model;
 pub struct MatsuriTrainer {
     /// 剧本配置（融合预设 + 训练员旋钮）
     config: MatsuriConfig,
-    /// 蒙特卡洛搜索配置（引擎 `FlatSearch`：扁平 MC + UCB 动态分配 + CRN）
-    ///
-    /// `None` = 纯手写打分。**rollout 基策必须是 `None`**：否则搜索里的每次 rollout
-    /// 又会在教诲决策点发起搜索，成本按深度指数爆炸。
-    search: Option<SearchConfig>,
-    /// 教诲分配候选的剪枝宽度（24 个互异落位全搜太贵，只搜手写打分最高的前 K 个）
-    search_topk: usize,
 }
 
 impl MatsuriTrainer {
-    /// 用剧本配置构造训练员（不开蒙特卡洛）
+    /// 用剧本配置构造训练员（纯手写，不含任何搜索）
     pub fn new(config: MatsuriConfig) -> Self {
-        Self {
-            config,
-            search: None,
-            search_topk: 4,
-        }
-    }
-
-    /// 打开教诲决策点的蒙特卡洛搜索（`search_n = 0` 视为关闭）
-    #[must_use]
-    pub fn with_search(mut self, search: SearchConfig, topk: usize) -> Self {
-        self.search = (search.search_n > 0).then_some(search);
-        self.search_topk = topk.max(1);
-        self
+        Self { config }
     }
 
     /// 是否需要优先治病（变胖只影响训练速度、每回合 20% 自解，不占动作；不擅长 / 具名病才治）
     fn needs_clinic(game: &MatsuriGame) -> bool {
         let flags = &game.uma().flags;
         flags.bad_trainer || flags.ill.bits() & !Ill::FAT.bits() != 0
-    }
-
-    /// 教诲分配的蒙特卡洛择优（引擎 `FlatSearch`：扁平 MC + UCB + CRN 配对种子）
-    ///
-    /// 手写打分把 24 个互异落位排序后只留前 `search_topk` 个进搜索，每个候选各跑
-    /// `search_n` 次 rollout 到终局；中选口径是搜索的排名加权平均分（`radical_factor`
-    /// 按剩余回合确定性衰减）。返回 `None` = 剪枝后不足 2 个候选，无需搜索。
-    fn search_advice(
-        &self,
-        game: &MatsuriGame,
-        actions: &[Action],
-        scored: &[(f64, usize)],
-        search: &SearchConfig,
-    ) -> Result<Option<(usize, f64)>> {
-        let cand: Vec<Action> = scored
-            .iter()
-            .take(self.search_topk)
-            .map(|&(_, index)| actions[index].clone())
-            .collect();
-        if cand.len() < 2 {
-            return Ok(None);
-        }
-        let searcher = FlatSearch::<MatsuriGame>::new(search.clone())
-            // rollout 基策 = 同一份配置的手写训练员，且**不开搜索**（防递归）
-            .with_rollout_trainer(MatsuriTrainer::new(self.config.clone()))
-            .with_parallel(true);
-        // 搜索流独立派生：不吃决策随机流（决策确定性是 CRN / 回放的契约），
-        // 按 (主种子, 回合) 定值，同一局面重复搜索逐位一致
-        let mut rng = StdRng::seed_from_u64(
-            game.rule_master().unwrap_or(0) ^ (game.turn().max(0) as u64) << 40,
-        );
-        // rollout 里每回合都会打诊断行，几万局下来会淹掉终局块 → 静默
-        // （guard 出块即恢复，本决策点自己的诊断行照打）
-        let (best, value) = {
-            let _quiet = umaai_core::diag::DiagGuard::suppress();
-            let out = searcher.search::<NoTerminal, _>(game, &cand, &mut rng, |_| NoTerminal)?;
-            (
-                out.best_action_idx,
-                out.action_results[out.best_action_idx].weighted_mean(out.radical_factor),
-            )
-        };
-        diag!(
-            "【搜索】T{} 教诲 MC 候选 {} 个 × {} 次 → 中选第 {} 位 值={:.1}",
-            game.turn(),
-            cand.len(),
-            search.search_n,
-            best,
-            value
-        );
-        Ok(Some((scored[best].1, value)))
     }
 }
 
@@ -153,16 +82,9 @@ impl MatsuriTrainer {
                 scored.push((model.assignment_value(assign), index));
             }
             scored.sort_by(|a, b| b.0.total_cmp(&a.0));
-            let (mut best_value, mut best) = scored
+            let (best_value, best) = scored
                 .first()
                 .map_or((f64::NEG_INFINITY, 0), |&(value, index)| (value, index));
-            // 蒙特卡洛：中选口径换成「搜索到的终局期望」，手写分只负责剪枝
-            if let Some(search) = self.search.as_ref()
-                && let Some((index, value)) = self.search_advice(game, actions, &scored, search)?
-            {
-                best = index;
-                best_value = value;
-            }
             diag!(
                 "【决策】T{} 教诲分配 值={:.1} 方案 {}",
                 game.turn(),
@@ -342,7 +264,11 @@ impl MatsuriTrainer {
     ///
     /// 教诲分配候选返回方案分；普通动作返回 `action_value`（NaN / 负无穷原样返回，
     /// 呈现层自行决定怎么显示）。
-    fn score_actions(&self, game: &MatsuriGame, actions: &[Action]) -> Result<Vec<(usize, f64)>> {
+    pub(crate) fn score_actions(
+        &self,
+        game: &MatsuriGame,
+        actions: &[Action],
+    ) -> Result<Vec<(usize, f64)>> {
         let model = Model::new(game, &self.config.trainer)?;
         if actions
             .first()

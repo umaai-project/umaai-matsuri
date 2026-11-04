@@ -46,11 +46,12 @@
 | `crates/matsuri-core/src/game/mod.rs` | 局面 `MatsuriGame` + 资源账本 / 预览 + `build_game` |
 | `crates/matsuri-core/src/game/view.rs` | 回合信息快照 `MatsuriView`（分节：turn / resources / uma / board / schedule / friend / camp）+ `view()` |
 | `crates/matsuri-core/src/game/diag.rs` | 诊断辅助（关键状态快照 / 变化摘要，供 `diag!` 埋点；只读） |
-| `crates/matsuri-core/src/game/stage.rs` | 阶段机 `Stage`（含 `StageId` 投影） |
+| `crates/matsuri-core/src/game/stage.rs` | 阶段机 `Stage`（含 `StageId` 投影）+ 事件队列 `run_event_queue` |
 | `crates/matsuri-core/src/game/action.rs` | `Action` + `Display` + `ActionEnum` + 动作结算入口 |
 | `crates/matsuri-core/src/game/traits.rs` | 契约 impl（`Game` / `TrainingValueSource` / `FlatSearchGame`） |
 | `crates/matsuri-core/src/{data,config}.rs` | 剧本资产 schema / 剧本配置段 |
-| `crates/matsuri-core/src/trainer.rs` | 手写训练员（守门链 + 打分表 + 事件选项 + 教诲分配择优；搜索训练员 M2 另加） |
+| `crates/matsuri-core/src/trainer.rs` | 手写训练员（守门链 + 打分表 + 事件选项 + 教诲分配价值矩阵；rollout 基策） |
+| `crates/matsuri-core/src/search.rs` | FlatSearch 搜索训练员 `MatsuriSearchTrainer`（Train / 教诲 / 事件三路 + 事件队列续跑 + 叶估接口） |
 | `crates/matsuri-core/src/value.rs` | 训练员估值层（官方评分边际 + pt_favor + 动作 / 事件 / 教诲分配折算；私有模块） |
 | `crates/matsuri-core/src/testing.rs` | 测试定位件（仓根 / 数据根） |
 | `crates/matsuri-sim` | 离线模拟：跑一局 / 批量跑局 / 基线裁判 / 测卡；只出 lib |

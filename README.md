@@ -18,12 +18,21 @@
   上层剧本）；演目 gauge / Lv / 稽古两档；教诲（10 种效果 + 転成 + 120 排列分配）；発表会 / 本番 /
   合宿 / URA / 终局奖励；事件链（固定 / 随机 / 合宿抑制 / 友人链 / 追加稽古 / 变胖）；手写训练员
   （守门链 + 打分表 + 事件选项 + 教诲分配择优）；诊断日志 `diag!`。
-- **搜索**：`FlatSearchGame` 已接入，教诲分配可开蒙特卡洛（`MATSURI_SEARCH_N>0`，默认关）；
-  全量 M2 搜索未做。
-- **默认档**：`data/matsuri_config.toml` = 冠军档 `ga-r2`（`pt_favor_rate=1.7271`）。
+- **搜索**：`FlatSearchGame` 集成层已接（`MatsuriSearchTrainer`，引擎扁平 MC + UCB + CRN）；
+  `matsuri_config [search].search_n` = 每候选 rollout 次数（0 = 手写；单局验证 1024/2048；
+  生产 8192），`train` / `advice` / `event` 分开关；教诲 120 候选剪枝到 top-16；
+  事件搜索用事件队列从下一事件续跑；叶子估值器仅预留接口，生产 `max_depth=0`。
+- **搜索单局验证**：seed 61444 手写 **81553 / LG8、PT 11490**；1024 档 **83326 / LG11、PT 11602**（90.8 s）、
+  2048 档 **83519 / LG11、PT 11901**（180 s）。单局冒烟，不是基线。
+- **搜索理想测试**（单 seed，Train-only、`radical=0.0`）：普通 100101 + 小切 / 盾×2
+  手写 **82807 / LG10** → 4096 **85184 / LG14（+2377）**；狄杜斯 106301 → **85384 → 86955**
+  （+1571，铁心后五维近上限，边际更小）。
+- **默认档**：`data/matsuri_config.toml` = 冠军档 `ga-r2`（`pt_favor_rate=1.7271`）；搜索默认关。
 - **基线**：100101 100 局（seeds 61444–61543）均 78124.5 / PT 11052.2；102102（freeRaces）均 76406.6。
-- **验收**：workspace 209 测例；`fmt --check` / `check` / `clippy -D warnings` / `test` 四门绿。
-- **下一步**：S9 基线（只录一次）→ M2 搜索；调参一律换全新种子块。
+- **验收**：workspace **218 测例**（含 1 个 1024 手动档 `#[ignore]`）；`fmt --check` / `check` /
+  `clippy -D warnings` / `test` 四门绿。
+- **下一步**：搜索单局调优（1024/2048 → 8192）+ 引擎 `docs/scenario/perf_plan.md` O0–O4 剖面
+  → S9 基线（只录一次）；调参一律换全新种子块。
 ## 结构
 
 | crate / 文件 | 职责 |
@@ -32,7 +41,7 @@
 | `crates/matsuri-core/src/game/mod.rs` | 局面 `MatsuriGame` + `ActLedger` / `AdviceLedger` 账本 + 演目 gauge / Lv / 発表会 buff 派生 + 训练预览 `TrainingPreview` / 动作资源预览 `ResourcePreview` + `build_game`（含友人卡门禁） |
 | `crates/matsuri-core/src/game/view.rs` | 回合信息快照 `MatsuriView`（分节：turn / resources / uma / board / schedule / friend / camp + 编成警告 / 事件记录）+ `view()` |
 | `crates/matsuri-core/src/game/diag.rs` | 诊断辅助：关键状态快照 / 变化摘要 / 回合类型摘要（供 `diag!` 埋点，只读） |
-| `crates/matsuri-core/src/game/stage.rs` | 阶段机 `Stage`（含 `StageId` 投影）+ 回合结构 `TurnPlan` + 合宿进度 `CampState` |
+| `crates/matsuri-core/src/game/stage.rs` | 阶段机 `Stage`（含 `StageId` 投影）+ 回合结构 `TurnPlan` + 合宿进度 `CampState` + 事件队列 `run_event_queue`（事件搜索续跑） |
 | `crates/matsuri-core/src/game/person.rs` | 剧本人头 `MatsuriPerson` + 来源 `PersonOrigin`（与引擎 `PersonType` 分工见文档） |
 | `crates/matsuri-core/src/game/roster.rs` | 建局人头名单 + 担当分配（link 钉位 / 外派链 / NPC 余额） |
 | `crates/matsuri-core/src/game/deck.rs` | 编成检测：禁止项 / 警告项（`DeckError` / `DeckWarning` / `DeckReport`） |
@@ -44,8 +53,9 @@
 | `crates/matsuri-core/src/game/action.rs` | `Action` + `Display` + `ActionEnum` + 比赛 / 休息 / 出行 / 治病结算入口（含演目槽入账） |
 | `crates/matsuri-core/src/game/traits.rs` | 契约 impl（`Game` / `TrainingValueSource` / `FlatSearchGame`，含分布 / 得意率 / 训练值 / 失败率 / 终局覆写） |
 | `crates/matsuri-core/src/data.rs` | 剧本资产 schema / 载入 / 校验（`scenario_matsuri.json`：`scenario_events` / `event_extras`；稽古两档 / 规则常量） |
-| `crates/matsuri-core/src/config.rs` | 剧本配置段（融合预设 / `[pre]` 育成前状态 / `[trainer]` 旋钮 + 覆盖层） |
-| `crates/matsuri-core/src/trainer.rs` | 手写训练员 `MatsuriTrainer`（守门链 + 打分表 + 教诲分配搜索） |
+| `crates/matsuri-core/src/config.rs` | 剧本配置段（融合预设 / `[pre]` 育成前状态 / `[search]` 作用面与预算 / `[trainer]` 旋钮 + 覆盖层） |
+| `crates/matsuri-core/src/trainer.rs` | 手写训练员 `MatsuriTrainer`（守门链 + 打分表 + 教诲分配价值矩阵 + 事件选项） |
+| `crates/matsuri-core/src/search.rs` | FlatSearch 搜索训练员 `MatsuriSearchTrainer`（Train / 教诲 / 事件三路 + 事件队列续跑 + 叶估接口） |
 | `crates/matsuri-cli/src/main.rs` | 终端前端：bin `matsuri`（跑局；`matsuri` / `random` / `manual` 训练员选择；`--explain` / `MATSURI_EXPLAIN` 开手写档决策解释） |
 | `crates/matsuri-cli/src/panel.rs` | 手写档 / 手动档**共用回合面板** `BoardPanel`：状态全部从 `MatsuriView` 取（纯呈现）；育成配置 + 彩色训练明细表（人物着色：彩圈 / 助力黄 / Hint 叹号 / 羁绊；掷中时含研鑽担当的列标题加紫「追加稽古」行）+ 剧本资源与教诲分配结果 + 合宿·友人链·赛程 + 五维与上限显示压缩（>1200 减半）+ 动作槽增量 / 助力支撑标记 + 演目槽变化行 + 事件名亮蓝；`render(..., scores)` 可追加候选打分表 |
 | `crates/matsuri-cli/src/explain.rs` | 手写档决策解释包装（`--explain`）：复用 `panel.rs` 面板，面板后追加候选打分表（`explain_action` 同源）与决策理由；教诲分配 top-10、事件选项期望值；**只打印不改决策** |

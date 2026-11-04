@@ -53,10 +53,11 @@ race_grades = "standard"
 # ---------- search ----------
 
 [search]
-# 每个动作搜索次数（剧本仓默认 0 = 关；调参用 MATSURI_SEARCH_N 或本键）
+# 每个候选 rollout 次数：剧本仓实际读 `matsuri_config [search].search_n`；
+# 本键保留为引擎 SearchConfig 必填字段，CLI 不再把它当默认来源。
 search_n = 0
 
-# 最大搜索深度（0 = 搜到终局；> 0 需剧本提供 leaf 估值器）
+# 最大搜索深度（生产 0 = 搜到终局；> 0 需引擎侧 leaf 估值 hook，本仓仅预留接口）
 max_depth = 0
 
 # 激进度因子上限
@@ -77,7 +78,8 @@ expected_search_stdev = 2200.0
 # 是否按 rollout 序号保留有序原始分（仅教师数据采集用）
 record_ordered_rollouts = false
 
-# PT 偏好折算率（搜索排序口径；1.0 = 不偏 PT，2.0 = 既有定档）
+# PT 偏好折算率（搜索排序口径）；剧本搜索档会覆盖为 `[trainer].pt_favor_rate`，
+# 保持与手写剪枝同一目标函数。1.0 = 不偏 PT。
 pt_favor_rate = 2.0
 
 # ---------- record ----------

@@ -17,7 +17,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow};
-use matsuri_core::{MatsuriConfig, MatsuriData, MatsuriTrainer, build_game};
+use matsuri_core::{MatsuriConfig, MatsuriData, MatsuriSearchTrainer, MatsuriTrainer, build_game};
 use umaai::Config;
 use umaai::runner::Runner;
 use umaai_cli::frontend::{PrintFrontend, PrintOptions, Verbosity};
@@ -75,7 +75,7 @@ fn run() -> Result<()> {
     logging::init_logger(&cfg.output.log_level).context("初始化日志器失败")?;
     Data::init(DATA_ROOT)?;
     let data = Arc::new(MatsuriData::load(DATA_ROOT).context("载入剧本数据失败")?);
-    let matsuri_cfg =
+    let mut matsuri_cfg =
         MatsuriConfig::load_with_overlay_file(DATA_ROOT, ".").context("载入剧本配置失败")?;
 
     let consts = &Data::get()?.consts;
@@ -100,25 +100,33 @@ fn run() -> Result<()> {
     let mut runner = Runner::new(&cfg, &mut fe)?;
     match trainer_name.as_str() {
         "matsuri" => {
-            // 蒙特卡洛（引擎 FlatSearch）默认关：配置层 `[search] search_n` 是唯一默认来源
-            // （本仓 data/ai_config.toml 置 0），环境变量只做显式覆盖、非法值直接报错。
-            // 搜索成本 = 决策点数 × 剪枝宽度 × search_n 局终局 rollout，跑 100 局矩阵不现实。
+            // 搜索预算归剧本配置 `[search].search_n`（每候选 rollout 次数）；
+            // 引擎 `[search]` 只提供内核参数（UCB / 激进度 / max_depth）。
             let mut search = cfg.search.clone();
-            if let Some(n) = env_parse::<usize>("MATSURI_SEARCH_N")? {
-                search.search_n = n;
-            }
-            let topk = env_parse::<usize>("MATSURI_SEARCH_TOPK")?.unwrap_or(4);
-            // 激进度：内核定档 50 会把排序压到 rollout 分数的高尾，教诲只有 6 个决策点、
-            // 每点几十万次 rollout 的噪声下等于放大方差；可扫参，缺省沿用配置层
+            let search_n =
+                env_parse::<usize>("MATSURI_SEARCH_N")?.unwrap_or(matsuri_cfg.search.search_n);
+            matsuri_cfg.search.search_n = search_n;
+            // 激进度：内核定档 50 偏高尾；可扫参，缺省沿用引擎配置层
             if let Some(radical) = env_parse::<f64>("MATSURI_SEARCH_RADICAL")? {
                 search.radical_factor_max = radical;
             }
-            let trainer = MatsuriTrainer::new(matsuri_cfg).with_search(search, topk);
-            if explain {
-                let trainer = explain::ExplainTrainer::new(trainer);
+            if search_n > 0 {
+                // 搜索档暂不支持 explain 面板（面板与候选表绑定手写打分同源）
+                if explain {
+                    return Err(anyhow!(
+                        "搜索档暂不支持 --explain（search_n={search_n} > 0）"
+                    ));
+                }
+                let trainer = MatsuriSearchTrainer::new(matsuri_cfg, search)?;
                 runner.run_game(game, &trainer, None)?;
             } else {
-                runner.run_game(game, &trainer, None)?;
+                let trainer = MatsuriTrainer::new(matsuri_cfg);
+                if explain {
+                    let trainer = explain::ExplainTrainer::new(trainer);
+                    runner.run_game(game, &trainer, None)?;
+                } else {
+                    runner.run_game(game, &trainer, None)?;
+                }
             }
         }
         "random" => {

@@ -8,7 +8,8 @@
 
 use anyhow::{Result, anyhow};
 use rand::rngs::StdRng;
-use umaai_core::rng::{StrategyRng, StreamTag, derive_seed};
+use umaai_core::gamedata::EventData;
+use umaai_core::rng::{EventRng, StrategyRng, StreamTag, derive_seed};
 use umasim::game::base::RuleStreams;
 use umasim::game::{Game, StageId, Trainer};
 
@@ -276,9 +277,7 @@ impl MatsuriGame {
                 let mut events = self.generate_events(&mut streams.event);
                 self.append_begin_friend_event(&mut events);
                 self.queue_after_train_events();
-                for event in &events {
-                    self.run_event(event, trainer, decision, &mut streams.event)?;
-                }
+                self.run_event_queue(events, trainer, decision, &mut streams.event)?;
                 // turn 2：NPC / 友人加入（本回合起可用）后立即授予 5 个基础教诲；
                 // 教诲效果须从本回合的分布 / 训练起生效（memo §4）。
                 if self.base.turn == crate::SCENARIO_START_TURN {
@@ -310,9 +309,7 @@ impl MatsuriGame {
                 // 本回合动作与训练后处理挂出的事件统一在这里结算：
                 // 比赛奖励 / 出行 / 红点 / 友人点击 / 加练 / 失败事件等。
                 let after_events = std::mem::take(&mut self.unresolved_events);
-                for event in &after_events {
-                    self.run_event(event, trainer, decision, &mut streams.event)?;
-                }
+                self.run_event_queue(after_events, trainer, decision, &mut streams.event)?;
             }
             Stage::End => {
                 // 合宿计数：比赛 / 强制休息回合不计入，计满窗口长度后本次合宿结束。
@@ -332,9 +329,7 @@ impl MatsuriGame {
                 self.settle_turn_end()?;
                 // End 阶段挂出的事件（自选比赛达标的生涯比赛胜利奖励）在本回合内结算
                 let end_events = std::mem::take(&mut self.unresolved_events);
-                for event in &end_events {
-                    self.run_event(event, trainer, decision, &mut streams.event)?;
-                }
+                self.run_event_queue(end_events, trainer, decision, &mut streams.event)?;
                 // 教诲窗口：先应用融合（配置预设），再把 120 个分配候选交给 Trainer
                 self.settle_advice_window(trainer, decision)?;
                 // turn 66（Senior 10 月前半行动后）进化技能：只记 hint_level + 1
@@ -349,6 +344,29 @@ impl MatsuriGame {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// 逐项结算一批事件；队列与游标留在局面上
+    ///
+    /// 事件搜索的 fork 会带着 `event_queue` / `event_cursor` 克隆，应用当前选项后
+    /// 从下一个事件继续，避免「应用后直接跳到下一 stage、漏掉同 stage 剩余事件」。
+    pub(crate) fn run_event_queue<T: Trainer<Self>>(
+        &mut self,
+        events: Vec<EventData>,
+        trainer: &T,
+        decision: &mut StdRng,
+        event_rng: &mut EventRng,
+    ) -> Result<()> {
+        self.event_queue = events;
+        self.event_cursor = 0;
+        while self.event_cursor < self.event_queue.len() {
+            let event = self.event_queue[self.event_cursor].clone();
+            self.run_event(&event, trainer, decision, event_rng)?;
+            self.event_cursor += 1;
+        }
+        self.event_queue.clear();
+        self.event_cursor = 0;
         Ok(())
     }
 }
