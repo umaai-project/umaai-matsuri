@@ -1,15 +1,8 @@
-//! 手动训练员（S8：机制核对面板）
+//! 手写档 / 手动档共用的「回合面板」
 //!
-//! 用途：机制核对时由人逐决策选择。每次动作决策前打印完整面板：回合结构 / 数值与状态 /
-//! 剧本资源与教诲（advice）分配（演目槽 · Lv · 教诲→転成 · 担当人物）/ 彩色训练明细表
-//! （每训练一列，格内列出该位置全部人头：短名、未满 100 的羁绊、Hint 亮黄叹号；友人绿 /
-//! 彩圈卡亮绿 / 普通支援卡白 / NPC 灰）/ 合宿·友人链·赛程 / 动作候选（成功收益预览、失败率）。
-//! 事件选择时打印选项组与各分支数值；动作选择在交互终端用 Inquire 列表，非 TTY 退回编号输入。
-//!
-//! **本模块 = 手写档 / 手动档共用的「回合面板」**（2026-11-06 抽出）：`BoardPanel::render` 打印
-//! 回合状态 + 剧本资源 + 训练明细 + 动作候选；手写档 explain 模式在面板后追加候选打分表。
-//! 数据源纪律不变：状态一律从 `MatsuriGame::view()` 取，本文件只做呈现；`game` 仅用于
-//! 只读预览（`preview_training` / `preview_action_resources`）与开局育成配置。
+//! `BoardPanel::render` 打印回合状态 / 剧本资源 / 训练明细 / 动作候选；手写档 explain 模式
+//! 在面板后追加候选打分表。数据源纪律：状态一律从 `MatsuriGame::view()` 取，本文件只做呈现；
+//! `game` 仅用于只读预览（`preview_training` / `preview_action_resources`）与开局育成配置。
 //!
 //! 交互依赖 Inquire（仅终端）；颜色与表格复用 umaai-cli 呈现原语（term 三重门禁：非 TTY /
 //! NO_COLOR 自动退化纯文本）。本模式下引擎侧 PrintFrontend 静默（Quiet），面板是唯一信息源。
@@ -24,6 +17,7 @@ use matsuri_core::game::{Action, MatsuriGame, MatsuriView, MatsuriYear, PersonOr
 use umaai_cli::render::table::Grid;
 use umaai_cli::render::term;
 use umaai_core::Data;
+use umaai_core::gamedata::EventChoice;
 use umasim::game::{FriendOutState, Game};
 
 /// 训练 / 五维轴名（简称）
@@ -377,6 +371,44 @@ pub(crate) fn choice_result_name(result: i32) -> &'static str {
     }
 }
 
+/// 单组事件选项标签（组内各结果拼成一行）
+pub(crate) fn choice_group_label(group: &[EventChoice]) -> String {
+    if group.is_empty() {
+        return "（空组）".to_string();
+    }
+    let mut out = String::new();
+    for choice in group {
+        let _ = write!(
+            out,
+            "  {}%{}",
+            if choice.prob == 0 { 100 } else { choice.prob },
+            if choice.result != 0 {
+                format!("[{}]", choice_result_name(choice.result))
+            } else {
+                String::new()
+            }
+        );
+        let value = choice.value.to_string();
+        if !value.is_empty() {
+            let _ = write!(out, " {value}");
+        }
+        if let Some(extra) = &choice.extra_status {
+            let _ = write!(out, " 额外[{extra}]");
+        }
+        if let Some(flags) = &choice.add_flags
+            && !flags.to_string().is_empty()
+        {
+            let _ = write!(out, " 状态+[{}]", flags);
+        }
+        if let Some(flags) = &choice.remove_flags
+            && !flags.to_string().is_empty()
+        {
+            let _ = write!(out, " 状态-[{}]", flags);
+        }
+    }
+    out.trim_start().to_string()
+}
+
 /// 友人出行状态名
 fn out_state_name(state: FriendOutState) -> &'static str {
     match state {
@@ -415,7 +447,6 @@ fn stage_name(stage: u64) -> &'static str {
     }
 }
 
-/// 交互终端（stdin / stdout 都是 TTY）
 /// 动作的资源侧后缀（演目槽增减 / 排练清槽）；无资源变化时为空
 fn gauge_suffix(game: &MatsuriGame, action: &Action, color: bool) -> String {
     let preview = game.preview_action_resources(action);
@@ -843,7 +874,13 @@ impl BoardPanel {
     }
 
     /// 教诲结果：首次授予 / 転成 / 改派窗口后的下一次面板列出分配结果（其后紧跟剧本资源刷新）
-    fn write_advice_window(&self, view: &MatsuriView, out: &mut String, color: bool) {
+    fn write_advice_window(
+        &self,
+        view: &MatsuriView,
+        game: &MatsuriGame,
+        out: &mut String,
+        color: bool,
+    ) {
         let state = (view.resources.advice_slots, view.resources.advice_fused);
         let prev_state = self.last_advice.get();
         let prev_window = self.last_advice_window.get();
@@ -862,9 +899,14 @@ impl BoardPanel {
             None
         };
         if let Some(turn) = window {
-            let kind = match turn {
-                2 => "首次传授",
-                23 | 47 => "転成",
+            let window_index = game
+                .data
+                .advice_windows
+                .iter()
+                .position(|item| *item == turn);
+            let kind = match window_index {
+                Some(0) => "首次传授",
+                Some(index) if game.is_fusion_window(index) => "転成",
                 _ => "改派·保持",
             };
             let parts: Vec<String> = (0..5)
@@ -1132,12 +1174,13 @@ impl BoardPanel {
         let out_used = friend.out_used.iter().filter(|used| **used).count();
         let next_step = friend.next_step.map_or(0, |step| step + 1);
         let next_event = friend
-            .next_step
-            .and_then(|step| {
+            .next_event_id
+            .and_then(|id| {
                 Data::get().ok().and_then(|data| {
                     data.events
                         .friend_events
-                        .get(&(step + 1).to_string())
+                        .values()
+                        .find(|event| event.id == id)
                         .map(|event| {
                             format!(
                                 "（#{} {}）",
@@ -1381,7 +1424,7 @@ impl BoardPanel {
         self.write_new_events(&view, &mut out);
         self.write_delta(&view, &mut out, color);
         self.write_uma(&view, &mut out, color);
-        self.write_advice_window(&view, &mut out, color);
+        self.write_advice_window(&view, game, &mut out, color);
         self.write_resources(&view, &mut out, color);
         self.write_training(&view, &mut out, color);
         self.write_context(&view, &mut out, color);

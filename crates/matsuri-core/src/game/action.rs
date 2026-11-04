@@ -225,11 +225,7 @@ impl MatsuriGame {
         let add_level = self
             .outing_add_level(card_id, step)
             .ok_or_else(|| anyhow!("出行资产缺行：card_id={card_id}, story_step={}", step + 1))?;
-        self.base.friend.out_used[step] = true;
-        self.add_lowest_act_level(add_level);
-        self.gain_lowest_act_gauge(self.data.rules.act_gauge_gain.other);
-        self.diag_gauge_gain(&format!("友人出行第{}段", step + 1), &before.gauge);
-        // 本段真实卡面事件（吾妻 809052011–015，memo 基础值）
+        // 先完成全部校验，再写状态：缺行时不留下「已用一段 / 已加 Lv」的半态
         let key = (step + 1).to_string();
         let event = Data::get()?
             .events
@@ -237,6 +233,10 @@ impl MatsuriGame {
             .get(&key)
             .cloned()
             .ok_or_else(|| anyhow!("友人出行段事件缺行: friend_events[{key}]"))?;
+        self.base.friend.out_used[step] = true;
+        self.add_lowest_act_level(add_level);
+        self.gain_lowest_act_gauge(self.data.rules.act_gauge_gain.other);
+        self.diag_gauge_gain(&format!("友人出行第{}段", step + 1), &before.gauge);
         diag!(
             "【动作】T{} 友人出行 第{}段 演出目Lv+{} 事件#{}（已用 {}/5 段）",
             self.turn(),

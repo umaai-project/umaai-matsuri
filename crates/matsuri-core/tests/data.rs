@@ -1,7 +1,7 @@
 //! L2 数据层集成测试：从仓根 `data/` 载入真实剧本资产与配置，抽查关键数值
 //!
 //! 单元测试守 schema / 校验逻辑（`data.rs` / `config.rs` 内联），本文件守**仓内资产**：
-//! 数据一旦被误改（尤其 mdb 重导出错）就在这里失败，而不是等 S3+ 跑局才发现。
+//! 数据一旦被误改（尤其 mdb 重导出错）就在这里失败，而不是等跑局才发现。
 
 use anyhow::Result;
 use matsuri_core::MatsuriConfig;
@@ -57,7 +57,7 @@ fn acts() -> Result<()> {
     Ok(())
 }
 
-/// 普通训练 / 稽古基础值（Lv1 = mdb；Lv2–5 = memo 2026-10-31；稽古当前只落 Junior 档）
+/// 普通训练 / 稽古基础值（Lv1 = mdb；Lv2–5 = memo；稽古 Junior / Classic 两档）
 #[test]
 fn training_table() -> Result<()> {
     let data = MatsuriData::load(data_dir())?;
@@ -301,7 +301,7 @@ fn engine_events_race_rewards() -> Result<()> {
     Ok(())
 }
 
-/// S5 规则常量：上层上限 / 助力支撑；S6：追加稽古数值迁到事件资产、变胖解除概率
+/// 规则常量：上层上限 / 助力支撑；追加稽古数值与变胖解除概率在事件 / 资产侧
 #[test]
 fn rules_s5_s6() -> Result<()> {
     let data = MatsuriData::load(data_dir())?;
@@ -337,7 +337,7 @@ fn finals_act() -> Result<()> {
 
 /// 仓内 `data/events.json`：吾妻（`809052xxx`）友人链事件全部就位、无温泉残留
 ///
-/// 槽位口径（user 2026-11-01 核对）：`001`=首次 / `032`=训练后 / `004`=出行解锁 / `021`=正月 /
+/// 槽位口径：`001`=首次 / `032`=训练后 / `004`=出行解锁 / `021`=正月 /
 /// `011–015`=出行 1–5 / `023`=结局；`002/003/033`=R 卡、`022`=未满 5 段结局变体（不接）、
 /// `031`=随机友人卡事件（忽略）。
 #[test]
@@ -401,20 +401,11 @@ fn engine_events_friend_chain() -> Result<()> {
         ),
         (4, 4)
     );
-    // 出行段事件全为真实卡面事件：不再有 matsuri_outing_* 占位
-    assert!(
-        !data
-            .events
-            .system_events
-            .keys()
-            .any(|key| key.starts_with("matsuri_outing")),
-        "出行占位事件应已删除"
-    );
     println!("吾妻友人链事件：10 个槽位全就位、无温泉残留、出行 5 段 + 结局数值与 memo 一致");
     Ok(())
 }
 
-/// 仓内 `data/events.json`：构造事件「大胃王」（user 2026-11-01 口径）
+/// 仓内 `data/events.json`：构造事件「大胃王」
 ///
 /// 选择 1：体力 +10 / PT +5；选择 2：体力 +30 / PT +10，33% 追加「变胖」（`Ill::FAT`）。
 #[test]

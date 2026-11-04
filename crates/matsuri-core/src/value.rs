@@ -1,4 +1,4 @@
-//! 手写训练员估值层（S7）：局面 / 动作 / 事件 / 教诲分配 → 统一评分单位
+//! 手写训练员估值层：局面 / 动作 / 事件 / 教诲分配 → 统一评分单位
 //!
 //! 目标口径：官方评分（`consts.five_status_final_score` 查表 + PT × `pt_score_rate`），
 //! PT 再乘训练员配置的 `pt_favor_rate`（`1.0` = 官方评分，引擎既有定档 `2.0`）。
@@ -44,15 +44,12 @@ const ACT_LEVEL_CAP: i32 = 10;
 /// 第三年合宿结束后的稽古兑现窗口末回合（本番后空窗期结束、URA 前）
 const ENDGAME_LAST_TURN: i32 = 71;
 
-/// 离线搜索蒸馏出的教诲落位先验（`scripts/tabu_route.py` 轮次 7 的禁忌搜索路线）
+/// 离线搜索蒸馏出的教诲落位先验
 ///
 /// 行 = 教诲窗口（`data.advice_windows`，turn 2/11/23/35/47/59），列 = 演目（速/耐/力/根/智），
-/// 值 = 该演目上更优的 **基础 buff id**（101 羁绊 / 201 得意率 / 301 提示 / 401 助力 / 501 体力减轻）。
+/// 值 = 该演目上更优的**基础 buff id**（101 羁绊 / 201 得意率 / 301 提示 / 401 助力 / 501 体力减轻）。
 /// 用基础 id 而不是転成 id：転成 id 随 `[fusion]` 预设变，基础 id 是训练员真正在决策的东西。
-///
-/// 内化它的目的是摆脱外部钉位 `MATSURI_ASSIGN_PIN`：先验强度 `advice.route` 取足够大时
-/// 等价于硬钉位，取小值时只是打分表上的一项偏好（搜出的落位不在候选里也不会崩）。
-/// 实测出处：留出集 61900–61999 上，钉这条路线比 AI 自选 +4173.2（t=9.38，81/100）。
+/// `advice.route` 取足够大时等价于硬钉位，取小值时只是打分表上的一项偏好。
 pub(crate) const ROUTE_PRIOR: [[i32; 5]; 6] = [
     [201, 101, 501, 301, 401], // T2  序盘：体力减轻挂主轴速、羁绊给耐
     [501, 301, 101, 201, 401], // T11
@@ -375,6 +372,9 @@ impl<'a> Model<'a> {
 
     /// 教诲分配方案估值（与 `apply_assignment` 的 801 硬约束同口径）
     pub(crate) fn assignment_value(&self, assign: &AdviceAssignment) -> f64 {
+        if assign.0.iter().any(|slot| *slot >= 5) {
+            return f64::NEG_INFINITY;
+        }
         let effective = self.effective_assignment(assign);
         let mut total = 0.0;
         for (act, source) in effective.iter().enumerate() {
@@ -404,7 +404,13 @@ impl<'a> Model<'a> {
         let hits = effective
             .iter()
             .enumerate()
-            .filter(|&(act, &source)| self.game.advice.slots[usize::from(source)] == prior[act])
+            .filter(|&(act, &source)| {
+                self.game
+                    .advice
+                    .slots
+                    .get(usize::from(source))
+                    .is_some_and(|slot| *slot == prior[act])
+            })
             .count();
         hits as f64 * self.advice.route
     }
@@ -932,8 +938,8 @@ impl<'a> Model<'a> {
         }
         self.value_of(&value)
             + self.extra_status_value(row.extra_status.as_ref())
-            + self.flags_value(row.add_flags.as_ref(), -1.0)
-            + self.flags_value(row.remove_flags.as_ref(), 1.0)
+            + self.flags_value(row.add_flags.as_ref(), 1.0)
+            + self.flags_value(row.remove_flags.as_ref(), -1.0)
     }
 
     /// `ExtraStatus` 的期望价值（随机项按当前五维平均边际；上次训练项取 `last_train` 轴）
@@ -961,31 +967,27 @@ impl<'a> Model<'a> {
         let Some(flags) = flags else {
             return 0.0;
         };
-        let mut magnitude = 0.0;
+        let mut harm = 0.0;
+        let mut benefit = 0.0;
         if flags.ill.contains(Ill::FAT) {
-            magnitude += self.weights.fat;
+            harm += self.weights.fat;
         }
-        for kind in [
-            Ill::SKIN,
-            Ill::HEADACHE,
-            Ill::LAZY,
-            Ill::NIGHT,
-            Ill::BAD_TRAINER,
-        ] {
+        for kind in [Ill::SKIN, Ill::HEADACHE, Ill::LAZY, Ill::NIGHT] {
             if flags.ill.contains(kind) {
-                magnitude += OTHER_ILL_PENALTY;
+                harm += OTHER_ILL_PENALTY;
             }
         }
-        if flags.bad_trainer {
-            magnitude += OTHER_ILL_PENALTY;
+        // `bad_trainer` 与 `Ill::BAD_TRAINER` 同置同清，只计一次
+        if flags.bad_trainer || flags.ill.contains(Ill::BAD_TRAINER) {
+            harm += OTHER_ILL_PENALTY;
         }
         if flags.aijiao || flags.good_trainer {
-            magnitude += 30.0;
+            benefit += 30.0;
         }
         if flags.refresh_mind > 0 || flags.lucky_count > 0 {
-            magnitude += 20.0;
+            benefit += 20.0;
         }
-        magnitude * sign
+        (benefit - harm) * sign
     }
 
     /// 追加稽古上档「解一个 debuff」的估值
@@ -1068,9 +1070,8 @@ impl<'a> Model<'a> {
         // 研钻（追加稽古；吃演目 Lv 权重）
         value +=
             f64::from(effect.kensan_rate) / 100.0 * (train + keiko) * 150.0 * self.advice.level;
-        // 特化上限（601 特別稽古）：把该演目的训练基础上限抬高 `status_limit` 点。
-        // 既有打分表**完全没算这一项**，而 601 恰是离线搜出路线里出现最多的転成 buff
-        // （满级 +25，基础上限 2200 到硬顶 2500 只有 300 余量 → 抬上限是末期稀缺资源）
+        // 特化上限（601 特別稽古）：抬高该演目的训练基础上限 `status_limit` 点
+        // （满级 +25；基础上限 2200 到硬顶 2500 只剩 300 余量，属末期稀缺资源）
         value += f64::from(effect.status_limit) * (train + keiko) * self.advice.status_limit;
         // 助力の支え（401）：非友情训练的保底收益，是个开关量，不按数值放大
         if effect.support_assist {
@@ -1135,6 +1136,49 @@ impl<'a> Model<'a> {
 mod tests {
     use super::*;
     use crate::testing::sample_game;
+
+    #[test]
+    fn flags_value_signs_benefit_and_harm() {
+        let game = sample_game();
+        let cfg = TrainerConfig::default();
+        let model = Model::new(&game, &cfg).expect("模型");
+        let good = UmaFlags {
+            good_trainer: true,
+            ..Default::default()
+        };
+        let bad = UmaFlags {
+            bad_trainer: true,
+            ill: Ill::BAD_TRAINER,
+            ..Default::default()
+        };
+        assert!(
+            model.flags_value(Some(&good), 1.0) > 0.0,
+            "加好调应为正收益"
+        );
+        assert!(model.flags_value(Some(&bad), 1.0) < 0.0, "加不调应为负收益");
+        assert_eq!(
+            model.flags_value(Some(&bad), -1.0),
+            -model.flags_value(Some(&bad), 1.0),
+            "移除与添加应反号"
+        );
+        assert_eq!(
+            model.flags_value(Some(&bad), 1.0),
+            -40.0,
+            "BAD_TRAINER 不应双计"
+        );
+    }
+
+    #[test]
+    fn assignment_value_rejects_out_of_range_slots() {
+        let game = sample_game();
+        let cfg = TrainerConfig::default();
+        let model = Model::new(&game, &cfg).expect("模型");
+        assert!(
+            model
+                .assignment_value(&AdviceAssignment([9, 0, 0, 0, 0]))
+                .is_infinite()
+        );
+    }
 
     /// 义务自选赛参与打分：有 freeRaces 的马娘在区间内 Race 可比较；无义务 + self_race=false 时不参与
     #[test]

@@ -197,7 +197,7 @@ impl Game for MatsuriGame {
     }
 
     fn generate_events(&self, rng: &mut impl Rng) -> Vec<EventData> {
-        // S6 事件链：固定回合 / 合宿抑制 / 友人解锁 / 随机分布（见 `game/event.rs`）
+        // 事件链：固定回合 / 合宿抑制 / 友人解锁 / 随机分布（见 `game/event.rs`）
         self.begin_events(rng)
     }
 
@@ -207,7 +207,7 @@ impl Game for MatsuriGame {
         let mut result = self.base.apply_event(event, choice, rng);
         // ② 幸运体质（`lucky_count` = 挡生病次数）：剧本侧是 add/remove_flags 的唯一结算点，
         //    在 `update_flags` 前拦截。不变量：`bad_trainer` 与 `Ill::BAD_TRAINER` 同置同清 →
-        //    一起拦；**变胖（`Ill::FAT`）也是生病**，全部生病位一起挡（用户 2026-11-03 口径）。
+        //    一起拦；**变胖（`Ill::FAT`）也是生病**，全部生病位一起挡（剧本口径）。
         if let Some(r) = &mut result
             && let Some(add) = &mut r.add_flags
             && (add.bad_trainer || !add.ill.is_empty())
@@ -295,7 +295,7 @@ impl Game for MatsuriGame {
             choice,
             before.diff(&self.key_state())
         );
-        // ⑦ 事件记录（S8 手动 / 前端核对）：记录实际到账数值与状态变化
+        // ⑦ 事件记录（手动 / 前端核对）：记录实际到账数值与状态变化
         let mut detail = result
             .as_ref()
             .map(|result| result.value.to_string())
@@ -356,7 +356,7 @@ impl Game for MatsuriGame {
                     && (!person.needs_great_success
                         || self.check_points[1] == CheckPointResult::GreatSuccess)
             }
-            // 理事长：本剧本 T1 起才出现（2026-11-04 真机修正；引擎基础局默认 T0 起）
+            // 理事长：本剧本 T1 起才出现（真机口径；引擎基础局默认 T0 起）
             PersonOrigin::Yayoi => self.turn() >= 1,
             PersonOrigin::Reporter => self.turn() >= 13,
         }
@@ -400,12 +400,12 @@ impl Game for MatsuriGame {
         card_deyilv + self.scenario_deyilv(index) as f32
     }
 
-    /// 重新分配所有人头（S5 剧本口径：亮起锁担当 / NPC 不在率 / 吾妻补位 / 分身）
+    /// 重新分配所有人头（剧本口径：亮起锁担当 / NPC 不在率 / 吾妻补位 / 分身）
     fn distribute_all(&mut self, rng: &mut impl Rng) -> Result<()> {
         self.distribute_round(rng)
     }
 
-    /// 灵感分配（S5 剧本口径：基础公式 + 卡面加成 + 剧本加成；排练 5 种卡全灵感图标）
+    /// 灵感分配（剧本口径：基础公式 + 卡面加成 + 剧本加成；排练 5 种卡全灵感图标）
     fn distribute_hint(&mut self, rng: &mut impl Rng) -> Result<()> {
         self.distribute_hints(rng)
     }
@@ -506,6 +506,23 @@ impl Game for MatsuriGame {
     }
 }
 
+impl MatsuriGame {
+    /// 执行已选动作（走本局面自持的策略流，与 `run_stage` 的 `Train` 阶段同一条流）
+    ///
+    /// 搜索评估根动作时必须走这里，不能用调用方的决策流：否则根动作的随机来源与
+    /// 真实对局不一致，CRN 在根节点分叉。
+    pub(crate) fn apply_selected_action(&mut self, action: &Action) -> Result<()> {
+        let Some(mut strategy) = self.strategy else {
+            return Err(anyhow!(
+                "策略流缺失：主种子已注入但策略流未派生，应先调用 set_rule_master"
+            ));
+        };
+        let res = self.apply_action(action, &mut strategy);
+        self.strategy = Some(strategy);
+        res
+    }
+}
+
 impl FlatSearchGame for MatsuriGame {
     /// rollout 基策 = 本剧本的手写训练员（随机基策搜出来的动作价值没有可用口径）
     type RolloutTrainer = MatsuriTrainer;
@@ -518,9 +535,10 @@ impl FlatSearchGame for MatsuriGame {
         MatsuriTrainer::new(MatsuriConfig::default())
     }
 
-    fn apply_root_action(&mut self, action: &Self::Action, rng: &mut StdRng) -> Result<()> {
-        // 必须与 `run_stage` 内执行动作的方式逐字一致，否则被评估的动作会用上另一条流
-        self.apply_action(action, rng)
+    fn apply_root_action(&mut self, action: &Self::Action, _rng: &mut StdRng) -> Result<()> {
+        // 必须与 `run_stage` 内执行动作的方式逐字一致：走本局面自持的策略流，
+        // 不能用调用方的决策流（否则根动作随机来源不一致，CRN 在根节点分叉）
+        self.apply_selected_action(action)
     }
 
     fn fork_for_rollout(&self, rollout_seed: u64) -> Self {
@@ -537,5 +555,30 @@ impl FlatSearchGame for MatsuriGame {
     /// 验收口径就是官方评分，故显式对齐，`pt_favor_rate` 不参与搜索排序。
     fn search_score(&self, _pt_favor_rate: f64) -> Result<f64> {
         Ok(self.uma().calc_score()? as f64)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::sample_game;
+    use rand::{RngCore, SeedableRng};
+
+    #[test]
+    fn apply_root_action_uses_strategy_stream() {
+        let mut a = sample_game();
+        // 训练后处理按训练位读取分布；搜索只在 Distribute 之后的决策点调用
+        a.base.distribution = vec![Vec::new(); 5];
+        a.set_rule_master(7);
+        let mut b = a.clone();
+        let mut rng1 = StdRng::seed_from_u64(1);
+        let mut rng2 = StdRng::seed_from_u64(999);
+        a.apply_root_action(&Action::Train(0), &mut rng1)
+            .expect("根动作");
+        b.apply_root_action(&Action::Train(0), &mut rng2)
+            .expect("根动作");
+        assert_eq!(a.key_state(), b.key_state(), "根动作不应取决于调用方 rng");
+        let mut probe = StdRng::seed_from_u64(1);
+        assert_eq!(rng1.next_u64(), probe.next_u64(), "调用方 rng 不应被消费");
     }
 }

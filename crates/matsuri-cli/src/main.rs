@@ -41,6 +41,23 @@ fn main() -> ExitCode {
     }
 }
 
+/// 读取可选环境变量并解析：未设置返回 `None`，非法值报错（不静默回退）
+fn env_parse<T>(name: &str) -> Result<Option<T>>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    match std::env::var(name) {
+        Ok(raw) => Ok(Some(
+            raw.trim()
+                .parse()
+                .map_err(|err| anyhow!("{name} 非法（{raw}）：{err}"))?,
+        )),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(err) => Err(anyhow!("读取 {name} 失败：{err}")),
+    }
+}
+
 /// 装配一局并跑到底（数据根为代码级配置；命令行只选训练员）
 fn run() -> Result<()> {
     // 训练员：matsuri（样例策略，默认）/ random（引擎随机基线）/ manual（机制核对面板）
@@ -83,24 +100,17 @@ fn run() -> Result<()> {
     let mut runner = Runner::new(&cfg, &mut fe)?;
     match trainer_name.as_str() {
         "matsuri" => {
-            // 蒙特卡洛（引擎 FlatSearch）由环境变量显式开启，默认关：
-            // 搜索成本 = 决策点数 × 剪枝宽度 × search_n 局终局 rollout，
-            // 开着跑 100 局矩阵不现实，只在验证 / 蒸馏时打开。
-            let search_n: usize = std::env::var("MATSURI_SEARCH_N")
-                .ok()
-                .and_then(|v| v.trim().parse().ok())
-                .unwrap_or(0);
-            let topk: usize = std::env::var("MATSURI_SEARCH_TOPK")
-                .ok()
-                .and_then(|v| v.trim().parse().ok())
-                .unwrap_or(4);
+            // 蒙特卡洛（引擎 FlatSearch）默认关：配置层 `[search] search_n` 是唯一默认来源
+            // （本仓 data/ai_config.toml 置 0），环境变量只做显式覆盖、非法值直接报错。
+            // 搜索成本 = 决策点数 × 剪枝宽度 × search_n 局终局 rollout，跑 100 局矩阵不现实。
             let mut search = cfg.search.clone();
-            search.search_n = search_n;
+            if let Some(n) = env_parse::<usize>("MATSURI_SEARCH_N")? {
+                search.search_n = n;
+            }
+            let topk = env_parse::<usize>("MATSURI_SEARCH_TOPK")?.unwrap_or(4);
             // 激进度：内核定档 50 会把排序压到 rollout 分数的高尾，教诲只有 6 个决策点、
             // 每点几十万次 rollout 的噪声下等于放大方差；可扫参，缺省沿用配置层
-            if let Ok(v) = std::env::var("MATSURI_SEARCH_RADICAL")
-                && let Ok(radical) = v.trim().parse::<f64>()
-            {
+            if let Some(radical) = env_parse::<f64>("MATSURI_SEARCH_RADICAL")? {
                 search.radical_factor_max = radical;
             }
             let trainer = MatsuriTrainer::new(matsuri_cfg).with_search(search, topk);

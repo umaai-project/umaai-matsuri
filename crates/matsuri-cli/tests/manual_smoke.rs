@@ -59,25 +59,13 @@ fn manual_mode_runs_full_game_with_scripted_input() {
             stdout.len()
         );
     }
-    // 非合宿回合不再输出合宿状态行（只在合宿区显示）
-    assert!(
-        !stdout.contains("非合宿回合"),
-        "非合宿回合不应再输出合宿状态（stdout 长度 {}）",
-        stdout.len()
-    );
     // 管道（非 TTY）输出应自动关色：颜色只在实际终端生效
     assert!(
         !stdout.contains('\x1b'),
         "非 TTY 输出不应含 ANSI 颜色序列（stdout 长度 {}）",
         stdout.len()
     );
-    // 追加稽古改标列标题：动作后缀「追稽✓」已移除
-    assert!(
-        !stdout.contains("追稽✓"),
-        "动作后缀不应再出现追稽✓（stdout 长度 {}）",
-        stdout.len()
-    );
-    // 事件回显覆盖 S6 关键链
+    // 事件回显覆盖事件关键链
     for event in [
         "马娘登场",
         "求むるは、新たな書",

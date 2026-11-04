@@ -1,12 +1,11 @@
-//! 教诲系统（S5）：槽效果聚合 / 融合（転成）/ 分配枚举
+//! 教诲系统：槽效果聚合 / 融合（転成）/ 分配枚举
 //!
 //! 数量与流程口径见 `docs/mechanism.md` §6.1 与 `docs/matsuri_memo_cn.md` §4：
 //! 永远 5 槽（一槽一演目）；教え效果等级 = **绑定演目的 Lv**；效果只在该演目担当**参与**
 //! 该训练时生效，且**按参与人数叠加**（絆 +3 平摊是例外，不按人数叠加）。
 //! 融合（転成）= **新教诲效果（按绑定演目 Lv）+ 被消耗基础教诲的固定升级效果**（`fusion` 资产）。
 //!
-//! 本阶段按用户 2026-11-01 拍板：**只落接口与机械默认**（120 全排列 + apply），不做策略估值 /
-//! 自动择优（留 S7 训练员）；默认行为 = 顺序分配、不变更现有排列、融合就地、401+801 硬约束。
+//! 分配：每窗口把 120 个全排列交给 `Trainer` 择优；默认行为 = 顺序分配、融合就地、401+801 硬约束。
 
 use anyhow::{Result, bail};
 use umasim::game::Game;
@@ -98,7 +97,7 @@ pub(crate) struct ParticipantAdvice {
 
 /// 教诲分配方案：`assign[act]` = 把「当前第几号教诲槽」分给该演目（0–4 的排列）
 ///
-/// 决策接口：每个窗口把 120 个排列交给 `Trainer` 选（S7，用户拍板「合并 120 候选」）。
+/// 决策接口：每个窗口把 120 个排列交给 `Trainer` 选（合并 120 候选）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AdviceAssignment(pub [u8; 5]);
 
@@ -200,31 +199,46 @@ impl MatsuriGame {
     }
 
     /// 融合（転成）就地生效：把 `base` 所在槽的教诲换成 `target`，保留基础 id 供升级效果查表
+    ///
+    /// 先整批校验再写入：任一配对失败时不留下半套融合状态。
     pub(crate) fn apply_fusion_pairs(&mut self, pairs: &[FusionPair]) -> Result<()> {
         if !self.advice.acquired {
             bail!("尚未获得教诲，不能融合");
         }
+        let mut plan = Vec::with_capacity(pairs.len());
+        let mut used = [false; 5];
         for pair in pairs {
-            let Some(act) = (0..5).find(|act| self.advice.slots[*act] == pair.base) else {
-                bail!("融合失败：基础教诲 {} 不在任何槽位", pair.base);
+            let Some(act) = (0..5).find(|act| self.advice.slots[*act] == pair.base && !used[*act])
+            else {
+                bail!("融合失败：基础教诲 {} 不在任何未融合槽位", pair.base);
             };
             if self.advice.fused[act] != 0 {
                 bail!("融合失败：演目 {act} 的槽位已融合过");
             }
-            self.advice.fused[act] = pair.target;
+            used[act] = true;
+            plan.push((act, pair.base, pair.target));
+        }
+        for (act, base, target) in plan {
+            self.advice.fused[act] = target;
             diag!(
                 "【教诲】T{} 融合 演目{}: {}→{}",
                 self.turn(),
                 act,
-                pair.base,
-                pair.target
+                base,
+                target
             );
         }
         self.enforce_advice_constraints();
         Ok(())
     }
 
-    /// 分配硬约束（2026-10-31 口径）：401+801 必须落在**担当数最多**的演目（并列取先头）
+    /// 本教诲窗口是否融合窗口（`[fusion]` 预设：第 2 年窗口 2 / 第 3 年窗口 4）
+    #[must_use]
+    pub fn is_fusion_window(&self, window: usize) -> bool {
+        matches!(window, 2 | 4)
+    }
+
+    /// 分配硬约束：401+801 必须落在**担当数最多**的演目（并列取先头）
     pub(crate) fn enforce_advice_constraints(&mut self) {
         let Some(source) = (0..5).find(|act| self.advice.fused[*act] == 801) else {
             return;
@@ -255,7 +269,7 @@ impl MatsuriGame {
 
     /// 枚举当前 5 个教诲槽在 5 个演目上的**全排列**（5! = 120；首个 = 保持现状）
     ///
-    /// S7 决策接口：每个窗口把这 120 个候选交给 `Trainer`（合并一次决策）。
+    /// 决策接口：每个窗口把这 120 个候选交给 `Trainer`（合并一次决策）。
     pub(crate) fn assignment_candidates(&self) -> Vec<AdviceAssignment> {
         let mut out = Vec::with_capacity(120);
         let mut order = [0usize, 1, 2, 3, 4];
@@ -290,7 +304,7 @@ impl MatsuriGame {
         Ok(())
     }
 
-    /// 教诲分配决策：把 120 个候选交给 `Trainer`，应用选中方案（S7）
+    /// 教诲分配决策：把 120 个候选交给 `Trainer`，应用选中方案
     ///
     /// 决策只走决策流（`decision`），不消耗结算随机；`Trainer` 确定性选择时回放可复现。
     pub(crate) fn decide_advice_assignment<T: umasim::game::Trainer<Self>>(
@@ -616,5 +630,26 @@ mod tests {
         total.add_assign(&out);
         assert_eq!(total.relationship_gain, 3, "絆 +3 不按人数叠加");
         assert_eq!(total.keiko_main_bonus, 6, "稽古主基础按参与人数叠加");
+    }
+
+    #[test]
+    fn fusion_failure_leaves_slots_untouched() {
+        let mut game = crate::testing::sample_game();
+        game.advice.acquired = true;
+        game.advice.slots = [101, 201, 301, 401, 501];
+        game.advice.fused = [0; 5];
+        // 第二组重复使用已被占用的基础教诲：整批校验应失败且不写入
+        let pairs = vec![
+            FusionPair {
+                base: 101,
+                target: 601,
+            },
+            FusionPair {
+                base: 101,
+                target: 701,
+            },
+        ];
+        assert!(game.apply_fusion_pairs(&pairs).is_err());
+        assert_eq!(game.advice.fused, [0; 5], "融合失败不应留下半态");
     }
 }

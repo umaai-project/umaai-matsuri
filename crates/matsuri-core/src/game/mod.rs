@@ -2,7 +2,7 @@
 //!
 //! 状态底座复用引擎 [`BaseGame`]（回合 / 马娘 / 卡组 / 继承 / 规则流），剧本只加自己的
 //! 阶段机、人头、剧本资源与剧本资产。契约 impl 集中在 [`traits`]，回合结构与阶段机在
-//! [`stage`]，回合信息快照（`MatsuriView`）在 [`view`]，本文件只放 inherent 方法
+//! [`stage`]，回合信息快照（`MatsuriView`）在 `view.rs`，本文件只放 inherent 方法
 //! （资源账本 / 建局 / 训练 / 预览）。
 
 pub mod action;
@@ -50,7 +50,7 @@ pub const SCENARIO_START_TURN: i32 = 2;
 ///
 /// 状态 `31` 目前未建模，先按马娘 ID + 回合窗硬编码：**出道战后（turn 12–71）对生涯比赛**
 /// 五维 ×2.5、PT ×0.46；五维与卡面赛后**乘算**、在本番 / 発表会剧本赛后**乘算之前**，
-/// PT 折扣由引擎 `pt_rate` 单独缩放（user 2026-11-03 实测反推：属性多、PT 相对少）。
+/// PT 折扣由引擎 `pt_rate` 单独缩放（真机口径：属性多、PT 相对少）。
 const IRON_HEART_UMA_IDS: [u32; 2] = [106301, 106302];
 /// 「铁心的挑战者」五维加成 %（+150 = ×2.5）
 const IRON_HEART_STATS_BONUS: i32 = 150;
@@ -88,14 +88,14 @@ pub struct AdviceLedger {
     pub slots: Array5,
     /// 每个演目槽位叠加的**転成教诲** id（601–1001；0 = 未転成）
     pub fused: Array5,
-    /// 本局是否已获得教诲（turn 2 的 `End` 首次授予；此前槽位不可用）
+    /// 本局是否已获得教诲（turn 2 的 `Begin` 首次授予；此前槽位不可用）
     pub acquired: bool,
 }
 
-/// 训练 / 演目稽古预览（S8：手动核对与前端面板）
+/// 训练 / 演目稽古预览（手动核对与前端面板）
 ///
 /// 成功收益 = 下层（引擎默认公式）+ 上层（剧本来源），已含变胖速度归零 / 本番演出等剧本修正；
-/// 失败率 % = 引擎基础公式 + 剧本失败率下降。
+/// 失败率 % = 基础值 × 卡面失败率下降 × 剧本失败率下降 + 不擅长偏差（-2 / +2）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct TrainingPreview {
     /// 成功时的到账值
@@ -143,23 +143,23 @@ pub struct MatsuriGame {
     pub advice: AdviceLedger,
     /// 合宿进度（回合边界状态）
     pub camp: CampState,
-    /// 本回合结构（`Begin` 阶段派生；S4/S5/S6 的分支来源）
+    /// 本回合结构（`Begin` 阶段派生；回合类型的分支来源）
     pub plan: TurnPlan,
-    /// 本回合是否被强制休息事件占用（S6 事件管线设置；合宿计数排除用）
+    /// 本回合是否被强制休息事件占用（事件管线设置；合宿计数排除用）
     pub forced_rest: bool,
-    /// 育成失败标记（自选比赛区间未达标 → 终止；终局跳过奖励，2026-11-06 接线）
+    /// 育成失败标记（自选比赛区间未达标 → 终止；终局跳过奖励）
     pub career_failed: bool,
-    /// 友人出行解锁时获得的「疲劳回复」flag（剧本自持；体力 ≤49 时一次 +15，S6）
+    /// 友人出行解锁时获得的「疲劳回复」flag（剧本自持；体力 ≤49 时一次 +15）
     pub fatigue_recovery: bool,
-    /// 進捗発表会 / 本番结果（3 场；`End` 阶段结算，S5 落地）
+    /// 進捗発表会 / 本番结果（3 场；`End` 阶段结算）
     pub check_points: [CheckPointResult; 3],
-    /// 本番演出是否已结算（S5 落地）
+    /// 本番演出是否已结算
     pub finals_done: bool,
     /// 编成警告项（建局时由 `game/deck.rs` 一次算定；禁止项已拒绝建局）
     pub deck_warnings: Vec<DeckWarning>,
-    /// 最近事件记录（S8：手动 / 前端核对用；事件结算后追加，容量上限 [`EVENT_LOG_CAPACITY`]）
+    /// 最近事件记录（手动 / 前端核对用；事件结算后追加，容量上限 [`EVENT_LOG_CAPACITY`]）
     pub event_log: Vec<EventRecord>,
-    /// 助力支撑剩余次数（0 = 无；演目稽古获得「助力の支え」时重置为规则上限，S5）
+    /// 助力支撑剩余次数（0 = 无；演目稽古获得「助力の支え」时重置为规则上限）
     pub assist_support_left: i32,
     /// 本回合研鑽「追加の稽古」是否掷中（`Begin` 用策略流预掷；本回合未点对应训练则作废）
     pub kensan_pending: bool,
@@ -264,7 +264,7 @@ impl MatsuriGame {
     /// 返回 `None`：不在任何 `freeRaces` 区间 / 该区间已达标 / 该回合被区间等级门槛挡掉
     /// （载入时按比赛等级表算好的掩码未置位）。
     ///
-    /// 口径（2026-11-04 真机修正）：**区间最后一回合的 `End` 判定**场数（引擎默认写在
+    /// 口径：**区间最后一回合的 `End` 判定**场数（引擎默认写在
     /// 下一回合开始检查，本仓前移至 End）；未达标 = 育成失败；达标 = 触发一次
     /// 「生涯比赛胜利」奖励事件（吃比赛与剧本赛后加成）。等级门槛只放行**不低于**门槛的比赛。
     /// `left` 统计掩码内 ≥ 当前回合的回合数；未来被强制休息等占用不预扣（保守）。
@@ -316,7 +316,7 @@ impl MatsuriGame {
         bonus
     }
 
-    /// 剧本侧比赛加成 %（発表会 / 本番累计值；与支援卡赛后**分开计算**，2026-11-03 起乘算）
+    /// 剧本侧比赛加成 %（発表会 / 本番累计值；与支援卡赛后**分开计算**后乘算）
     pub(crate) fn scenario_race_bonus(&self) -> i32 {
         self.presentation_bonus().race_bonus
     }

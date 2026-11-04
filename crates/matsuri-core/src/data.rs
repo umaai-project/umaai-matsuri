@@ -8,7 +8,7 @@
 //! 基础上限 2200 一组、一次性奖励成功档等）；资产 ↔ 表映射见 [`docs/plan/intake.md`] §4.1。
 //! 所有回合字段已转 **0 基**（`mdb` 为 1 基）。
 //!
-//! [`docs/plan/intake.md`]: ../../docs/plan/intake.md
+//! [`docs/plan/intake.md`]: ../../../docs/plan/intake.md
 
 use std::path::Path;
 
@@ -62,7 +62,7 @@ pub struct MatsuriData {
     pub check_points: Vec<CheckPointBuff>,
     /// 進捗発表会 / 本番的一次性奖励（6 条：`schedule` 1–3 × 成功 / 大成功）
     ///
-    /// TBD: 成功档来自 `memo` 2026-10-31（中可信度），无实测样本（见 `stubs.md`）。
+    /// TBD: 成功档来自 `memo`（中可信度），无实测样本（见 `stubs.md`）。
     pub check_point_rewards: Vec<Reward>,
     /// 育成终了一次性奖励（2 条：全成功 / 全大成功）
     pub career_end_rewards: Vec<Reward>,
@@ -74,7 +74,7 @@ pub struct MatsuriData {
     pub schedule: Vec<CheckPointSchedule>,
     /// 教诲可调整窗口（`single_mode_15_advice_recommend`，0 基）
     pub advice_windows: Vec<i32>,
-    /// 剧本固定事件（S6 事件链；`TriggerType::Fixed` 按 0 基回合触发）
+    /// 剧本固定事件（`TriggerType::Fixed` 按 0 基回合触发）
     ///
     /// 目前只有 `400015104`（駿大祭合宿の申し出，合宿直前 11/35/59）与 `400015106`
     /// （追加の稽古，代码触发）；主剧本其余事件为过场说明、无数值，不入资产
@@ -122,7 +122,7 @@ pub struct Act {
 pub struct TrainingData {
     /// 普通训练：`[训练 0-4][等级 0-4] -> [速 耐 力 根 智 SP 体力]`
     ///
-    /// TBD: Lv2–5 来自 `memo` 2026-10-31（中可信度），待真机复核（见 `stubs.md`）。
+    /// TBD: Lv2–5 来自 `memo`（中可信度），待真机复核（见 `stubs.md`）。
     pub normal: Vec<Vec<[i32; 7]>>,
     /// 演目稽古：按时期两档，各 5 行（行序同训练下标）
     pub keiko: KeikoTraining,
@@ -131,14 +131,14 @@ pub struct TrainingData {
 /// 演目稽古基础值（两档）
 ///
 /// 时期切换点 = turn 23 的進捗発表会（「演目排练强化」），成功 / 大成功都切档（见 `mechanism.md` §3.2）。
-/// **只有两档**：第二档（`classic`）覆盖 Classic 与 Senior，无第三档（U02 2026-11-01 收口）；
+/// **只有两档**：第二档（`classic`）覆盖 Classic 与 Senior，无第三档（见 `intake.md` §3.2）；
 /// **基础值没有 Lv2–10 维度**（`command_level` 只查演目效果 / UI，见 `intake.md` §3.2）。
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KeikoTraining {
     /// Junior 档（= `mdb` 5101–5105）
     pub junior: Vec<[i32; 7]>,
-    /// Classic 及以后档（第二档，覆盖 Classic / Senior；`memo` 2026-10-29，见 `intake.md` §3.2）
+    /// Classic 及以后档（第二档，覆盖 Classic / Senior；见 `intake.md` §3.2）
     pub classic: Vec<[i32; 7]>,
 }
 
@@ -526,7 +526,7 @@ pub struct Rules {
     pub fat_recovery_prob: i32,
 }
 
-/// 助力支撑数值（`memo` 2026-10-31：3 次内 +5%，再次获得重置次数）
+/// 助力支撑数值（`memo`：3 次内 +5%，再次获得重置次数）
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssistSupportRule {

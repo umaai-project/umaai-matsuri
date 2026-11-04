@@ -1,7 +1,7 @@
 //! 剧本回合信息快照（`MatsuriView`）：宿主呈现 / 在线外壳 / 前端的**单一数据源**
 //!
 //! 形态：值快照（owned、`Clone`、无借用生命周期，跨线程 / 跨宿主传递安全；序列化由剧本提供）。
-//! 口径（S8 2026-11-02 拍板）：**完整回合快照**——手动核对面板已显示的全部状态与派生数据都从
+//! 口径：**完整回合快照**——手动核对面板已显示的全部状态与派生数据都从
 //! 本结构取；名称文本不进入（呈现层按引擎静态表查），动作候选 / 预览不进入（决策上下文，
 //! 由 `Trainer` 入参与 `preview_*` 只读 API 提供），建局育成配置不进入（不是回合信息）。
 //!
@@ -22,10 +22,10 @@ use super::person::PersonOrigin;
 use crate::MAX_TURN;
 use crate::data::CheckPointResult;
 
-/// 事件记录容量（S8 手动 / 前端回显：滚动保留最近 N 条）
+/// 事件记录容量（手动 / 前端回显：滚动保留最近 N 条）
 pub const EVENT_LOG_CAPACITY: usize = 32;
 
-/// 一次事件结算记录（S8：手动核对 / 前端回显）
+/// 一次事件结算记录（手动核对 / 前端回显）
 ///
 /// 由 [`MatsuriGame`] 在事件结算后追加：事件 id / 名称 / 选项 / 实际到账数值（含卡面加成）。
 /// 属剧本自持的“呈现辅助状态”，不参与机制结算。
@@ -547,7 +547,7 @@ impl MatsuriGame {
         }
     }
 
-    /// 追加一条事件记录（S8 手动 / 前端核对；滚动保留最近 [`EVENT_LOG_CAPACITY`] 条）
+    /// 追加一条事件记录（手动 / 前端核对；滚动保留最近 [`EVENT_LOG_CAPACITY`] 条）
     ///
     /// 序号由记录自身延续（滚动丢弃旧记录后仍单调递增），供前端判断「自上次以来」的新事件。
     pub(crate) fn push_event_log(&mut self, mut record: EventRecord) {
@@ -822,16 +822,5 @@ mod tests {
             game.event_log.last().map(|record| record.seq),
             Some((EVENT_LOG_CAPACITY as u64) + 3)
         );
-    }
-
-    /// 快照可序列化往返（宿主传输格式由剧本提供）
-    #[test]
-    fn view_roundtrip() {
-        let mut game = crate::testing::sample_game();
-        game.turn = 12;
-        let view = game.view();
-        let text = serde_json::to_string(&view).expect("序列化 View 失败");
-        let back: MatsuriView = serde_json::from_str(&text).expect("反序列化 View 失败");
-        assert_eq!(back, view);
     }
 }

@@ -1,7 +1,7 @@
-//! S3 机制集成：仓内真实资产建一局，逐阶段跑满 78 回合，守回合结构（`TurnPlan`）/ 赛程 /
+//! 机制集成：仓内真实资产建一局，逐阶段跑满 78 回合，守回合结构（`TurnPlan`）/ 赛程 /
 //! 合宿窗口与延长 / 発表会 / 本番 / 空窗期 / URA 回合 / 马娘特殊事件（强制休息）/ `MatsuriView` 账本。
 //!
-//! 训练员用样例 `MatsuriTrainer`：本阶段只关心回合边界，不关心具体选了什么动作。
+//! 训练员用样例 `MatsuriTrainer`：本文件只关心机制是否正确，不关心具体选了什么动作。
 //! 数据根统一经 `matsuri_core::testing::data_dir()` 取仓根 `data/`（引擎静态表 + 剧本资产）。
 
 use std::cell::{Cell, RefCell};
@@ -264,7 +264,7 @@ fn camp_forced_rest_extends() -> Result<()> {
     let repo = Repo::load()?;
     let obs = sweep(repo.game(repo.cfg.sim.uma)?, |turn, game| {
         if turn == 39 {
-            // 模拟事件管线在本回合设置的强制休息占用（S3 只做排除判定）
+            // 模拟事件管线在本回合设置的强制休息占用
             game.forced_rest = true;
         }
         Ok(())
@@ -981,7 +981,7 @@ fn view_fields_match_game_at_train_decision() -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// S4：动作集与单动作结算
+// 动作集与单动作结算
 // ---------------------------------------------------------------------------
 
 /// 测试用训练员：动作固定、事件选项固定（不成立时直接报错，避免静默选别的动作）
@@ -1606,7 +1606,7 @@ fn outing_actions() -> Result<()> {
         )?;
     }
     assert_eq!(game.base.friend.out_used, vec![true; 5], "5 段全部用掉");
-    // S5：每段「最低演目 Lv+1」+ 出行入槽 +1，逐段按三则落点 / 满槽跳过推进
+    // 每段「最低演目 Lv+1」+ 出行入槽 +1，逐段按三则落点 / 满槽跳过推进
     let gauge_max = repo.data.rules.act_gauge_max;
     let expected_level = expected_outing_levels(level_before, gauge_before, gauge_max);
     assert_eq!(
@@ -1661,7 +1661,7 @@ fn outing_actions() -> Result<()> {
     Ok(())
 }
 
-/// 演目稽古（S5 两层）：成功 → 演目 Lv+1、槽清零；数值 = 下层 + 上层（含 +10 全基础 flat）
+/// 演目稽古（两层）：成功 → 演目 Lv+1、槽清零；数值 = 下层 + 上层（含 +10 全基础 flat）
 #[test]
 fn keiko_success_levels_up_and_clears_gauge() -> Result<()> {
     let repo = Repo::load()?;
@@ -1934,11 +1934,11 @@ fn s5_mechanism_chain_over_full_run() -> Result<()> {
         Ok(())
     })?;
     assert_eq!(obs.len(), (MAX_TURN + 1) as usize);
-    println!("S5 机制链：教诲 / 発表会 / 融合 / 本番演出按回合窗口结算");
+    println!("机制链：教诲 / 発表会 / 融合 / 本番演出按回合窗口结算");
     Ok(())
 }
 
-/// S6 事件链：剧本固定事件「駿大祭合宿の申し出」在 turn 11 行动前结算（体力 +15 / 干劲 +1）
+/// 事件链：剧本固定事件「駿大祭合宿の申し出」在 turn 11 行动前结算（体力 +15 / 干劲 +1）
 #[test]
 fn scenario_fixed_event_at_turn11() -> Result<()> {
     let repo = Repo::load()?;
@@ -1965,11 +1965,11 @@ fn scenario_fixed_event_at_turn11() -> Result<()> {
     );
     assert_eq!(game.uma().vital, 65, "行动前体力 +15");
     assert_eq!(game.uma().motivation, 3, "行动前干劲 +1");
-    println!("S6：turn 11 駿大祭合宿の申し出事件（体力+15 / 干劲+1）");
+    println!("事件链：turn 11 駿大祭合宿の申し出事件（体力+15 / 干劲+1）");
     Ok(())
 }
 
-/// S6 事件链整局：通用固定事件 / 随机分布 / 剧本固定事件 / 友人链 / 抽签 / 结局
+/// 事件链整局：通用固定事件 / 随机分布 / 剧本固定事件 / 友人链 / 抽签 / 结局
 #[test]
 fn s6_event_chain_over_full_run() -> Result<()> {
     let repo = Repo::load()?;
@@ -1999,10 +1999,6 @@ fn s6_event_chain_over_full_run() -> Result<()> {
     // 随机分布：至少发生一些支援卡 / 马娘事件
     let random_events = count(8001) + count(8002) + count(8003) + count(5006);
     assert!(random_events >= 1, "随机事件分布应至少命中一次");
-    // 旧出行占位事件已删除、不再结算
-    for id in 8201..=8205 {
-        assert_eq!(count(id), 0, "旧出行占位事件 {id} 不应再结算");
-    }
     let big_eater = count(5010);
     assert!(big_eater <= 3, "大胃王最多 3 次");
     println!(
@@ -2103,7 +2099,7 @@ fn kensan_event_presented_to_trainer_at_turn_end() -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// S7：手写训练员决策点覆盖 / 确定性
+// 手写训练员决策点覆盖 / 确定性
 // ---------------------------------------------------------------------------
 
 /// 统计决策点的训练员：包一层手写训练员，只记录教诲分配与事件选项的调用

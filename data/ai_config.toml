@@ -53,8 +53,8 @@ race_grades = "standard"
 # ---------- search ----------
 
 [search]
-# 每个动作搜索次数
-search_n = 1024
+# 每个动作搜索次数（剧本仓默认 0 = 关；调参用 MATSURI_SEARCH_N 或本键）
+search_n = 0
 
 # 最大搜索深度（0 = 搜到终局；> 0 需剧本提供 leaf 估值器）
 max_depth = 0

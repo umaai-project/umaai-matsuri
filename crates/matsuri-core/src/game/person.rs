@@ -130,12 +130,6 @@ impl MatsuriPerson {
         self.base.chara_id
     }
 
-    /// 是否编成支援卡（普通卡 / 友人卡；参与卡面面板）
-    #[must_use]
-    pub fn is_card(&self) -> bool {
-        matches!(self.origin, PersonOrigin::Card | PersonOrigin::Friend)
-    }
-
     /// 人头短名（终端展示用；编成外神驹显示 `[NPC]` + 角色名前两字）
     #[must_use]
     pub fn short_name(&self) -> String {

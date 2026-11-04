@@ -4,8 +4,7 @@
 //! 默认层字段齐全、未知键严格报错；覆盖层同构、字段全 `Option`，段缺失整段沿用。
 //! 根目录由宿主注入，本模块不写死路径。
 //!
-//! 当前只放**融合（転成）预设**：默认方案固定、在线可覆盖一次（融合不进搜索树），
-//! 训练员 / 搜索参数留 S7 / M2，不预置。
+//! 段：融合（転成）预设（默认固定、在线可覆盖一次）、育成前状态（`[pre]`）与手写训练员旋钮（`[trainer]`）。
 
 use std::path::Path;
 
@@ -34,7 +33,7 @@ pub struct MatsuriConfig {
     /// 育成前（局外）状态
     #[serde(default)]
     pub pre: PreConfig,
-    /// 手写训练员策略旋钮（S7；后续扫参）
+    /// 手写训练员策略旋钮（全部可扫参）
     pub trainer: TrainerConfig,
 }
 
@@ -179,7 +178,7 @@ impl Default for EndgameConfig {
     }
 }
 
-/// `free_race_urgency` 的缺省值（旧覆盖层不写该键时按 1.0，保持补足行为开启）
+/// `free_race_urgency` 的缺省值（覆盖层不写该键时按 1.0，保持补足行为开启）
 fn default_free_race_urgency() -> f64 {
     1.0
 }
@@ -224,7 +223,7 @@ pub struct AdviceWeights {
     pub milestone: f64,
     /// 特化上限（601 特別稽古的 `status_limit`）权重
     ///
-    /// `#[serde(default)]`：旧覆盖层不写也能解析，缺省 `0.0` = 与既有行为逐位一致。
+    /// `#[serde(default)]`：覆盖层不写也能解析，缺省 `0.0` = 行为不变。
     #[serde(default)]
     pub status_limit: f64,
     /// 助力の支え（401 的 `support_assist` 开关量）权重
@@ -232,8 +231,7 @@ pub struct AdviceWeights {
     pub assist: f64,
     /// 落位先验权重：命中一位离线搜出的落位加这么多分（0 = 关闭）
     ///
-    /// 先验表见 [`crate::value::ROUTE_PRIOR`]，由 `scripts/tabu_route.py` 离线搜出后内化，
-    /// 目的是不再依赖 `MATSURI_ASSIGN_PIN` 外部钉位。取值足够大时等价于硬钉位。
+    /// 先验表见 `value.rs` 的 `ROUTE_PRIOR`（离线搜索蒸馏）；取值足够大时等价于硬钉位。
     #[serde(default)]
     pub route: f64,
 }
@@ -556,7 +554,7 @@ impl Default for MatsuriConfig {
 }
 
 impl Default for TrainerConfig {
-    /// 与仓内默认层 `[trainer]` 段同值（2026-11-03 起 = lab 冠军档 `ga-r2`，见 dev_plan §3）
+    /// 与仓内默认层 `[trainer]` 段同值（= 冠军档 `ga-r2`，见 dev_plan §3）
     fn default() -> Self {
         Self {
             pt_favor_rate: 1.7271,

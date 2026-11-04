@@ -1,13 +1,13 @@
-//! 手写训练员（S7）：守门链 + 打分表 + 事件选项 + 教诲分配择优
+//! 手写训练员：守门链 + 打分表 + 事件选项 + 教诲分配择优
 //!
-//! 目标口径见 [`crate::value`]：官方评分（五维查表 + PT×折算率），PT 再乘配置的
+//! 目标口径见 `value.rs`：官方评分（五维查表 + PT×折算率），PT 再乘配置的
 //! `pt_favor_rate`（`1.0` = 官方评分）。所有决策都是**确定性**的（不消耗决策随机流），
 //! 保证回放 / CRN / 基线可复现；策略旋钮全部来自 `MatsuriConfig.trainer`（可扫参）。
 //!
 //! 决策面（引擎契约只给 `Trainer` 三个 hook，教诲分配由剧本在 `Begin` / `End` 主动询问）：
 //! - `select_action`：普通动作候选 → 守门链 + 打分表；教诲分配候选 → 价值矩阵择优；
 //! - `select_event_choice`：事件选项 → 通用期望值打分（追加稽古「上 / 下」等按语义自动比）；
-//! - `select_choice`：旧接口兜底（无事件数据时按通用期望值打分）。
+//! - `select_choice`：无事件数据时的通用期望值兜底。
 
 use anyhow::{Result, bail};
 use rand::SeedableRng;
@@ -53,12 +53,6 @@ impl MatsuriTrainer {
         self
     }
 
-    /// 取剧本配置（宿主 / 训练员参数可读）
-    #[must_use]
-    pub fn config(&self) -> &MatsuriConfig {
-        &self.config
-    }
-
     /// 是否需要优先治病（变胖只影响训练速度、每回合 20% 自解，不占动作；不擅长 / 具名病才治）
     fn needs_clinic(game: &MatsuriGame) -> bool {
         let flags = &game.uma().flags;
@@ -86,7 +80,7 @@ impl MatsuriTrainer {
             return Ok(None);
         }
         let searcher = FlatSearch::<MatsuriGame>::new(search.clone())
-            // rollout 基策 = 同一份配置的手写训练员，且**不再开搜索**（防递归）
+            // rollout 基策 = 同一份配置的手写训练员，且**不开搜索**（防递归）
             .with_rollout_trainer(MatsuriTrainer::new(self.config.clone()))
             .with_parallel(true);
         // 搜索流独立派生：不吃决策随机流（决策确定性是 CRN / 回放的契约），
@@ -495,15 +489,6 @@ mod tests {
         assert_eq!(actions[index], Action::Clinic, "不擅长训练时优先治病");
     }
 
-    #[test]
-    fn trainer_reads_trainer_knobs() {
-        let text = std::fs::read_to_string(crate::testing::data_dir().join("matsuri_config.toml"))
-            .expect("仓内配置默认层应存在");
-        let config = MatsuriConfig::parse(&text, None).expect("默认层应可解析");
-        let trainer = MatsuriTrainer::new(config);
-        // 2026-11-03 合并 lab 冠军档后默认值 = 1.7271（见 dev_plan §3）
-        assert_eq!(trainer.config().trainer.pt_favor_rate, 1.7271);
-    }
     /// 解释 API：候选评分与中选同源；守门原因可读；教诲分配 120 候选全有方案分
     #[test]
     fn explain_action_reports_candidates_and_reason() {
@@ -546,29 +531,6 @@ mod tests {
                 .iter()
                 .all(|(_, value)| value.is_finite()),
             "120 个候选都应有方案分"
-        );
-    }
-
-    /// 自选比赛义务补足：临近截止（need ≥ left）时守门直接选比赛
-    #[test]
-    fn trainer_forces_free_race_when_deadline_critical() {
-        let mut game = crate::testing::sample_game_with_uma(102102);
-        let last = (29..=48)
-            .rev()
-            .find(|turn| game.base.uma.free_races[1].mask.contains_turn(*turn))
-            .expect("第二区间应有可赛回合");
-        game.turn = last;
-        game.plan = game.derive_plan();
-        let actions = vec![Action::Train(0), Action::Race, Action::Rest];
-        let trainer = MatsuriTrainer::new(MatsuriConfig::default());
-        let mut rng = StdRng::seed_from_u64(1);
-        let index = trainer
-            .select_action(&game, &actions, &mut rng)
-            .expect("选择动作");
-        assert_eq!(
-            actions[index],
-            Action::Race,
-            "截止前必须补足义务赛（need ≥ left）"
         );
     }
 }

@@ -1,4 +1,4 @@
-//! 手写档决策解释包装（explain 模式，2026-11-06）
+//! 手写档决策解释包装（explain 模式）
 //!
 //! 用 `--explain` / `MATSURI_EXPLAIN=1` 开启：每回合打印与 manual 档相同的完整面板
 //! （[`crate::panel::BoardPanel`]），并在面板末尾追加**候选打分表**（与手写打分同源，
@@ -16,7 +16,7 @@ use umaai_core::gamedata::{EventChoice, EventData};
 use umasim::game::Trainer;
 
 use crate::panel::{
-    ANSI_BRIGHT_BLUE, ANSI_BRIGHT_CYAN, BoardPanel, act_short, advice_name, choice_result_name,
+    ANSI_BRIGHT_BLUE, ANSI_BRIGHT_CYAN, BoardPanel, act_short, advice_name, choice_group_label,
     paint,
 };
 
@@ -145,48 +145,10 @@ impl ExplainTrainer {
                 } else {
                     "—".to_string()
                 },
-                group_label(group)
+                choice_group_label(group)
             );
         }
     }
-}
-
-/// 单组选项标签（组内各结果为一行，按当前口径拼成一行）
-fn group_label(group: &[EventChoice]) -> String {
-    if group.is_empty() {
-        return "（空组）".to_string();
-    }
-    let mut out = String::new();
-    for choice in group {
-        let _ = write!(
-            out,
-            "  {}%{}",
-            if choice.prob == 0 { 100 } else { choice.prob },
-            if choice.result != 0 {
-                format!("[{}]", choice_result_name(choice.result))
-            } else {
-                String::new()
-            }
-        );
-        let value = choice.value.to_string();
-        if !value.is_empty() {
-            let _ = write!(out, " {value}");
-        }
-        if let Some(extra) = &choice.extra_status {
-            let _ = write!(out, " 额外[{extra}]");
-        }
-        if let Some(flags) = &choice.add_flags
-            && !flags.to_string().is_empty()
-        {
-            let _ = write!(out, " 状态+[{}]", flags);
-        }
-        if let Some(flags) = &choice.remove_flags
-            && !flags.to_string().is_empty()
-        {
-            let _ = write!(out, " 状态-[{}]", flags);
-        }
-    }
-    out.trim_start().to_string()
 }
 
 impl Trainer<MatsuriGame> for ExplainTrainer {

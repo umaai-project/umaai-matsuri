@@ -3,8 +3,8 @@
 //! 纪律：**无数据、无引用、可 `Copy`**；中间状态（gauge / 合宿进度 / 教诲槽）放局面字段。
 //! 阶段只表示回合内的**执行位置**；比赛 / 合宿 / 発表会 / 本番 / 空窗期 / URA 回合是回合类型或自动
 //! 结算（由 [`TurnPlan`] 与局面字段表达），不各开一个阶段。比赛 / 稽古 / 出行是 `Train` 阶段
-//! 里的动作（S4 落）；発表会 / 本番 / 合宿 +1 与教诲分配 / 调整都是 `End` 阶段的自动结算 /
-//! 决策（S5 落，其中教诲在剧本结算之后处理）。
+//! 里的动作；発表会 / 本番 / 合宿 +1 与教诲分配 / 调整都是 `End` 阶段的自动结算 /
+//! 决策（其中教诲在剧本结算之后处理）。
 
 use anyhow::{Result, anyhow};
 use rand::rngs::StdRng;
@@ -68,7 +68,7 @@ impl From<Stage> for StageId {
 /// 单回合结构（回合开始时派生一次）
 ///
 /// 「回合类型」全在这里：强制比赛 / 合宿（含延长段）/ 発表会 / 本番 / 空窗期 / URA 回合；阶段机
-/// 不再按回合类型分叉。S4 / S5 / S6 从这里取本回合该走哪条分支。
+/// 本回合该走哪条分支从这里取。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TurnPlan {
     /// 本回合是否强制比赛（马娘固有目标赛事 / URA 决赛）
@@ -283,7 +283,7 @@ impl MatsuriGame {
                 // 教诲效果须从本回合的分布 / 训练起生效（memo §4）。
                 if self.base.turn == crate::SCENARIO_START_TURN {
                     self.acquire_advice();
-                    // S7：首次分配也交给 Trainer（合并 120 候选；确定性、不耗结算随机）
+                    // 首次分配也交给 Trainer（合并 120 候选；确定性、不耗结算随机）
                     self.decide_advice_assignment(trainer, decision)?;
                 }
                 // 研鑽「追加の稽古」：回合开始用策略流预掷（掷中后未点对应训练则作废）
@@ -335,7 +335,7 @@ impl MatsuriGame {
                 for event in &end_events {
                     self.run_event(event, trainer, decision, &mut streams.event)?;
                 }
-                // 教诲窗口：先应用融合（配置预设），再把 120 个分配候选交给 Trainer（S7）
+                // 教诲窗口：先应用融合（配置预设），再把 120 个分配候选交给 Trainer
                 self.settle_advice_window(trainer, decision)?;
                 // turn 66（Senior 10 月前半行动后）进化技能：只记 hint_level + 1
                 self.apply_evolution_hint();

@@ -54,10 +54,3 @@ pub fn sample_game_with_uma(uma_id: u32) -> MatsuriGame {
     game.set_rule_master(42);
     game
 }
-
-/// 内联测试用：仓内资产（一次载入）
-pub fn sample_data() -> Arc<MatsuriData> {
-    let root = data_dir();
-    Data::init(&root).expect("引擎静态数据初始化失败");
-    Arc::new(MatsuriData::load(&root).expect("载入剧本数据失败"))
-}

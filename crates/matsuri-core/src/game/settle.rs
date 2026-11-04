@@ -1,4 +1,4 @@
-//! 回合末结算（S5）：発表会 / 本番 / 合宿终了 / 教诲窗口 / 育成终了
+//! 回合末结算：発表会 / 本番 / 合宿终了 / 教诲窗口 / 育成终了
 //!
 //! 结算顺序（`End` 阶段）：**剧本结算（発表会 / 本番 → 合宿 +1）→ 教诲分配 / 融合**，
 //! 与 `mechanism.md` §5.2 / §6.1 一致；発表会 buff 由 `check_points` 派生（累计行），
@@ -39,7 +39,7 @@ impl MatsuriGame {
         Ok(())
     }
 
-    /// 自选比赛义务区间判定（**区间最后一回合的 End**，2026-11-04 真机修正）
+    /// 自选比赛义务区间判定（**区间最后一回合的 End**）
     ///
     /// - 达标：入队「生涯比赛胜利」奖励事件（同目标赛：五维 / PT 吃比赛与剧本赛后加成）；
     /// - 未达标：置 `career_failed`，`next()` 终止育成（终局跳过奖励）。
@@ -195,10 +195,13 @@ impl MatsuriGame {
 
     /// 本窗口的融合配对来源（**当前 = 配置预设**；将来若交给 Trainer，只改这一个函数）
     fn fusion_plan(&self, window: usize) -> Vec<FusionPair> {
-        match window {
-            2 => self.config.fusion.year2.clone(),
-            4 => self.config.fusion.year3.clone(),
-            _ => Vec::new(),
+        if !self.is_fusion_window(window) {
+            return Vec::new();
+        }
+        if window == 2 {
+            self.config.fusion.year2.clone()
+        } else {
+            self.config.fusion.year3.clone()
         }
     }
 
