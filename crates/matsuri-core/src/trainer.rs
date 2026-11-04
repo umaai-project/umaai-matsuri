@@ -50,12 +50,29 @@ pub struct ActionExplanation {
     pub candidates: Vec<(usize, f64)>,
 }
 
+/// 决策原因文本：只有解释模式才真正构造
+///
+/// 跑局 / rollout 丢弃原因，逐决策格式化一次 f64 会带来可观的分配与格式化开销；
+/// 解释模式（explain_action）行为不变。
+fn reason(explain: bool, args: std::fmt::Arguments<'_>) -> String {
+    if explain {
+        args.to_string()
+    } else {
+        String::new()
+    }
+}
+
 impl MatsuriTrainer {
     /// 决策入口（动作 / 教诲分配共用）：返回 `(中选下标, 原因)`；诊断日志在此输出一次
     ///
     /// [`Trainer::select_action`] 与 [`Self::explain_action`] 共用本函数，保证「解释」与
     /// 实际决策同源（同一模型、同一守门顺序），不会出现两套口径。
-    fn choose_action(&self, game: &MatsuriGame, actions: &[Action]) -> Result<(usize, String)> {
+    fn choose_action(
+        &self,
+        game: &MatsuriGame,
+        actions: &[Action],
+        explain: bool,
+    ) -> Result<(usize, String)> {
         if actions.is_empty() {
             bail!("候选动作为空，无法选择");
         }
@@ -65,7 +82,7 @@ impl MatsuriTrainer {
                 game.turn(),
                 actions[0]
             );
-            return Ok((0, "唯一候选".to_string()));
+            return Ok((0, reason(explain, format_args!("唯一候选"))));
         }
         // 教诲分配决策点：候选全是分配方案 → 价值矩阵择优（确定性）
         if actions
@@ -94,7 +111,10 @@ impl MatsuriTrainer {
                     .map(ToString::to_string)
                     .unwrap_or_default()
             );
-            return Ok((best, format!("教诲分配 值={best_value:.1}")));
+            return Ok((
+                best,
+                reason(explain, format_args!("教诲分配 值={best_value:.1}")),
+            ));
         }
 
         // 守门 ⓪：自选比赛义务补足（区间未达标 = 育成失败，优先于其它守门）
@@ -108,7 +128,10 @@ impl MatsuriTrainer {
             );
             return Ok((
                 index,
-                format!("守门·自选比赛补足（剩{need}场 / 可赛{left}回合）"),
+                reason(
+                    explain,
+                    format_args!("守门·自选比赛补足（剩{need}场 / 可赛{left}回合）"),
+                ),
             ));
         }
 
@@ -117,7 +140,7 @@ impl MatsuriTrainer {
             && let Some(index) = actions.iter().position(|action| *action == Action::Clinic)
         {
             diag!("【决策】T{} 守门·治病优先（不擅长 / 生病）", game.turn());
-            return Ok((index, "守门·治病优先".to_string()));
+            return Ok((index, reason(explain, format_args!("守门·治病优先"))));
         }
 
         // 守门 ②：合宿禁令（合宿训练回合内休息 / 比赛 = 浪费训练等级 buff，强制不选）
@@ -153,7 +176,10 @@ impl MatsuriTrainer {
                         .unwrap_or_default(),
                     best_value
                 );
-                return Ok((best, format!("守门·合宿全练 值={best_value:.1}")));
+                return Ok((
+                    best,
+                    reason(explain, format_args!("守门·合宿全练 值={best_value:.1}")),
+                ));
             }
         }
 
@@ -175,7 +201,12 @@ impl MatsuriTrainer {
                 );
                 return Ok((
                     index,
-                    format!("守门·友人外出截止（剩{remaining_uses}次/可用{usable_turns}回合）"),
+                    reason(
+                        explain,
+                        format_args!(
+                            "守门·友人外出截止（剩{remaining_uses}次/可用{usable_turns}回合）"
+                        ),
+                    ),
                 ));
             }
         }
@@ -192,7 +223,10 @@ impl MatsuriTrainer {
             );
             return Ok((
                 index,
-                format!("守门·体力危险（{}<32）强制休息", game.uma().vital),
+                reason(
+                    explain,
+                    format_args!("守门·体力危险（{}<32）强制休息", game.uma().vital),
+                ),
             ));
         }
 
@@ -208,14 +242,20 @@ impl MatsuriTrainer {
                 .position(|action| *action == Action::FriendOuting)
             {
                 diag!("【决策】T{} 守门·心情崩坏→友人出行", game.turn());
-                return Ok((index, "守门·心情崩坏→友人出行".to_string()));
+                return Ok((
+                    index,
+                    reason(explain, format_args!("守门·心情崩坏→友人出行")),
+                ));
             }
             if let Some(index) = actions
                 .iter()
                 .position(|action| *action == Action::NormalOuting)
             {
                 diag!("【决策】T{} 守门·心情崩坏→普通出行", game.turn());
-                return Ok((index, "守门·心情崩坏→普通出行".to_string()));
+                return Ok((
+                    index,
+                    reason(explain, format_args!("守门·心情崩坏→普通出行")),
+                ));
             }
         }
 
@@ -242,7 +282,7 @@ impl MatsuriTrainer {
                 .unwrap_or_default(),
             best_value
         );
-        Ok((best, format!("打分 {best_value:.1}")))
+        Ok((best, reason(explain, format_args!("打分 {best_value:.1}"))))
     }
 
     /// 解释一次动作决策：中选原因 + 全部候选打分（与 [`Trainer::select_action`] 同源）
@@ -251,11 +291,11 @@ impl MatsuriTrainer {
         game: &MatsuriGame,
         actions: &[Action],
     ) -> Result<ActionExplanation> {
-        let (chosen, reason) = self.choose_action(game, actions)?;
+        let (chosen, why) = self.choose_action(game, actions, true)?;
         let candidates = self.score_actions(game, actions)?;
         Ok(ActionExplanation {
             chosen,
-            reason,
+            reason: why,
             candidates,
         })
     }
@@ -327,7 +367,7 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
         actions: &[Action],
         _rng: &mut StdRng,
     ) -> Result<usize> {
-        let (index, _) = self.choose_action(game, actions)?;
+        let (index, _) = self.choose_action(game, actions, false)?;
         Ok(index)
     }
     fn select_choice(

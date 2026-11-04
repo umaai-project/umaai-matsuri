@@ -63,7 +63,7 @@ impl TrainingValueSource for MatsuriGame {
     /// 普通训练返回资产 `training.normal`；**演目稽古结算期间**返回稽古表
     /// （`training.keiko` 逐训练位一行，等级按表行数夹取到 1 档）
     fn training_basic_table(&self) -> &TrainingBasicTable {
-        if self.keiko_settling {
+        if self.keiko_settling.get() {
             // 稽古档按时期切：turn 23 発表会「演目排练强化」后为 Classic 及以后档
             self.keiko_basic_table()
         } else {
@@ -424,7 +424,7 @@ impl Game for MatsuriGame {
     /// 训练值 = 下层（引擎默认公式）+ 上层（剧本来源：发布会 / 教え / 演目 Lv / 稽古 +10）
     fn calc_training_value(&self, buffs: &CardTrainingEffect, train: usize) -> Result<ActionValue> {
         let mut value = self.default_calc_training_value(buffs, train)?;
-        let keiko = self.keiko_settling;
+        let keiko = self.keiko_settling.get();
         let upper = self.training_upper(train, &value, keiko);
         for status in 0..5 {
             value.status_pt[status] += upper.status[status];

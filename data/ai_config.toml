@@ -60,8 +60,8 @@ search_n = 0
 # 最大搜索深度（生产 0 = 搜到终局；> 0 需引擎侧 leaf 估值 hook，本仓仅预留接口）
 max_depth = 0
 
-# 激进度因子上限
-radical_factor_max = 50.0
+# 激进度因子上限（实际口径：0 = 按算术均值排序，不做高分尾部加权）
+radical_factor_max = 0.0
 
 # UCB 动态分配开关
 use_ucb = true

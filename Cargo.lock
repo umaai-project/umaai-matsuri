@@ -641,6 +641,15 @@ version = "0.1.0"
 [[package]]
 name = "matsuri-tools"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "log",
+ "matsuri-core",
+ "rand",
+ "umaai",
+ "umaai-core",
+ "umasim",
+]
 
 [[package]]
 name = "memchr"

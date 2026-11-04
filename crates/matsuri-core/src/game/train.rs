@@ -17,7 +17,10 @@ use umaai_core::{Data, Ill};
 use umasim::game::{FriendOutState, Game, Person, PersonType};
 
 use super::person::PersonOrigin;
-use super::{Action, MatsuriGame, ResourcePreview, TrainingPreview};
+use super::{
+    ActLedger, Action, MatsuriGame, ResourcePreview, TrainingPreview, act_gauge_add,
+    act_gauge_add_lowest, act_level_add, lowest_act,
+};
 use crate::diag;
 
 /// 上层训练数值（剧本来源增量；体力 / 干劲改动也在这里汇总）
@@ -38,20 +41,27 @@ pub(crate) struct TrainingUpper {
 impl MatsuriGame {
     /// 训练 / 演目稽古预览（手动核对 / 前端面板）
     ///
-    /// 在局面的**克隆**上临时切稽古上下文计算，不改动原局面、不消耗任何随机流；
-    /// 预览期间静默诊断日志（不把「如果选这个」的模拟结果混进真实状态变化日志）。
+    /// 不克隆局面：稽古上下文是原子标记，预览临时切换后由 guard 恢复；不改动原局面、
+    /// 不消耗随机流。预览期间静默诊断日志。
+    ///
+    /// 并发约束：标记挂在局面对象上，同一局面不可被多线程同时预览 / 读训练值；
+    /// 搜索的每个 rollout 各持克隆（fork_for_rollout），因此并行搜索不受影响。
     pub fn preview_training(&self, train: usize, keiko: bool) -> Result<TrainingPreview> {
         if train >= 5 {
             return Err(anyhow::anyhow!("普通训练下标越界: {train}（训练位 0–4）"));
         }
         let _quiet = umaai_core::diag::DiagGuard::suppress();
-        let mut probe = self.clone();
-        probe.keiko_settling = keiko;
-        let buffs = probe.calc_training_buff(train)?;
-        let failure_rate = probe.calc_training_failure_rate(&buffs, train)?;
-        let mut value = probe.calc_training_value(&buffs, train)?;
+        let _guard = self.keiko_settling.scoped(keiko);
+        self.preview_training_keiko(train, keiko)
+    }
+
+    /// 训练预览主体（调用前已切好稽古上下文）
+    fn preview_training_keiko(&self, train: usize, keiko: bool) -> Result<TrainingPreview> {
+        let buffs = self.calc_training_buff(train)?;
+        let failure_rate = self.calc_training_failure_rate(&buffs, train)?;
+        let mut value = self.calc_training_value(&buffs, train)?;
         // 【变胖】预览与正式结算同口径：训练 / 排练速度增量归零
-        if probe.is_fat() {
+        if self.is_fat() {
             value.status_pt[0] = 0;
         }
         Ok(TrainingPreview {
@@ -63,53 +73,83 @@ impl MatsuriGame {
 
     /// 动作的剧本资源预览：演目槽 / 演目 Lv 差值（正 = 增加，负 = 排练成功清槽）
     ///
-    /// 在局面克隆上按「成功」口径模拟资源侧（不耗随机流、不改原局面）：普通训练按参与担当入槽；
-    /// 稽古成功清槽 + Lv+1（合宿中不升不清）；比赛 / 休息 / 出行按三则入槽；友人出行额外最低演目
-    /// Lv+1。返回与当前局面的差值；预览期间静默诊断日志。
+    /// 只在演目账本的局部副本上模拟「成功」口径（不耗随机流、不改原局面）：普通训练按参与
+    /// 担当入槽；稽古成功清槽 + Lv+1（合宿中不升不清）；比赛 / 休息 / 出行按三则入槽；友人出行
+    /// 额外最低演目 Lv+1。返回与当前局面的差值；预览期间静默诊断日志。
     pub fn preview_action_resources(&self, action: &Action) -> ResourcePreview {
         let _quiet = umaai_core::diag::DiagGuard::suppress();
-        let mut probe = self.clone();
+        let mut acts = self.acts.clone();
+        self.act_resources_on(&mut acts, action);
+        let mut preview = ResourcePreview::default();
+        for act in 0..5 {
+            preview.gauge_delta[act] = acts.gauge[act] - self.acts.gauge[act];
+            preview.level_delta[act] = acts.level[act] - self.acts.level[act];
+        }
+        preview
+    }
+
+    /// 在给定演目账本副本上模拟动作资源侧（预览用；与正式结算同源助手）
+    fn act_resources_on(&self, acts: &mut ActLedger, action: &Action) {
+        let started = self.scenario_started();
+        let max = self.act_gauge_max();
         match action {
-            Action::Train(train) => probe.gain_training_gauge(usize::from(*train)),
+            Action::Train(train) => self.training_gauge_on(acts, usize::from(*train), started, max),
             Action::ActTrain(act) => {
-                let train = probe
+                let train = self
                     .data
                     .acts
                     .get(usize::from(*act))
                     .map_or(usize::from(*act), |row| row.train);
-                let act = probe.act_of_train(train);
+                let act = self.act_of_train(train);
                 // 稽古成功：非合宿 → Lv+1、槽清零；合宿中不升不清
-                if !probe.plan.camp_train(probe.forced_rest) {
-                    probe.add_act_level(act, 1);
-                    probe.acts.gauge[act] = 0;
+                if !self.plan.camp_train(self.forced_rest) {
+                    act_level_add(acts, self.act_level_cap(), act, 1);
+                    acts.gauge[act] = 0;
                 }
             }
             Action::Race => {
-                let gain = if probe.plan.race {
-                    probe.data.rules.act_gauge_gain.target_race
+                let gain = if self.plan.race {
+                    self.data.rules.act_gauge_gain.target_race
                 } else {
-                    probe.data.rules.act_gauge_gain.other
+                    self.data.rules.act_gauge_gain.other
                 };
-                probe.gain_lowest_act_gauge(gain);
+                act_gauge_add_lowest(acts, started, max, gain);
             }
             Action::Rest | Action::NormalOuting => {
-                probe.gain_lowest_act_gauge(probe.data.rules.act_gauge_gain.other);
+                act_gauge_add_lowest(acts, started, max, self.data.rules.act_gauge_gain.other);
             }
             Action::FriendOuting => {
                 // 与 do_friend_outing 同口径：当前段最低演目 Lv+1 + 槽 +1
-                if let Some(add_level) = probe.friend_outing_add_level() {
-                    probe.add_lowest_act_level(add_level);
+                if let Some(add_level) = self.friend_outing_add_level() {
+                    let act = lowest_act(&acts.level, &acts.gauge);
+                    act_level_add(acts, self.act_level_cap(), act, add_level);
                 }
-                probe.gain_lowest_act_gauge(probe.data.rules.act_gauge_gain.other);
+                act_gauge_add_lowest(acts, started, max, self.data.rules.act_gauge_gain.other);
             }
             Action::Clinic | Action::AssignAdvice(_) => {}
         }
-        let mut preview = ResourcePreview::default();
-        for act in 0..5 {
-            preview.gauge_delta[act] = probe.acts.gauge[act] - self.acts.gauge[act];
-            preview.level_delta[act] = probe.acts.level[act] - self.acts.level[act];
+    }
+
+    /// 在给定账本副本上按参与担当入槽（预览与正式结算共用）
+    fn training_gauge_on(&self, acts: &mut ActLedger, train: usize, started: bool, max: i32) {
+        let Some(touches) = self.base.distribution.get(train) else {
+            return;
+        };
+        for &index in touches {
+            if index < 0 {
+                continue;
+            }
+            let person_index = index as usize;
+            let Some(act) = self.persons.get(person_index).and_then(|person| person.act) else {
+                continue;
+            };
+            let amount = if self.is_shining_at(person_index, train) {
+                self.data.rules.act_gauge_gain.friendship
+            } else {
+                self.data.rules.act_gauge_gain.member
+            };
+            act_gauge_add(acts, started, max, act, amount);
         }
-        preview
     }
 
     /// 普通训练结算
@@ -129,9 +169,9 @@ impl MatsuriGame {
             .ok_or_else(|| anyhow::anyhow!("演目下标越界: {act}（演目 0–4）"))?
             .train;
         // 稽古结算期间让 `training_basic_table` 返回稽古表；无论成败都恢复
-        self.keiko_settling = true;
+        self.keiko_settling.set(true);
         let result = self.settle_training(train, true, rng);
-        self.keiko_settling = false;
+        self.keiko_settling.set(false);
         result
     }
 
@@ -563,24 +603,11 @@ impl MatsuriGame {
     fn gain_training_gauge(&mut self, train: usize) {
         let gauge_before = self.acts.gauge;
         // 预览 / 解释可能在「分布阶段尚未跑」的构造局面上调用（空分布按无参与处理，避免越界）
-        let Some(touches) = self.base.distribution.get(train).cloned() else {
-            return;
-        };
-        for index in touches {
-            if index < 0 {
-                continue;
-            }
-            let person_index = index as usize;
-            let Some(act) = self.persons.get(person_index).and_then(|person| person.act) else {
-                continue;
-            };
-            let amount = if self.is_shining_at(person_index, train) {
-                self.data.rules.act_gauge_gain.friendship
-            } else {
-                self.data.rules.act_gauge_gain.member
-            };
-            self.gain_act_gauge(act, amount);
-        }
+        let started = self.scenario_started();
+        let max = self.act_gauge_max();
+        let mut acts = self.acts.clone();
+        self.training_gauge_on(&mut acts, train, started, max);
+        self.acts = acts;
         if gauge_before != self.acts.gauge {
             let mut changes: Vec<String> = Vec::new();
             for (act, (before, after)) in
@@ -672,6 +699,55 @@ mod tests {
             .iter()
             .position(|person| person.act == Some(act))
             .expect("该演目没有担当")
+    }
+
+    /// 预览不跨候选串味：交替调用其它动作 / 稽古预览后，同一动作的资源预览逐位不变
+    #[test]
+    fn previews_do_not_leak_between_actions() {
+        let mut game = crate::testing::sample_game();
+        game.acts.gauge = [3, 5, 0, 2, 4];
+        game.acts.level = [2, 1, 4, 3, 5];
+        game.base.distribution = vec![vec![0], vec![1], vec![], vec![], vec![]];
+        let actions = [
+            Action::Train(0),
+            Action::Train(1),
+            Action::ActTrain(0),
+            Action::Race,
+            Action::Rest,
+            Action::NormalOuting,
+            Action::FriendOuting,
+            Action::Clinic,
+        ];
+        let expected: Vec<ResourcePreview> = actions
+            .iter()
+            .map(|action| game.preview_action_resources(action))
+            .collect();
+        // 中间穿插其它动作与稽古 / 普通两种训练预览
+        for action in &actions {
+            let _ = game.preview_action_resources(action);
+            let _ = game.preview_training(0, true);
+            let _ = game.preview_training(3, false);
+        }
+        let again: Vec<ResourcePreview> = actions
+            .iter()
+            .map(|action| game.preview_action_resources(action))
+            .collect();
+        assert_eq!(expected, again, "资源预览结果只取决于局面与该动作");
+    }
+
+    /// 训练预览的稽古上下文在调用结束后恢复（普通 / 稽古交替不串味）
+    #[test]
+    fn preview_training_restores_keiko_context() {
+        let game = crate::testing::sample_game();
+        let normal = game.preview_training(0, false).expect("普通训练预览");
+        let keiko = game.preview_training(0, true).expect("稽古预览");
+        let normal_again = game.preview_training(0, false).expect("再次普通训练预览");
+        assert_eq!(normal, normal_again, "稽古预览不应改变普通预览");
+        assert_ne!(normal.value, keiko.value, "稽古表与普通表应给出不同数值");
+        // 预览报错（越界）也必须恢复上下文
+        assert!(game.preview_training(9, true).is_err(), "越界应报错");
+        let after = game.preview_training(0, false).expect("报错后普通预览");
+        assert_eq!(normal, after, "报错路径也要恢复稽古上下文");
     }
 
     #[test]
@@ -970,7 +1046,7 @@ mod tests {
     #[test]
     fn keiko_flat_applies_to_all_five_stats() {
         let mut game = crate::testing::sample_game();
-        game.keiko_settling = true;
+        game.keiko_settling.set(true);
         let person = person_of_act(&game, 0);
         game.base.distribution = vec![vec![person as i32], vec![], vec![], vec![], vec![]];
         let buffs = game.calc_training_buff(0).expect("训练 buff");

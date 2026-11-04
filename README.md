@@ -22,16 +22,21 @@
   `matsuri_config [search].search_n` = 每候选 rollout 次数（0 = 手写；单局验证 1024/2048；
   生产 8192），`train` / `advice` / `event` 分开关；教诲 120 候选剪枝到 top-16；
   事件搜索用事件队列从下一事件续跑；叶子估值器仅预留接口，生产 `max_depth=0`。
-- **搜索单局验证**：seed 61444 手写 **81553 / LG8、PT 11490**；1024 档 **83326 / LG11、PT 11602**（90.8 s）、
-  2048 档 **83519 / LG11、PT 11901**（180 s）。单局冒烟，不是基线。
+  搜索排序口径 `radical_factor_max=0`（算术均值，不做高分尾部加权）。
+- **搜索单局验证**（`radical_factor_max=0`，本机 24 线程）：seed 61444 手写 **81553 / LG8、PT 11490**；
+  1024 档 **84875 / PT 12097**（24.7 s）。单局冒烟，不是基线；旧口径（`radical=50`）的
+  1024/2048 数字不再可比。
 - **搜索理想测试**（单 seed，Train-only、`radical=0.0`）：普通 100101 + 小切 / 盾×2
   手写 **82807 / LG10** → 4096 **85184 / LG14（+2377）**；狄杜斯 106301 → **85384 → 86955**
   （+1571，铁心后五维近上限，边际更小）。
 - **默认档**：`data/matsuri_config.toml` = 冠军档 `ga-r2`（`pt_favor_rate=1.7271`）；搜索默认关。
 - **基线**：100101 100 局（seeds 61444–61543）均 78124.5 / PT 11052.2；102102（freeRaces）均 76406.6。
-- **验收**：workspace **218 测例**（含 1 个 1024 手动档 `#[ignore]`）；`fmt --check` / `check` /
+- **验收**：workspace **220 测例**（含 1 个 1024 手动档 `#[ignore]`）；`fmt --check` / `check` /
   `clippy -D warnings` / `test` 四门绿。
-- **下一步**：搜索单局调优（1024/2048 → 8192）+ 引擎 `docs/scenario/perf_plan.md` O0–O4 剖面
+- **性能**：手写决策链与 MCTS rollout 已完成一轮 O0–O4 优化（预览零克隆 / 教诲查表 /
+  原因惰性化），配对测量与复现见 [`docs/perf_profiling.md`](docs/perf_profiling.md)；
+  整局 N=1024 55.7 s → 24.7 s，决策与终局逐位一致。
+- **下一步**：搜索 8192 档验证 + rollout 机制成本（事件管线）与 `Model::new` 缓存
   → S9 基线（只录一次）；调参一律换全新种子块。
 ## 结构
 
@@ -63,7 +68,7 @@
 | `crates/matsuri-cli/src/logging.rs` | stderr 日志器：消费 `[output] log_level`，承接引擎 / 剧本 `diag!` 记录（默认 `info`、`off` 静默） |
 | `crates/matsuri-sim` | 模拟器与基线裁判（骨架） |
 | `crates/matsuri-ai` | 在线决策核心（骨架） |
-| `crates/matsuri-tools` | 外围工具（骨架） |
+| `crates/matsuri-tools` | 外围工具：性能测量 bin `bench`（整局 / 决策分段 / rollout 分布 / 固定根；测卡 / 复盘待补） |
 | `data/` | 引擎静态表 + 剧本资产 `scenario_matsuri.json` + 双配置默认层 |
 | `docs/` | 本仓文档骨架 |
 
@@ -78,6 +83,7 @@
 | [`docs/mechanism.md`](docs/mechanism.md) | 机制文档（公式 / 流程 / 实现落点） |
 | [`docs/glossary.md`](docs/glossary.md) | 术语单一事实源 + 口径决定记录 |
 | [`docs/tests_overview.md`](docs/tests_overview.md) | 测试一览 |
+| [`docs/perf_profiling.md`](docs/perf_profiling.md) | 性能分析与优化：工具 / 热点 / 改动 / 配对测量 / 复现 |
 | [`docs/handoff.md`](docs/handoff.md) | 交接提示词 |
 
 ## 运行与验收

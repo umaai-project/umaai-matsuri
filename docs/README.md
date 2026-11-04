@@ -11,10 +11,12 @@
 | [`plan/scenario_dev_plan.md`](plan/scenario_dev_plan.md) | 开发计划：阶段状态 + 决策记录 + 待决事项 | 阶段推进、口径拍板 |
 | [`plan/intake.md`](plan/intake.md) | 接入包：情报位置、机制清单、数值清单、数据表清单、待确认问题 | S0 核对期间 |
 | [`plan/stubs.md`](plan/stubs.md) | 数值占位登记（`STUB` / `TBD`）：位置、来源、替换条件、基线影响 | 出现占位时 |
+| [`plan/online_wiring.md`](plan/online_wiring.md) | **在线接线方案**：`MatsuriGame` 剧本专属状态盘点与还原来源分类（协议直读 / 插件收集 / 插件计算 / 本侧重算）、`thisTurn.json` 的 `matsuri` 段草案、两端改动清单与待核清单 `G1–G10` | 在线外壳（S8）推进、`G#` 有结论时 |
 | [`mechanism.md`](mechanism.md) | 机制文档：公式 / 流程 / 实现落点 / 测试对应 | 机制实现或修正 |
 | [`matsuri_memo_cn.md`](matsuri_memo_cn.md) | 中文机制备忘：按机制类型逐条记录（骨架 / 演目 / 排练 / 教诲 / 汇报会 / 合宿 / 比赛 / 事件）；**§2.2 为担当编排规则**（五步流水线 + 卡落位 / NPC 摊法 / 追加负责人 / 形态穷举）；**§3.5 为分身机制**（教诲 +1 人的落点与打法）；§14 为 **未决清单**（P0–P2 未定 13 条：`△` 3 / `□` 10，P0 已清空（U02 收口）；§14.8 另有 U41 / U44 / U45；已定条与已核实项移到 §14.4 / §14.5 备查） | 上游日文备忘或真机口径更新 |
 | [`glossary.md`](glossary.md) | 术语单一事实源 + 口径与用语决定记录 | 每次口径决定 |
 | [`tests_overview.md`](tests_overview.md) | 测试一览（单元 / 机制 / 冒烟 / 基线） | 测试增删 |
+| [`perf_profiling.md`](perf_profiling.md) | 性能分析与优化：测量工具 / 热点拆解 / 改动清单 / 配对测量 / 复现命令 | 性能轮次、测量工具变化 |
 | [`handoff.md`](handoff.md) | 交接提示词（上下文很长时） | 用户同意交接时 |
 
 ## 2. 引擎通用文档（权威版在引擎仓 `../umaai_next`）

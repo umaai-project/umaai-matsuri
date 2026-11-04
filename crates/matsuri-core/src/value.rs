@@ -4,8 +4,10 @@
 //! PT 再乘训练员配置的 `pt_favor_rate`（`1.0` = 官方评分，引擎既有定档 `2.0`）。
 //! 全部估值都是**评分点**，训练员只比较同一量纲的分数，不加第二个评分轴。
 //!
-//! 纪律：只读局面（`preview_*` 走克隆、不耗随机流）；纯函数式打分，供手写训练员与
+//! 纪律：只读局面（`preview_*` 不耗随机流、不写局面）；纯函数式打分，供手写训练员与
 //! 手动面板复用。后续扫参只改 `[trainer]` 配置段，不改这里的公式骨架。
+
+use std::cell::OnceCell;
 
 use anyhow::Result;
 use umaai_core::gamedata::{ActionValue, EventChoice, ExtraStatus, GameConstants};
@@ -105,6 +107,17 @@ struct CheckpointCtx {
     turns_left: f64,
 }
 
+/// 教诲分配缓存
+///
+/// 120 个候选只由 5 个槽下标×5 个演目组合而成：槽位价值与候选无关，801 目标演目也与
+/// 候选无关。首次分配打分时算一次，之后查表，结果与逐候选重算逐位一致。
+struct AdviceCache {
+    /// 槽位价值：[act][source]
+    slot: [[f64; 5]; 5],
+    /// 801 硬约束的目标演目（无 801 时为 None）
+    target_801: Option<usize>,
+}
+
 /// 估值模型（借用局面；构造一次、给一批候选打分）
 pub(crate) struct Model<'a> {
     game: &'a MatsuriGame,
@@ -116,6 +129,8 @@ pub(crate) struct Model<'a> {
     advice: AdviceWeights,
     status_weights: [f64; 5],
     ctx: Context,
+    /// 教诲分配查表缓存（首次分配打分时惰性建立）
+    advice_cache: OnceCell<AdviceCache>,
 }
 
 impl<'a> Model<'a> {
@@ -298,6 +313,7 @@ impl<'a> Model<'a> {
             weights: cfg.weights.clone(),
             advice: cfg.advice.clone(),
             status_weights: cfg.status_weights,
+            advice_cache: OnceCell::new(),
             ctx: Context {
                 train_turns,
                 keiko_turns,
@@ -375,16 +391,41 @@ impl<'a> Model<'a> {
         if assign.0.iter().any(|slot| *slot >= 5) {
             return f64::NEG_INFINITY;
         }
-        let effective = self.effective_assignment(assign);
+        let cache = self.advice_cache.get_or_init(|| self.build_advice_cache());
+        let effective = self.effective_assignment(assign, cache.target_801);
         let mut total = 0.0;
         for (act, source) in effective.iter().enumerate() {
-            let source = usize::from(*source);
-            let level = self.game.acts.level[act].clamp(1, 10) as usize;
-            let effect = self.game.advice_effect_of(source, level);
-            total += self.slot_value(&effect, act);
+            total += cache.slot[act][usize::from(*source)];
         }
         total += self.route_prior_value(&effective);
         total
+    }
+
+    /// 建立教诲分配查表（槽位价值 5×5 + 801 目标演目）
+    fn build_advice_cache(&self) -> AdviceCache {
+        let mut slot = [[0.0f64; 5]; 5];
+        for (act, row) in slot.iter_mut().enumerate() {
+            let level = self.game.acts.level[act].clamp(1, 10) as usize;
+            for (source, cell) in row.iter_mut().enumerate() {
+                let effect = self.game.advice_effect_of(source, level);
+                *cell = self.slot_value(&effect, act);
+            }
+        }
+        let target_801 = self.game.advice.fused.contains(&801).then(|| {
+            (0..5)
+                .max_by_key(|act| {
+                    (
+                        self.game
+                            .persons
+                            .iter()
+                            .filter(|person| person.act == Some(*act))
+                            .count(),
+                        usize::MAX - *act,
+                    )
+                })
+                .unwrap_or(0)
+        });
+        AdviceCache { slot, target_801 }
     }
 
     /// 落位先验加分：与离线搜出的 [`ROUTE_PRIOR`] 逐位比对，命中一位加 `advice.route`
@@ -1007,23 +1048,20 @@ impl<'a> Model<'a> {
     // ------------------------------------------------------------------
 
     /// 应用 `apply_assignment` 的 801 硬约束后的有效分配（估值与落地同口径）
-    fn effective_assignment(&self, assign: &AdviceAssignment) -> [u8; 5] {
+    ///
+    /// 目标演目由查表缓存给出（与逐候选重算的 max_by_key 同值）。
+    fn effective_assignment(
+        &self,
+        assign: &AdviceAssignment,
+        target_801: Option<usize>,
+    ) -> [u8; 5] {
         let mut effective = assign.0;
+        let Some(target) = target_801 else {
+            return effective;
+        };
         let Some(source) = (0..5).find(|slot| self.game.advice.fused[*slot] == 801) else {
             return effective;
         };
-        let target = (0..5)
-            .max_by_key(|act| {
-                (
-                    self.game
-                        .persons
-                        .iter()
-                        .filter(|person| person.act == Some(*act))
-                        .count(),
-                    usize::MAX - *act,
-                )
-            })
-            .unwrap_or(0);
         if usize::from(effective[target]) == source {
             return effective;
         }

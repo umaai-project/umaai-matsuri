@@ -21,6 +21,7 @@ mod view;
 
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
 use umaai::Config;
@@ -115,6 +116,66 @@ pub struct ResourcePreview {
     pub level_delta: Array5,
 }
 
+/// 稽古结算上下文
+///
+/// 预览需要在共享局面（&self）上临时切换该标记，而搜索并行要求局面为 Sync：
+/// 因此用原子量而不是可变的 bool。单次决策内只有本线程读写，预览结束由 guard 恢复。
+#[derive(Debug, Default)]
+struct KeikoSettling(AtomicBool);
+
+impl KeikoSettling {
+    /// 当前是否为稽古口径
+    fn get(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+
+    /// 直接设置（正式结算入口用）
+    fn set(&self, value: bool) {
+        self.0.store(value, Ordering::Relaxed);
+    }
+
+    /// 设置并返回旧值（预览临时切换用）
+    fn replace(&self, value: bool) -> bool {
+        self.0.swap(value, Ordering::Relaxed)
+    }
+}
+
+/// 稽古上下文恢复 guard（RAII）：正常返回 / 错误 / panic 都恢复进入前的值
+struct KeikoGuard<'a> {
+    /// 被切换的标记
+    flag: &'a KeikoSettling,
+    /// 进入前的值
+    previous: bool,
+}
+
+impl Drop for KeikoGuard<'_> {
+    fn drop(&mut self) {
+        self.flag.set(self.previous);
+    }
+}
+
+impl KeikoSettling {
+    /// 临时切换并返回恢复 guard
+    fn scoped(&self, value: bool) -> KeikoGuard<'_> {
+        KeikoGuard {
+            flag: self,
+            previous: self.replace(value),
+        }
+    }
+}
+
+impl Clone for KeikoSettling {
+    fn clone(&self) -> Self {
+        Self(AtomicBool::new(self.get()))
+    }
+}
+
+impl PartialEq for KeikoSettling {
+    fn eq(&self, other: &Self) -> bool {
+        self.get() == other.get()
+    }
+}
+
 /// 剧本局面
 ///
 /// 状态底座复用引擎的 [`BaseGame`]（回合 / 马娘 / 卡组 / 继承 / 规则流），剧本只加自己的
@@ -136,7 +197,7 @@ pub struct MatsuriGame {
     /// 演目稽古基础表（Classic 及以后档；turn 24 起替换 Junior 档）
     keiko_classic_table: TrainingBasicTable,
     /// 稽古结算上下文：为真时 `training_basic_table()` 返回（按时期挑的）稽古表
-    keiko_settling: bool,
+    keiko_settling: KeikoSettling,
     /// 演目资源账本（gauge / Lv）
     pub acts: ActLedger,
     /// 教诲槽位账本（5 槽 / 転成 / 待分配）
@@ -214,7 +275,7 @@ impl MatsuriGame {
             data,
             keiko_table,
             keiko_classic_table,
-            keiko_settling: false,
+            keiko_settling: KeikoSettling::default(),
             acts: ActLedger::default(),
             advice: AdviceLedger::default(),
             camp: CampState::default(),
@@ -450,42 +511,22 @@ impl MatsuriGame {
 
     /// 给单个演目加槽（满槽吃掉溢出、不叠加），返回实际增加量
     ///
-    /// 0–1 回合（剧本机制未开始）不获取演目槽。
+    /// 0–1 回合（剧本机制未开始）不获取演目槽。生产路径走整账本助手，
+    /// 单槽入口仅测试使用。
+    #[cfg(test)]
     pub(crate) fn gain_act_gauge(&mut self, act: usize, amount: i32) -> i32 {
-        if !self.scenario_started() || amount <= 0 || act >= 5 {
-            return 0;
-        }
+        let started = self.scenario_started();
         let max = self.act_gauge_max();
-        let old = self.acts.gauge[act];
-        let new = (old + amount).min(max);
-        self.acts.gauge[act] = new;
-        new - old
-    }
-
-    /// 三则落点 + **满槽跳过**：在未满槽的演目里挑「Lv 最低 → 槽最低 → 属性序」
-    fn lowest_gain_act(&self) -> Option<usize> {
-        let max = self.act_gauge_max();
-        (0..5)
-            .filter(|act| self.acts.gauge[*act] < max)
-            .min_by_key(|act| (self.acts.level[*act], self.acts.gauge[*act], *act as i32))
+        act_gauge_add(&mut self.acts, started, max, act, amount)
     }
 
     /// 三则落点逐次 +1 槽（`count` 次；满槽跳过、并列逐次分摊），返回各演目实际增加量
     ///
     /// 0–1 回合（剧本机制未开始）不获取演目槽。
     pub(crate) fn gain_lowest_act_gauge(&mut self, count: i32) -> [i32; 5] {
-        let mut gained = [0; 5];
-        if !self.scenario_started() {
-            return gained;
-        }
-        for _ in 0..count.max(0) {
-            let Some(act) = self.lowest_gain_act() else {
-                break;
-            };
-            self.acts.gauge[act] += 1;
-            gained[act] += 1;
-        }
-        gained
+        let started = self.scenario_started();
+        let max = self.act_gauge_max();
+        act_gauge_add_lowest(&mut self.acts, started, max, count)
     }
 
     /// 按三则落点（演目 Lv 最低 → 槽最低 → 速/耐/力/毅/智顺序）挑一个演目下标
@@ -503,7 +544,7 @@ impl MatsuriGame {
     /// 给指定演目 +Lv（按演目 Lv 上限夹取）
     pub(crate) fn add_act_level(&mut self, act: usize, amount: i32) {
         let cap = self.act_level_cap();
-        self.acts.level[act] = (self.acts.level[act] + amount).min(cap);
+        act_level_add(&mut self.acts, cap, act, amount)
     }
 
     /// 演目 Lv 效果行（Lv 夹取到 1–10）
@@ -566,6 +607,45 @@ impl PresentationBonus {
 /// 由剧本资产的稽古档构造「每训练位一行」的基础表（引擎公式按行数夹取等级）
 fn build_keiko_table(rows: &[[i32; 7]]) -> TrainingBasicTable {
     rows.iter().map(|row| vec![*row]).collect()
+}
+
+/// 演目槽加算（账本级；预览与正式结算共用同一实现）
+fn act_gauge_add(acts: &mut ActLedger, started: bool, max: i32, act: usize, amount: i32) -> i32 {
+    if !started || amount <= 0 || act >= 5 {
+        return 0;
+    }
+    let old = acts.gauge[act];
+    let new = (old + amount).min(max);
+    acts.gauge[act] = new;
+    new - old
+}
+
+/// 未满槽演目里挑「Lv 最低 → 槽最低 → 属性序」（账本级）
+fn act_lowest_gain(acts: &ActLedger, max: i32) -> Option<usize> {
+    (0..5)
+        .filter(|act| acts.gauge[*act] < max)
+        .min_by_key(|act| (acts.level[*act], acts.gauge[*act], *act as i32))
+}
+
+/// 三则落点逐次 +1 槽（账本级；满槽跳过、并列逐次分摊）
+fn act_gauge_add_lowest(acts: &mut ActLedger, started: bool, max: i32, count: i32) -> [i32; 5] {
+    let mut gained = [0; 5];
+    if !started {
+        return gained;
+    }
+    for _ in 0..count.max(0) {
+        let Some(act) = act_lowest_gain(acts, max) else {
+            break;
+        };
+        acts.gauge[act] += 1;
+        gained[act] += 1;
+    }
+    gained
+}
+
+/// 演目 +Lv（账本级；按上限夹取）
+fn act_level_add(acts: &mut ActLedger, cap: i32, act: usize, amount: i32) {
+    acts.level[act] = (acts.level[act] + amount).min(cap);
 }
 
 /// 三则落点：演目 Lv 最低 → 槽最低 → 速 / 耐 / 力 / 毅 / 智顺序

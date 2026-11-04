@@ -93,17 +93,20 @@ impl MatsuriSearchTrainer {
         game: &MatsuriGame,
         actions: &[Action],
         topk: usize,
-        rng: &mut StdRng,
     ) -> Result<(Vec<Action>, Vec<usize>)> {
         let mut scored = self.fallback.score_actions(game, actions)?;
-        scored.retain(|(_, value)| value.is_finite());
         scored.sort_by(|a, b| b.1.total_cmp(&a.1));
-        let mut keep: Vec<usize> = scored.into_iter().take(topk).map(|(i, _)| i).collect();
-        // 保证搜索空间不劣于「本点走纯手写」：手写 argmax 必须在子集里
-        let hand = {
-            let _quiet = umaai_core::diag::DiagGuard::suppress();
-            self.fallback.select_action(game, actions, rng)?
-        };
+        // 保证搜索空间不劣于「本点走纯手写」：手写 argmax 必须在子集里。
+        // 本函数只用于教诲分配（候选全是分配方案），手写分支就是同一批方案分取最大，
+        // 直接复用排序首项，省掉第二次 Model 与 120 次方案打分。
+        // 先取 hand 再滤非有限值，与 choose_action 在未过滤表上取首项的语义一致。
+        let hand = scored.first().map_or(0, |(index, _)| *index);
+        let mut keep: Vec<usize> = scored
+            .into_iter()
+            .filter(|(_, value)| value.is_finite())
+            .take(topk)
+            .map(|(i, _)| i)
+            .collect();
         if !keep.contains(&hand)
             && let Some(last) = keep.last_mut()
         {
@@ -123,19 +126,18 @@ impl MatsuriSearchTrainer {
         rng: &mut StdRng,
     ) -> Result<usize> {
         // Train 全候选（ramen 口径）；候选剪枝不进配置
-        let subset = actions.to_vec();
         let started = Instant::now();
         // 与 ramen 一致：搜索从调用方决策流取种子；局面规则流由 `fork_for_rollout`
         // 独立派生，搜索不读 / 不改真实局面的规则流。
         let out = self
             .search
-            .search::<NoTerminal, _>(game, &subset, rng, |_| NoTerminal)?;
+            .search::<NoTerminal, _>(game, actions, rng, |_| NoTerminal)?;
         let chosen = out.best_action_idx;
         let mean = out.action_results[chosen].weighted_mean(out.radical_factor);
         diag!(
             "【搜索】T{} Train 候选 {} × {} → #{} {} 均值={:.0} 耗时={}ms",
             game.turn(),
-            subset.len(),
+            actions.len(),
             self.search.config().search_n,
             chosen,
             actions[chosen],
@@ -152,7 +154,7 @@ impl MatsuriSearchTrainer {
         actions: &[Action],
         rng: &mut StdRng,
     ) -> Result<usize> {
-        let (subset, map) = self.prune(game, actions, ADVICE_TOPK, rng)?;
+        let (subset, map) = self.prune(game, actions, ADVICE_TOPK)?;
         if subset.len() < 2 {
             return self.fallback.select_action(game, actions, rng);
         }
