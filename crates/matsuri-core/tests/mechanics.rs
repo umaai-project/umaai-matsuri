@@ -1529,8 +1529,10 @@ fn rest_normal_and_camp_versions() -> Result<()> {
 #[test]
 fn outing_actions() -> Result<()> {
     let repo = Repo::load()?;
+    // 固定 100101：本用例按它的目标赛回合（26 / 33）排程，不受默认测试马娘切换影响
+    const UMA: u32 = 100101;
     // 普通出行
-    let mut game = repo.game(repo.cfg.sim.uma)?;
+    let mut game = repo.game(UMA)?;
     drive_to_turn(&mut game, 20)?;
     // 干劲压到 1：三种普通出行事件都必然带来增量（否则 KTV 档只加干劲会被上限吃掉）
     game.uma_mut().motivation = 1;
@@ -1562,7 +1564,7 @@ fn outing_actions() -> Result<()> {
     // 友人出行：手动解锁（真实解锁事件的「上 / 下」选择留事件链单测），连续 5 段
     // 从 turn 27 起：跨过 turn 24 的正月事件、避开本局目标赛（turn 26 / 33），
     // 使本段 delta 只含出行 5 段（期间随机事件只会额外增加）
-    let mut game = repo.game(repo.cfg.sim.uma)?;
+    let mut game = repo.game(UMA)?;
     drive_to_turn(&mut game, 27)?;
     game.base.friend.out_state = FriendOutState::AfterUnlock;
     // 新训练员可能已在前面回合用掉部分友人出行；本用例从 5 段全未用开始，保持测例意图

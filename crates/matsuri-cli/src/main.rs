@@ -100,7 +100,7 @@ fn run() -> Result<()> {
     let mut runner = Runner::new(&cfg, &mut fe)?;
     match trainer_name.as_str() {
         "matsuri" => {
-            // 搜索预算归剧本配置 `[search].search_n`（每候选 rollout 次数）；
+            // 搜索预算归剧本配置 `[search].search_n`（每候选 rollout 次数；默认 12288，0 = 手写档）；
             // 引擎 `[search]` 只提供内核参数（UCB / 激进度 / max_depth）。
             let mut search = cfg.search.clone();
             let search_n =

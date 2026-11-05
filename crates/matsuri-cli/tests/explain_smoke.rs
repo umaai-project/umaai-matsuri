@@ -9,6 +9,8 @@ fn explain_mode_runs_full_game_with_panels() {
     let root = matsuri_core::testing::repo_root();
     let output = Command::new(env!("CARGO_BIN_EXE_matsuri"))
         .args(["matsuri", "--explain"])
+        // explain 面板只与手写打分同源；默认档已开搜索，这里显式关掉
+        .env("MATSURI_SEARCH_N", "0")
         .current_dir(root)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

@@ -12,6 +12,15 @@ publish.workspace = true
 name = "bench"
 path = "src/bin/bench.rs"
 
+# 开局预设扫参：blue_count × extra_count 枚举 / 评估
+[[bin]]
+name = "sweep"
+path = "src/bin/sweep.rs"
+
+[features]
+# CPU 剖面（pprof）：只在 bench 的 `prof` 子命令用到，默认不编译、不进 core / 下游
+profile = ["dep:pprof"]
+
 [dependencies]
 matsuri-core.workspace = true
 umaai-core.workspace = true
@@ -20,3 +29,6 @@ umaai.workspace = true
 anyhow.workspace = true
 log.workspace = true
 rand.workspace = true
+
+# 仅 `--features profile`：SIGPROF 采样 + SVG 火焰图（不依赖 perf_event / root）
+pprof = { version = "0.15.0", features = ["flamegraph"], optional = true }

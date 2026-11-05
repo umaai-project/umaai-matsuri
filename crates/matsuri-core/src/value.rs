@@ -1240,7 +1240,8 @@ mod tests {
             "义务补足时自选赛应参与打分"
         );
 
-        let mut plain = crate::testing::sample_game();
+        // 100101（特别周）无义务自选赛；显式指定，避免受默认测试马娘切换影响
+        let mut plain = crate::testing::sample_game_with_uma(100101);
         plain.turn = 47;
         plain.plan = plain.derive_plan();
         let model = Model::new(&plain, &plain.config.trainer).expect("模型");

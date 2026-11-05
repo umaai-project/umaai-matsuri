@@ -1,12 +1,13 @@
 //! 性能测量入口：手写档整局 / 决策链分段 / 搜索固定根 / rollout 阶段拆分
 //!
 //! 用法（仓根执行，先 cargo build --release --offline -p matsuri-tools）：
-//! - bench game --games 20 --seed 61444            整局耗时 + 终局 CSV（跨版本逐位对照）
+//! - bench game --games 20 --seed 61444 --search-n 0  整局耗时 + 终局 CSV（手写档；缺省走配置 search_n=12288）
 //! - bench micro --turn 32 --iters 2000            决策链分段 ns/op
 //! - bench root --turn 32 --search-n 512 --repeat 3 固定根搜索耗时 + 探针计数
 //! - bench stages --turn 32                        单次 rollout 按阶段机拆分
 //! - bench parts --turn 32 --iters 2000            Distribute / 事件管线单点 ns/op
 //! - bench flat --turn 32 --rollouts 2048 --threads 24  平铺线程池 rollout（并行上限对照）
+//! - bench prof <子命令> [原参数] --freq 997 --out SVG  pprof 火焰图 + 自耗时 TopN（需 `--features profile`）
 //!
 //! 测量纪律：双方同一 Release 构建、同一数据 / 配置；耗时只声明本机当轮。
 //! 日志不装 logger，避免把诊断格式化的成本算进测量。
@@ -384,6 +385,8 @@ fn main() -> Result<()> {
         "flat" => cmd_flat(&env, &args),
         "parts" => cmd_parts(&env, &args),
         "allocs" => cmd_allocs(&env, &args),
+        #[cfg(feature = "profile")]
+        "prof" => prof::cmd_prof(&env, &args),
         other => bail!(
             "未知子命令: {other}（可选 game / micro / root / trace / stages / parts / flat / allocs）"
         ),
@@ -1078,4 +1081,115 @@ fn cmd_root(env: &Env, args: &[String]) -> Result<()> {
     });
     println!("rollout_noop(seq)      {noop_ns:10.1}  (机制成本；差值 = 训练员决策)");
     Ok(())
+}
+
+/// `bench prof`：pprof（SIGPROF 采样）包一层现有测量命令，产出 SVG 火焰图 + 自耗时 TopN。
+///
+/// - 不依赖 `perf_event_open` / root：pprof 走 `setitimer(ITIMER_PROF)` + `SIGPROF`；
+///   只采用户态 CPU，内核态时间用 `perf stat` 另看。
+/// - 用法：`bench prof flat --turn 32 --rollouts 120000 --threads 16 --freq 997 --out logs/perf/flame-flat.svg`。
+#[cfg(feature = "profile")]
+mod prof {
+    use super::*;
+    use std::collections::HashMap;
+    use std::fmt::Write as _;
+    use std::fs::File;
+
+    /// prof 子命令：剥掉 `prof` 与自身参数后交给原测量命令，前后包一层 pprof
+    pub(super) fn cmd_prof(env: &Env, args: &[String]) -> Result<()> {
+        let inner = args.get(2).map(String::as_str).context(
+            "用法: bench prof <game|micro|root|trace|stages|flat|parts|allocs> [原参数] [--freq HZ] [--out PATH]",
+        )?;
+        let freq = parse_usize(args, "--freq", 997)?;
+        anyhow::ensure!((1..=2000).contains(&freq), "--freq 超出范围 1..=2000");
+        let out =
+            parse_arg(args, "--out").unwrap_or_else(|| format!("logs/perf/flame-{inner}.svg"));
+
+        // 重建原命令参数：去掉 "prof" 与 --freq / --out，其余 flags 原样保留
+        let mut sub: Vec<String> = Vec::with_capacity(args.len());
+        sub.push(args[0].clone());
+        let mut skip_value = false;
+        for arg in args.iter().skip(2) {
+            if skip_value {
+                skip_value = false;
+                continue;
+            }
+            if arg == "--freq" || arg == "--out" {
+                skip_value = true;
+                continue;
+            }
+            sub.push(arg.clone());
+        }
+
+        let guard = pprof::ProfilerGuardBuilder::default()
+            .frequency(freq as i32)
+            .blocklist(&["libgcc", "pthread", "vdso"])
+            .build()
+            .map_err(|err| anyhow::anyhow!("pprof 启动失败: {err}"))?;
+
+        let outcome = match inner {
+            "game" => cmd_game(env, &sub),
+            "micro" => cmd_micro(env, &sub),
+            "root" => cmd_root(env, &sub),
+            "trace" => cmd_trace(env, &sub),
+            "stages" => cmd_stages(env, &sub),
+            "flat" => cmd_flat(env, &sub),
+            "parts" => cmd_parts(env, &sub),
+            "allocs" => cmd_allocs(env, &sub),
+            other => bail!("bench prof: 未知子命令 {other}"),
+        };
+
+        let report = guard.report().build();
+        drop(guard);
+        outcome?;
+        let report = report.map_err(|err| anyhow::anyhow!("pprof 报告生成失败: {err}"))?;
+
+        if let Some(parent) = Path::new(&out).parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let file = File::create(&out)?;
+        report
+            .flamegraph(file)
+            .map_err(|err| anyhow::anyhow!("火焰图写出失败: {err}"))?;
+
+        // 自耗时 TopN：叶帧聚合（火焰图看调用树，这里看单函数占比）
+        let mut self_count: HashMap<String, isize> = HashMap::new();
+        let mut total = 0isize;
+        for (frames, count) in &report.data {
+            total += *count;
+            let leaf = frames
+                .frames
+                .first()
+                .and_then(|frame| frame.first())
+                .map(|symbol| symbol.name())
+                .unwrap_or_else(|| "<unknown>".to_string());
+            *self_count.entry(leaf).or_default() += *count;
+        }
+        let mut rows: Vec<(String, isize)> = self_count.into_iter().collect();
+        rows.sort_by(|left, right| right.1.cmp(&left.1).then(left.0.cmp(&right.0)));
+
+        let mut text = String::new();
+        writeln!(
+            text,
+            "# pprof freq={freq}Hz samples={total} command={inner} svg={out}"
+        )?;
+        for (name, count) in rows.iter().take(40) {
+            writeln!(
+                text,
+                "{:6.2}% {:6}  {name}",
+                *count as f64 * 100.0 / total.max(1) as f64,
+                count
+            )?;
+        }
+        let text_path = Path::new(&out).with_extension("txt");
+        std::fs::write(&text_path, text)?;
+        println!(
+            "# pprof freq={freq}Hz samples={total} svg={out} top={}",
+            text_path.display()
+        );
+        if total == 0 {
+            eprintln!("# 警告：0 个样本，加大 --rollouts / --games 或提高 --freq");
+        }
+        Ok(())
+    }
 }

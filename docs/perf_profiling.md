@@ -1,12 +1,15 @@
 # 性能分析与优化（手写档 + MCTS）
 
-> 记录 2026-11-05 两轮性能剖面方法、工具、改动与配对测量。方法沿用旧仓 `perf_profiling` 的结论
+> 记录 2026-11-05 四轮性能剖面方法、工具、改动与配对测量。方法沿用旧仓 `perf_profiling` 的结论
 > （专用测试优先于 pprof；一次只改一个点），并按引擎 `docs/scenario/perf_plan.md` 的 O0–O4 流程执行。
 > 本文只覆盖本仓（骏大祭）的手写决策链与 FlatSearch rollout。
 >
 > - **第一轮**（§1–§10，2026-11-05 凌晨）：预览零克隆 / 教诲查表 / 决策原因惰性化。
 > - **第二轮**（§11，2026-11-05 下午）：机制侧 diag 与分配、rollout 事件明细、事件队列、
 >   估值层参与教诲去重。
+> - **第三轮**（§12，2026-11-05 傍晚）：引擎侧事件 / 训练后处理 / 选项结算诊断载荷门控。
+> - **第四轮**（§13，2026-11-05 晚）：pprof 剖面接入；诊断 guard 冗余 store 造成并行假共享，
+>   修复后并行倍率约 4× → 12.6×。
 
 ## 1. 摘要
 
@@ -48,7 +51,7 @@
 
 | 子命令 | 用途 | 输出 |
 |---|---|---|
-| `bench game --games N --seed S [--search-n M]` | 整局耗时 + 终局 CSV | `seed,score,pt,turn,elapsed_us` + 均值行 |
+| `bench game --games N --seed S [--search-n M]` | 整局耗时 + 终局 CSV（缺省取配置，默认 12288） | `seed,score,pt,turn,elapsed_us` + 均值行 |
 | `bench micro --turn T --iters N` | 固定回合的决策链分段 | 各段 ns/op（克隆 / 训练预览 / 资源预览 / 整决策 / 搜索分）|
 | `bench trace --turn T` | rollout 内逐决策耗时 | `turn,actions,us,advice` |
 | `bench root --turn T --search-n M --repeat R` | 固定根搜索 | 每轮耗时、planned / failed、ns/rollout、best |
@@ -56,6 +59,7 @@
 | `bench parts --turn T --iters N` | 分布 / 事件生成 / 列动作单点 | ns/op |
 | `bench flat --turn T --rollouts N --threads M` | 平铺线程池 rollout（并行上限对照） | 总耗时、ns/rollout、校验和 |
 | `bench allocs --turn T [--action I]` | 单次 rollout 分配计数 | 阶段分配数 / 字节 / 训练员分配数 |
+| `bench prof <子命令> [原参数] [--freq HZ] [--out SVG]` | pprof 剖面包裹原测量命令（需 `--features profile`） | SVG 火焰图 + 自耗时 TopN（同名 `.txt`） |
 
 测量口径：
 
@@ -204,8 +208,8 @@ N=256 时首组后即停（每候选 256），N=1024 只追加到最大值，总
 # 构建
 cargo build --release --offline -p matsuri-tools
 
-# 手写整局（30 种子）
-./target/release/bench game --games 30 --seed 61444
+# 手写整局（30 种子；配置默认已开搜索，手写要显式 0）
+./target/release/bench game --games 30 --seed 61444 --search-n 0
 
 # 决策链分段 / rollout 内分布
 ./target/release/bench micro --turn 40 --iters 3000
@@ -216,6 +220,11 @@ RAYON_NUM_THREADS=16 ./target/release/bench root --turn 32 --search-n 256 --repe
 
 # 整局搜索
 ./target/release/bench game --games 1 --seed 61444 --warmup 0 --search-n 256
+
+# CPU 剖面（pprof；首次构建需联网拉依赖）
+cargo build --release --features profile -p matsuri-tools
+./target/release/bench prof flat --turn 32 --rollouts 120000 --threads 16 \
+  --freq 997 --out logs/perf/flame-flat.svg
 ```
 
 配对测量时基线版放在并列 worktree（同引擎 path 依赖），两版交替运行、各独立启动。
@@ -417,6 +426,114 @@ Distribute 阶段 486 → 8 次、AfterTrain 1898 → 929 次（剩余大头在�
 
 - 搜索预算边际收益仍为正：实测 N=12288 分数继续提升（LG14）。继续加预算的前提是效率，
   而效率瓶颈已不在分配。
-- 并列上限约 6×（同机纯计算 14×），需要 CPU 剖面才能继续定位；本机 `perf_event_paranoid=4`
-  挡住 `perf`，`pprof` 需另立工程。
+- ~~并列上限约 6×（同机纯计算 14×），需要 CPU 剖面才能继续定位；本机 `perf_event_paranoid=4`
+  挡住 `perf`，`pprof` 需另立工程。~~ 第四轮已补剖面能力（§13），并把「6× 上限」定位到诊断 guard
+  的假共享；修复后 24T 约 12.6×。
 - 未立项候选：事件实例化、搜索固定开销、真实机位线程策略。
+
+## 13. 第四轮（2026-11-05 晚）：pprof 剖面接入与诊断 guard 假共享修复
+
+### 13.1 工具与口径
+
+- 新增 `matsuri-tools` 的 `profile` 特性（可选依赖 `pprof 0.15`，默认不编译、不进 core / 下游）；
+  `bench prof <原命令>` 用 `SIGPROF + setitimer(ITIMER_PROF)` 采样，输出 SVG 火焰图与自耗时 TopN。
+  它不经过 `perf_event_open`，无需 root / sysctl；内核栈与硬件计数器另用 `perf`（本机已解锁
+  `perf_event_paranoid=-1`、`perf_event_mlock_kb=65536`、`kptr_restrict=0`）。
+- 口径同前：同一 Release 构建、同一数据 / 配置；采样默认 997 Hz；`--freq` / `--out` 由 prof 消费。
+  第四轮测量时默认马娘为 100101；当日晚些时候默认测试马娘改为 105902（见 glossary），
+  相对结论不受影响。
+- 本机 Intel Ultra 9 275HX（24 线程）/ powersave；耗时只声明当轮，配对双方交替独立启动。
+
+### 13.2 剖面异常与定位
+
+16T `flat` 剖面前二名是 `Data::get` 13.6% 与 `DiagGuard::suppress` 8.9%（self）；1T 同负载两者
+都不在榜。随线程数上升：2T 4.6% / 4T 7.7% / 8T 7.3% / 16T 22%（两者合计）。
+
+- `suppress` 只有 19 字节、`Data::get` 只有 154 字节，却拿到两位数占比，与调用频次不成比例。
+- 符号地址：`data::GLOBAL` = 0x3c4bc0、长 0x228，止于 0x3c4de8；`DIAG_ENABLED` = 0x3c4de8——
+  两者同处一条 64B 缓存行。
+- 训练 / 资源预览每个候选建一次 guard（一次决策 5 训练 + 8 动作候选，64 个决策点 → 每 rollout
+  约 1.6k 次）；`suppress()` 与 `Drop` 在开关已是关闭态时仍各写一次。16–24 线程重复 store 让该行
+  在核心间来回失效：既拖慢 guard 自己（self），也打掉同行的热数据（`Data::get` 一侧）。
+- 串行时 store 不竞争（约 2% 成本），所以前三轮的串行优化、分配削减、jemalloc /
+  `MALLOC_ARENA_MAX` 对照都不改变并行吞吐。
+
+### 13.3 改动（引擎仓，默认行为等价）
+
+| 内容 | 落点 |
+|---|---|
+| `suppress()` 仅在开关当前为开时写 false；`Drop` 仅在当前值 ≠ 进入前值时恢复 | `umaai-core/src/diag.rs` |
+
+嵌套恢复语义与跨线程「尽力而为」口径不变；热路径从「每候选两次 store」退化为纯读。
+
+### 13.4 配对测量（同轮交替、各独立启动；base = 引擎改动前，其余相同）
+
+| 测量 | 修复前 | 修复后 | 变化 |
+|---|---:|---:|---:|
+| flat 16T 12 万 rollout | 34.9–36.2 μs/rollout | 13.0–13.2 μs | **−63%** |
+| flat 24T 12 万 rollout | 33.4–35.2 μs/rollout | 11.3–11.7 μs | **−66%** |
+| flat 1T 6000 rollout | 143.4 μs/rollout | 143.1 μs | −0.3%（噪声） |
+| 固定根 N=256（16T，中位） | 73.2 ms | 26.9 ms | **−63%** |
+| 整局 N=256（16T） | 6.00 s | 2.27 s | **−62%** |
+| 整局 N=1024（16T） | 14.45 s | 5.23 s | **−64%** |
+| 整局 N=256（24T） | 6.04 s | 1.81 s | **−70%** |
+| 整局 N=1024（24T） | 13.40 s | 4.13 s | **−69%** |
+
+- 并行倍率：1T 143 μs → 24T 11.3 μs = **12.6×**（修复前约 4.1×）。
+- 24T 下每 rollout 的 CPU 时间从约 573 μs 回到 211 μs（串行 143 μs），差值是缓存行失效的消失。
+
+### 13.5 等价性与验收
+
+- 30 种子整局 CSV 的 `seed/score/pt/turn` 逐位一致（均值 79132.5 / PT 11191.6）；固定根 N=256 的
+  best=5、8 个候选均值（95848.6）一致；整局 N=256（85544 / 12360）与 N=1024（85566 / 12371）一致。
+- 剧本仓 221 通过 + 2 手动档；引擎仓全量 release 测试通过（含 diag 5 例）。
+
+### 13.6 结论修正
+
+- 「并行上限约 6×」是假共享造成的测量假象，不是内存带宽或 rayon 调度的上限；修复后 24T 约
+  12.6×（同机纯计算 14×）。
+- 第三轮「分配不是并行上限」的方向判断仍成立（这批分配被缓存停顿盖住），但归因应改为
+  「共享原子写造成缓存行失效」，不是「工作负载内存 / 缓存受限」。
+
+### 13.7 修复后的热点与预算
+
+24T 整局 N=1024 剖面 Top（6667 样本）：
+
+| 函数 | self |
+|---|---:|
+| `advice_effect_of` | 6.9% |
+| `run_stage` | 6.8% |
+| `calc_training_value_inner` | 6.3% |
+| `Model::train_value` | 4.0% |
+| `distribute_person` | 3.8% |
+| `Model::resource_value` | 3.3% |
+| `distribute_others` | 3.1% |
+| `preview_training_full` | 3.0% |
+| `preview_action_resources` | 2.9% |
+| `AdviceSlotEffect::add_assign` | 2.8% |
+| `SupportCard::calc_training_effect` | 2.7% |
+| `apply_advice` | 2.2% |
+| `Model::value_of_with` | 2.2% |
+| `Model::new` | 2.2% |
+
+- 下一刀候选：教诲链（`advice_effect_of` + `add_assign` + `apply_advice` ≈ 12%）、训练估值链
+  （`calc_training_value_inner` + `calc_training_effect` + `default_calc_training_buff` ≈ 11%）、
+  值模型（`Model::new` + `train_value` + `resource_value` ≈ 10%）。按本文纪律先补 microbench。
+- 预算：24T 单局 N=8192 = 19.3 s（85700 / 12438）、N=12288 = 24.3 s（85804 / 12490），
+  分数仍随预算上升。默认档 `[search].search_n` 已定为 **12288**（`0` 显式切回手写档）。
+
+### 13.8 复现
+
+```bash
+# 剖面构建（首次需联网；之后可加 --offline）
+cargo build --release --features profile -p matsuri-tools
+
+./target/release/bench prof flat --turn 32 --rollouts 120000 --threads 16 \
+  --freq 997 --out logs/perf/flame-flat.svg
+RAYON_NUM_THREADS=24 ./target/release/bench prof game --games 1 --seed 61444 \
+  --warmup 0 --search-n 1024 --out logs/perf/flame-game.svg
+
+# 硬件计数器对照（需 perf 已解锁）
+perf stat -e task-clock,cycles,instructions,cache-references,cache-misses,context-switches \
+  ./target/release/bench flat --turn 32 --rollouts 120000 --threads 16
+```

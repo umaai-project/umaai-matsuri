@@ -46,8 +46,8 @@ positive_thinking = 0
 # ---------- 搜索档作用面（FlatSearch；search_n = 0 时全部退化回手写档） ----------
 
 [search]
-# 每个候选的 rollout 次数：0 = 手写；单局验证 1024/2048；生产 8192
-search_n = 0
+# 每个候选的 rollout 次数：0 = 手写档；默认 12288（第四轮后 24 线程单局约 24 s）
+search_n = 12288
 # 三类决策是否走 FlatSearch
 train = true
 advice = true

@@ -19,29 +19,38 @@
   合宿 / URA / 终局奖励；事件链（固定 / 随机 / 合宿抑制 / 友人链 / 追加稽古 / 变胖）；手写训练员
   （守门链 + 打分表 + 事件选项 + 教诲分配择优）；诊断日志 `diag!`。
 - **搜索**：`FlatSearchGame` 集成层已接（`MatsuriSearchTrainer`，引擎扁平 MC + UCB + CRN）；
-  `matsuri_config [search].search_n` = 每候选 rollout 次数（0 = 手写；单局验证 1024/2048；
-  生产 8192），`train` / `advice` / `event` 分开关；教诲 120 候选剪枝到 top-16；
+  `matsuri_config [search].search_n` = 每候选 rollout 次数（**默认 12288**；0 = 手写档），
+  `train` / `advice` / `event` 分开关；教诲 120 候选剪枝到 top-16；
   事件搜索用事件队列从下一事件续跑；叶子估值器仅预留接口，生产 `max_depth=0`。
   搜索排序口径 `radical_factor_max=0`（算术均值，不做高分尾部加权）。
-- **搜索单局验证**（`radical_factor_max=0`，本机 24 线程）：seed 61444 手写 **81553 / LG8、PT 11490**；
-  1024 档 **84875 / PT 12097**（24.7 s）。单局冒烟，不是基线；旧口径（`radical=50`）的
-  1024/2048 数字不再可比。
-- **搜索理想测试**（单 seed，Train-only、`radical=0.0`）：普通 100101 + 小切 / 盾×2
+- **搜索单局验证**（默认马娘 105902、seed 61444、24 线程、`radical_factor_max=0`）：
+  N=1024 **85309 / PT 12427**（3.7 s）；N=8192 **86290 / PT 12733**（17.1 s）；
+  N=12288 **85458 / PT 12317**（23.8 s）。单局冒烟，不是基线；单 seed 下 N 不单调（搜索噪声）。
+- **搜索理想测试**（单 seed，Train-only、`radical=0.0`，旧预设口径）：普通 100101 + 小切 / 盾×2
   手写 **82807 / LG10** → 4096 **85184 / LG14（+2377）**；狄杜斯 106301 → **85384 → 86955**
   （+1571，铁心后五维近上限，边际更小）。
-- **默认档**：`data/matsuri_config.toml` = 冠军档 `ga-r2`（`pt_favor_rate=1.7271`）；搜索默认关。
-- **基线**：100101 100 局（seeds 61444–61543）均 78124.5 / PT 11052.2；102102（freeRaces）均 76406.6。
+- **默认档**：`data/matsuri_config.toml` = 冠军档 `ga-r2`（`pt_favor_rate=1.7271`，`search_n=12288`）；
+  默认测试马娘 **105902**（目白多伯，2026-11-05 全马娘扫测定档）；手写档用 `MATSURI_SEARCH_N=0`
+  或工作目录覆盖层关闭。
+- **基线**：默认马娘 105902 手写 100 局（seeds 61444–61543）均 **79253.9** / PT **11291.0**；
+  旧默认马娘 100101 手写 100 局均 78476.0 / PT 11080.1（历史口径，不与新默认混比）；
+  102102（freeRaces）均 76370.4。2026-11-05 默认开局预设改为 `extra_count = [10,10,120,140,0,100]`
+  （100101 扫参，2000 种子配对 +869.3 ± 56.6，见 [docs/mechanism.md](docs/mechanism.md) §5.6；
+  该预设未按新默认马娘重扫）。
 - **验收**：workspace **221 通过 + 2 手动档**（1024 整局复现、教诲微基准，均 `#[ignore]`）；
   `fmt --check` / `check` / `clippy -D warnings` / `test` 四门绿。
-- **性能**：三轮 O0–O4 优化，配对测量与复现见 [`docs/perf_profiling.md`](docs/perf_profiling.md)：
+- **性能**：四轮 O0–O4 优化，配对测量与复现见 [`docs/perf_profiling.md`](docs/perf_profiling.md)：
   第一轮（预览零克隆 / 教诲查表 / 原因惰性化）整局 N=1024 55.7 s → 24.7 s；第二轮
   （诊断载荷惰性化 / rollout 静默事件明细 / 事件队列去深拷贝 / 参与教诲去重）同轮配对
   手写整局 −27%、串行 rollout −26%、整局 N=256 −20%、N=1024 −14%，单次 rollout 分配
   4080 → 2085 次；第三轮（引擎侧事件 / 训练后处理 / 选项结算诊断载荷门控）分配
-  2085 → 1017 次，串行 rollout −13%、手写整局 −15%、整局 N=256 −4.2%、N=1024 −7.3%。
-  三轮均决策与终局逐位一致。
-- **下一步**：搜索预算继续加大（实测 N=12288 分数仍在涨）→ 先补 CPU 剖面能力（分配已确认
-  不是并行上限）；再把 N=8192 档跑通 → S9 基线（只录一次）。调参一律换全新种子块。
+  2085 → 1017 次，串行 rollout −13%、手写整局 −15%、整局 N=256 −4.2%、N=1024 −7.3%；
+  第四轮（诊断 guard 冗余 store 假共享）并行倍率约 4× → 12.6×（24T flat 每 rollout
+  33.4–35.2 → 11.3–11.7 μs），整局 N=256 6.00 → 1.81 s、N=1024 13.40 → 4.13 s（24T）。
+  四轮均决策与终局逐位一致。
+- **下一步**：做 S9 基线（只录一次）——默认档 N=12288 × 100 局（seeds 61444–61543、24 线程、
+  约 40 min）；手写档 100 局同种子已录（79253.9 / 11291.0）。之后按第四轮剖面
+  （教诲链 / 训练估值链）先补 microbench。调参一律换全新种子块。
 ## 结构
 
 | crate / 文件 | 职责 |
@@ -94,10 +103,11 @@
 
 ```powershell
 # 数据根是代码级常量 data/（crates/matsuri-cli/src/main.rs 的 DATA_ROOT）
-cargo run --release --bin matsuri --            # 样例训练员
+cargo run --release --bin matsuri --            # 默认搜索档（search_n=12288；单局约 24 s / 24 线程）
+$env:MATSURI_SEARCH_N=0; cargo run --release --bin matsuri --   # 手写档
 cargo run --release --bin matsuri -- random     # 引擎随机基线（对照用）
 cargo run --release --bin matsuri -- manual     # 手动核对面板（动作 Inquire；Esc 退出，非 TTY 退回编号输入）
-cargo run --release --bin matsuri -- matsuri --explain   # 手写档决策解释：回合面板 + 候选打分 + 决策理由
+$env:MATSURI_SEARCH_N=0; cargo run --release --bin matsuri -- matsuri --explain   # 决策解释（仅手写档）
 # 诊断日志级别见 data/ai_config.toml [output] log_level（默认 info；工作目录覆盖层可设 off 静默）
 
 cargo fmt --all --check

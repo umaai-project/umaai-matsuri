@@ -214,6 +214,12 @@ pub struct MatsuriGame {
     pub fatigue_recovery: bool,
     /// 進捗発表会 / 本番结果（3 场；`End` 阶段结算）
     pub check_points: [CheckPointResult; 3],
+    /// 発表会 / 本番累计行（`schedule 0` 基线；建局时预解析）
+    presentation_base: PresentationBonus,
+    /// 発表会 / 本番累计行按（场次, 结果）预解析；未达成的场次不更新
+    presentation_rows: [[Option<PresentationBonus>; 3]; 3],
+    /// 编成是否覆盖 ≥5 种支援卡类型（建局算定；卡组建局后不变）
+    deck_kinds_ge5: bool,
     /// 本番演出是否已结算
     pub finals_done: bool,
     /// 编成警告项（建局时由 `game/deck.rs` 一次算定；禁止项已拒绝建局）
@@ -263,6 +269,18 @@ impl MatsuriGame {
     ) -> Result<Self> {
         let keiko_table = build_keiko_table(&data.training.keiko.junior);
         let keiko_classic_table = build_keiko_table(&data.training.keiko.classic);
+        // 発表会累计行按（场次, 结果）预解析：读取只查表，不重复扫全表
+        let mut presentation_base = PresentationBonus::default();
+        let mut presentation_rows = [[None; 3]; 3];
+        for row in &data.check_points {
+            let bonus = PresentationBonus::from_row(row);
+            if row.schedule == 0 {
+                presentation_base = bonus;
+            } else if (1..=3).contains(&row.schedule) {
+                presentation_rows[(row.schedule - 1) as usize]
+                    [check_point_result_index(row.result)] = Some(bonus);
+            }
+        }
         let mut game = Self {
             base: BaseGame::new(
                 uma_id,
@@ -286,6 +304,9 @@ impl MatsuriGame {
             career_failed: false,
             fatigue_recovery: false,
             check_points: [CheckPointResult::NotReached; 3],
+            presentation_base,
+            presentation_rows,
+            deck_kinds_ge5: false,
             finals_done: false,
             deck_warnings: Vec::new(),
             event_log: Vec::new(),
@@ -297,6 +318,7 @@ impl MatsuriGame {
             train_level_bonus: [0; 5],
             config: crate::MatsuriConfig::default(),
         };
+        game.deck_kinds_ge5 = game.compute_deck_kinds_ge5();
         game.init_persons()?;
         Ok(game)
     }
@@ -371,16 +393,13 @@ impl MatsuriGame {
     }
 
     /// 発表会 / 本番的永久 buff（取最新已结算场次的累计行；`schedule 0` 为开局基线）
+    ///
+    /// 累计行在建局时按（场次, 结果）预解析，读取只做 3 次查表；未达成的场次不更新。
     pub(crate) fn presentation_bonus(&self) -> PresentationBonus {
-        let mut bonus = PresentationBonus::default();
-        for row in &self.data.check_points {
-            if row.schedule == 0 {
-                bonus = PresentationBonus::from_row(row);
-                continue;
-            }
-            let index = row.schedule as usize - 1;
-            if self.check_points.get(index).copied() == Some(row.result) {
-                bonus = PresentationBonus::from_row(row);
+        let mut bonus = self.presentation_base;
+        for (slot, rows) in self.presentation_rows.iter().enumerate() {
+            if let Some(row) = rows[check_point_result_index(self.check_points[slot])] {
+                bonus = row;
             }
         }
         bonus
@@ -557,7 +576,14 @@ impl MatsuriGame {
     }
 
     /// 编成支援卡类型数 ≥5（含友人卡；演目 Lv 的「5 种卡」条件）
+    ///
+    /// 卡组建局后不变，值在建局时一次算定。
     pub(crate) fn deck_has_five_types(&self) -> bool {
+        self.deck_kinds_ge5
+    }
+
+    /// 建局时算一次编成覆盖的支援卡类型数（7 类：5 训练 + 友人 / 团队）
+    fn compute_deck_kinds_ge5(&self) -> bool {
         let mut types = [false; 7];
         for card in &self.base.deck {
             if (0..7).contains(&card.card_type) {
@@ -610,6 +636,15 @@ impl PresentationBonus {
 /// 由剧本资产的稽古档构造「每训练位一行」的基础表（引擎公式按行数夹取等级）
 fn build_keiko_table(rows: &[[i32; 7]]) -> TrainingBasicTable {
     rows.iter().map(|row| vec![*row]).collect()
+}
+
+/// 発表会结果 → 预解析表的「结果」维下标（与 [`CheckPointResult`] 一一对应）
+fn check_point_result_index(result: CheckPointResult) -> usize {
+    match result {
+        CheckPointResult::NotReached => 0,
+        CheckPointResult::Success => 1,
+        CheckPointResult::GreatSuccess => 2,
+    }
 }
 
 /// 演目槽加算（账本级；预览与正式结算共用同一实现）

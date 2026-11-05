@@ -42,13 +42,13 @@ pub struct MatsuriConfig {
 
 /// 搜索档作用面：预算 + 每一类决策走搜索还是手写
 ///
-/// `search_n` 归剧本配置（每候选 rollout 次数，`0` = 手写档）；其余内核参数
+/// `search_n` 归剧本配置（每候选 rollout 次数，`0` = 手写档，默认 12288）；其余内核参数
 /// （`max_depth` / UCB / 激进度）仍取引擎 `[search]`。候选剪枝宽度不进配置，
 /// 由搜索训练员的常量决定（Train 全量、教诲 16）。
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SearchScopeConfig {
-    /// 每个候选的 rollout 次数（0 = 手写档；测试 1024/2048；生产 8192）
+    /// 每个候选的 rollout 次数（0 = 手写档；测试 1/1024；默认 12288）
     pub search_n: usize,
     /// Train 主动作是否走搜索
     pub train: bool,
@@ -62,7 +62,7 @@ impl Default for SearchScopeConfig {
     /// 与仓内默认层 `[search]` 段同值
     fn default() -> Self {
         Self {
-            search_n: 0,
+            search_n: 12288,
             train: true,
             advice: true,
             event: true,
