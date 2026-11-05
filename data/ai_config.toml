@@ -67,7 +67,7 @@ radical_factor_max = 0.0
 use_ucb = true
 
 # UCB 每组追加的搜索次数
-search_group_size = 256
+search_group_size = 512
 
 # UCB 探索常数
 search_cpuct = 1.0
@@ -80,7 +80,7 @@ record_ordered_rollouts = false
 
 # PT 偏好折算率（搜索排序口径）；剧本搜索档会覆盖为 `[trainer].pt_favor_rate`，
 # 保持与手写剪枝同一目标函数。1.0 = 不偏 PT。
-pt_favor_rate = 2.0
+pt_favor_rate = 1.0
 
 # ---------- record ----------
 
