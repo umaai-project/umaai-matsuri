@@ -11,7 +11,7 @@
 
 | crate | 测试面 | 现状 |
 |---|---|---|
-| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成）+ `tests/diag.rs`（诊断守门）+ `tests/search.rs`（搜索档） | 内联单测 **155** 个 + L2 数据层 **15** 个 + 机制集成 **36** 个 + 诊断 **1** 个 + 搜索 **3** 个（另 1 个 1024 手动 `#[ignore]`） |
+| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成）+ `tests/diag.rs`（诊断守门）+ `tests/search.rs`（搜索档） | 内联单测 **156** 个（含 1 个 `#[ignore]` 微基准）+ L2 数据层 **15** 个 + 机制集成 **36** 个 + 诊断 **1** 个 + 搜索 **4** 个（另 1 个 1024 手动 `#[ignore]`） |
 | `matsuri-sim` | `tests/baseline.rs`（固定种子基线） | 待补 |
 | `matsuri-cli` | 内联（呈现件纯函数）+ `tests/manual_smoke.rs` + `tests/explain_smoke.rs` + `tests/search_smoke.rs` | 内联 **7** 个 + 冒烟 **3** 个（manual / explain / search）；基线待补 |
 | `matsuri-ai` | 骨架，暂无 | — |
@@ -26,6 +26,7 @@
 | `core/src/game/roster.rs` | `card_assign_five_speed` / `card_assign_link_pins_and_dispatches` / `card_assign_reference_deck_shape` / `guest_balance_follows_min_persons` | 担当分配五步流水线：memo 三条真机算例（5 速 / 智大和+3速+2毅 / 参考卡组形状）、余额 NPC 落点与并列规则 |
 | `core/src/game/stage.rs` | `next_chain` / `stage_ids_are_stable` / `camp_starts_only_at_window_start` / `camp_basic_window` / `camp_race_turn_extends` / `camp_race_at_window_start_extends` / `camp_forced_rest_turn_extends` / `camp_consecutive_races_keep_extending` / `camp_rest_version_only_in_original_window` / `check_point_index_matches_schedule` / `advice_window_index_matches` / `ura_race_turns` / `ura_boundaries_and_interlude` | 五阶段链 / 阶段号稳定；合宿窗口起点、基础 4 回合、比赛 / 强制休息顺延、连续顺延、合宿版休息只限原窗口；発表会 / 教诲窗口；**URA 边界：68–71 空窗期 / 72–77 URA 回合 / 73·75·77 决赛** |
 | `core/src/trainer.rs` | `trainer_prefers_heal_when_bad_trainer` / `explain_action_reports_candidates_and_reason` | 手写训练员守门链：不擅长优先治病；解释 API 与决策同源 |
+| `core/src/game/advice.rs` | `microbench_participant_advice`（`#[ignore]`） | 参与教诲聚合微基准：`participant_advice` / `advice_slot_effect` / `shining_count` 的 ns/op（性能轮次立项依据，不参与常规测试） |
 | `core/src/search.rs` | `event_token_roundtrip` / `score_leaf_returns_search_score` / `search_consumes_one_decision_draw` | 事件搜索 dummy token 往返；叶估占位接口与搜索分同口径；**搜索恰好消费一个决策流随机字（ramen 口径），局面规则流独立派生** |
 | `core/src/game/traits.rs` | `apply_root_action_uses_strategy_stream` / `search_score_uses_pt_favor_knob_and_actual_failed_score` | 搜索根动作走剧本自持策略流；**搜索分用 `pt_favor_rate` 口径，失败分支按实际分** |
 | `core/src/value.rs` | `big_eater_choice_follows_vital` / `assignment_puts_801_on_most_assigned_act` / `status_marginal_saturates_at_limit` / `kensan_bonus_uses_participants_for_keiko` / `overflow_tilts_away_from_capped_axis` / `overflow_keep_preserves_secondary_value_when_main_capped` / `endgame_keiko_pressure_boosts_full_gauges` / `endgame_window_excludes_ura` / `endgame_window_starts_after_third_camp` / `flags_value_signs_benefit_and_harm` / `assignment_value_rejects_out_of_range_slots` | 估值层：事件选项按体力取舍（大胃王）/ 教诲分配 801 硬约束同口径 / 五维边际到上限归零 / **追加稽古兑现按稽古训练位参与者判定（与 try_kensan 同口径）** / **溢出层按生效上限近顶并保留副属性 / PT** / **末段窗口（第三年合宿后～T71）满槽稽古加分与普通训练机会成本；URA 不进入** |
@@ -121,6 +122,7 @@
 | `search_full_game_is_reproducible` | Train / 教诲 / 事件全开、`search_n=1`：跑满整局，同种子两次终局快照 / 评分 / PT 逐位一致 |
 | `search_scopes_off_match_handwritten` | 三类开关全关：与手写档同种子逐位一致（搜索档可无损退化） |
 | `single_candidate_skips_search` | 单候选直接回落手写，不触发搜索 |
+| `rollout_fork_skips_event_log_without_changing_game` | 事件明细开关不改变评分 / PT；`fork_for_rollout` 关闭明细且跑完整局后 `event_log` 为空（性能优化 B 组守门） |
 | `search_1024_full_game_is_reproducible`（ignored） | 1024 每候选：同种子两次逐位一致；手动跑 `cargo test --release -- --ignored` |
 
 ## 4. 冒烟与基线

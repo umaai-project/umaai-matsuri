@@ -50,11 +50,13 @@ impl MatsuriGame {
             self.place_friend_filler(&practice_train, rng)?;
         }
         self.place_splits(&practice, rng)?;
-        let counts: Vec<usize> = (0..5)
-            .map(|train| self.base.distribution[train].len())
-            .collect();
-        let shining: Vec<usize> = (0..5).map(|train| self.shining_count(train)).collect();
-        diag!("【分布】T{} 人数 {counts:?} 闪{shining:?}", self.turn());
+        // 人数 / 闪数只在诊断打开时求值：`diag!` 的参数是惰性的
+        diag!(
+            "【分布】T{} 人数 {:?} 闪{:?}",
+            self.turn(),
+            std::array::from_fn::<usize, 5, _>(|train| self.base.distribution[train].len()),
+            std::array::from_fn::<usize, 5, _>(|train| self.shining_count(train))
+        );
         Ok(())
     }
 
@@ -98,10 +100,10 @@ impl MatsuriGame {
             }
         }
         if locked > 0 {
-            let acts: Vec<usize> = (0..5).filter(|act| practice[*act]).collect();
             diag!(
-                "【分布】T{} 锁定担当 {locked} 人（排练演目 {acts:?}）",
-                self.turn()
+                "【分布】T{} 锁定担当 {locked} 人（排练演目 {:?}）",
+                self.turn(),
+                (0..5).filter(|act| practice[*act]).collect::<Vec<_>>()
             );
         }
     }
@@ -170,15 +172,19 @@ impl MatsuriGame {
         practice_train: &[bool; 5],
         rng: &mut impl Rng,
     ) -> bool {
-        let allowed: Vec<usize> = (0..5)
-            .filter(|train| {
-                !practice_train[*train]
-                    && self.base.distribution[*train].len() < TRAIN_CAP
-                    && !self.base.distribution[*train].contains(&(person_index as i32))
-                    && !self.has_social_person(*train)
-            })
-            .collect();
-        if allowed.is_empty() {
+        let mut allowed = [0usize; 5];
+        let mut len = 0;
+        for (train, lit) in practice_train.iter().enumerate() {
+            if !*lit
+                && self.base.distribution[train].len() < TRAIN_CAP
+                && !self.base.distribution[train].contains(&(person_index as i32))
+                && !self.has_social_person(train)
+            {
+                allowed[len] = train;
+                len += 1;
+            }
+        }
+        if len == 0 {
             return false;
         }
         // 与引擎 `distribute_person` 同口径：先判不在（理事长 / 记者 absent_weight = 200）
@@ -186,7 +192,7 @@ impl MatsuriGame {
         if absent > 0 && rng.random_bool(f64::from(absent) / f64::from(500 + absent)) {
             return true;
         }
-        let pick = rng.random_range(0..allowed.len());
+        let pick = rng.random_range(0..len);
         self.base.distribution[allowed[pick]].push(person_index as i32);
         true
     }
@@ -207,19 +213,23 @@ impl MatsuriGame {
             return Ok(());
         }
         if practice_train.iter().any(|lit| *lit) {
-            let mut empty: Vec<usize> = (0..5)
-                .filter(|train| {
-                    practice_train[*train]
-                        && self.base.distribution[*train].len() < TRAIN_CAP
-                        && !self.base.distribution[*train].contains(&(friend_index as i32))
-                        && !self.has_social_person(*train)
-                })
-                .collect();
-            if empty.is_empty() {
+            let mut empty = [0usize; 5];
+            let mut len = 0;
+            for (train, lit) in practice_train.iter().enumerate() {
+                if *lit
+                    && self.base.distribution[train].len() < TRAIN_CAP
+                    && !self.base.distribution[train].contains(&(friend_index as i32))
+                    && !self.has_social_person(train)
+                {
+                    empty[len] = train;
+                    len += 1;
+                }
+            }
+            if len == 0 {
                 return Ok(());
             }
-            let pick = rng.random_range(0..empty.len());
-            let train = empty.swap_remove(pick);
+            let pick = rng.random_range(0..len);
+            let train = empty[pick];
             self.base.distribution[train].push(friend_index as i32);
             diag!("【分布】T{} 吾妻补位 → 训练位{}", self.turn(), train);
         } else {
@@ -232,8 +242,6 @@ impl MatsuriGame {
     ///
     /// 分身占**另一种训练种类**、不叠在排练位；每处占位参与人数 / 槽 / 面板。
     fn place_splits(&mut self, practice: &[bool; 5], rng: &mut impl Rng) -> Result<()> {
-        // (人头, 额外处数)
-        let mut extra: Vec<(usize, i32)> = Vec::new();
         // URA 本番演出的「+1 人」只在 URA 训练（72–77）生效；68–71 空窗期不生效
         let finals =
             self.finals_done && (crate::URA_START_TURN..=crate::MAX_TURN).contains(&self.turn);
@@ -255,6 +263,7 @@ impl MatsuriGame {
             if count <= 0 && finals_extra <= 0 {
                 continue;
             }
+            // 顺序与原「先收集再逐项落位」一致：演目 0→4、同一演目内人头 0→n
             for person_index in 0..self.persons.len() {
                 let person = &self.persons[person_index];
                 if person.act != Some(act) || !self.person_is_available(person_index) {
@@ -264,14 +273,9 @@ impl MatsuriGame {
                 if finals_extra > 0 && person.origin == PersonOrigin::Card {
                     person_extra += finals_extra;
                 }
-                if person_extra > 0 {
-                    extra.push((person_index, person_extra));
+                for _ in 0..person_extra {
+                    self.place_split_once(person_index, rng);
                 }
-            }
-        }
-        for (person_index, count) in extra {
-            for _ in 0..count {
-                self.place_split_once(person_index, rng);
             }
         }
         Ok(())
@@ -283,18 +287,22 @@ impl MatsuriGame {
             return;
         };
         let own_train = self.train_of_act(act);
-        let mut candidates: Vec<usize> = (0..5)
-            .filter(|train| {
-                *train != own_train
-                    && self.base.distribution[*train].len() < TRAIN_CAP
-                    && !self.base.distribution[*train].contains(&(person_index as i32))
-            })
-            .collect();
-        if candidates.is_empty() {
+        let mut candidates = [0usize; 5];
+        let mut len = 0;
+        for train in 0..5 {
+            if train != own_train
+                && self.base.distribution[train].len() < TRAIN_CAP
+                && !self.base.distribution[train].contains(&(person_index as i32))
+            {
+                candidates[len] = train;
+                len += 1;
+            }
+        }
+        if len == 0 {
             return;
         }
-        let pick = rng.random_range(0..candidates.len());
-        let train = candidates.swap_remove(pick);
+        let pick = rng.random_range(0..len);
+        let train = candidates[pick];
         self.base.distribution[train].push(person_index as i32);
         diag!(
             "【分布】T{} 分身 人头{} → 训练位{}",
@@ -319,32 +327,27 @@ impl MatsuriGame {
     pub(crate) fn distribute_hints(&mut self, rng: &mut impl Rng) -> Result<()> {
         let data = Data::get()?;
         let base_hint_rate = data.consts.base_hint_rate / 100.0;
-        let deck_len = self.base.deck.len();
-        // 剧本灵感率加成：发布会 + 该卡担当演目的教え
+        // 剧本灵感率加成：发布会 + 该卡担当演目的教え（逐人现算，避免每回合临时 Vec）
         let presentation = self.presentation_bonus();
-        let mut scenario_bonus = vec![presentation.hint_rate; deck_len];
-        for (index, bonus) in scenario_bonus.iter_mut().enumerate() {
-            if let Some(act) = self.persons.get(index).and_then(|person| person.act) {
-                *bonus += self.advice_slot_effect(act).hint_rate;
-            }
-        }
-        let card_bonus: Vec<(u32, i32)> = self
-            .base
-            .deck
-            .iter()
-            .map(|card| (card.card_id, card.card_value().hint_prob_increase))
-            .collect();
         for person_index in 0..self.persons.len() {
             if self.persons[person_index].person_type() != PersonType::Card {
                 continue;
             }
-            let Some((_, bonus)) = self.persons[person_index]
-                .card_id()
-                .and_then(|card_id| card_bonus.iter().find(|(id, _)| *id == card_id))
-            else {
+            let Some(bonus) = self.persons[person_index].card_id().and_then(|card_id| {
+                self.base
+                    .deck
+                    .iter()
+                    .find(|card| card.card_id == card_id)
+                    .map(|card| card.card_value().hint_prob_increase)
+            }) else {
                 continue;
             };
-            let scenario = scenario_bonus.get(person_index).copied().unwrap_or(0);
+            let scenario = presentation.hint_rate
+                + self
+                    .persons
+                    .get(person_index)
+                    .and_then(|person| person.act)
+                    .map_or(0, |act| self.advice_slot_effect(act).hint_rate);
             let hint_prob = (base_hint_rate * ((100 + bonus + scenario) as f64 / 100.0)).min(1.0);
             let hit = rng.random_bool(hint_prob);
             self.persons[person_index].set_hint(hit);

@@ -31,13 +31,15 @@
   （+1571，铁心后五维近上限，边际更小）。
 - **默认档**：`data/matsuri_config.toml` = 冠军档 `ga-r2`（`pt_favor_rate=1.7271`）；搜索默认关。
 - **基线**：100101 100 局（seeds 61444–61543）均 78124.5 / PT 11052.2；102102（freeRaces）均 76406.6。
-- **验收**：workspace **220 测例**（含 1 个 1024 手动档 `#[ignore]`）；`fmt --check` / `check` /
-  `clippy -D warnings` / `test` 四门绿。
-- **性能**：手写决策链与 MCTS rollout 已完成一轮 O0–O4 优化（预览零克隆 / 教诲查表 /
-  原因惰性化），配对测量与复现见 [`docs/perf_profiling.md`](docs/perf_profiling.md)；
-  整局 N=1024 55.7 s → 24.7 s，决策与终局逐位一致。
-- **下一步**：搜索 8192 档验证 + rollout 机制成本（事件管线）与 `Model::new` 缓存
-  → S9 基线（只录一次）；调参一律换全新种子块。
+- **验收**：workspace **221 通过 + 2 手动档**（1024 整局复现、教诲微基准，均 `#[ignore]`）；
+  `fmt --check` / `check` / `clippy -D warnings` / `test` 四门绿。
+- **性能**：两轮 O0–O4 优化，配对测量与复现见 [`docs/perf_profiling.md`](docs/perf_profiling.md)：
+  第一轮（预览零克隆 / 教诲查表 / 原因惰性化）整局 N=1024 55.7 s → 24.7 s；第二轮
+  （诊断载荷惰性化 / rollout 静默事件明细 / 事件队列去深拷贝 / 参与教诲去重）同轮配对
+  手写整局 −27%、串行 rollout −26%、整局 N=256 −20%、N=1024 −14%，单次 rollout 分配
+  4080 → 2085 次；决策与终局逐位一致。
+- **下一步**：搜索 8192 档验证 → S9 基线（只录一次）；引擎侧诊断载荷 / 训练卡效果表缓存
+  需走引擎钩子流程。调参一律换全新种子块。
 ## 结构
 
 | crate / 文件 | 职责 |
@@ -68,7 +70,7 @@
 | `crates/matsuri-cli/src/logging.rs` | stderr 日志器：消费 `[output] log_level`，承接引擎 / 剧本 `diag!` 记录（默认 `info`、`off` 静默） |
 | `crates/matsuri-sim` | 模拟器与基线裁判（骨架） |
 | `crates/matsuri-ai` | 在线决策核心（骨架） |
-| `crates/matsuri-tools` | 外围工具：性能测量 bin `bench`（整局 / 决策分段 / rollout 分布 / 固定根；测卡 / 复盘待补） |
+| `crates/matsuri-tools` | 外围工具：性能测量 bin `bench`（整局 / 决策分段 / rollout 分布 / 固定根 / 阶段拆分 / 分配计数 / 平铺并行对照；测卡 / 复盘待补） |
 | `data/` | 引擎静态表 + 剧本资产 `scenario_matsuri.json` + 双配置默认层 |
 | `docs/` | 本仓文档骨架 |
 

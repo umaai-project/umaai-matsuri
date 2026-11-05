@@ -653,3 +653,62 @@ mod tests {
         assert_eq!(game.advice.fused, [0; 5], "融合失败不应留下半态");
     }
 }
+
+#[cfg(test)]
+mod microbench {
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+    use umasim::game::Game;
+
+    /// 参与教诲聚合的微基准（`cargo test --release -p matsuri-core --lib
+    /// microbench_participant_advice -- --ignored --nocapture`）
+    ///
+    /// 估值层同一候选会多次调用 `participant_advice` / `advice_slot_effect`：本探针给出
+    /// ns/op，供判断「是否值得把聚合结果向下传」；不参与常规测试。
+    #[test]
+    #[ignore]
+    fn microbench_participant_advice() {
+        let mut game = crate::testing::sample_game_with_uma(100101);
+        game.turn = 40;
+        game.advice.acquired = true;
+        game.advice.slots = [101, 201, 301, 401, 501];
+        game.advice.fused = [0; 5];
+        game.acts.level = [3; 5];
+        let mut rng = StdRng::seed_from_u64(7);
+        game.distribute_all(&mut rng).expect("分布");
+        let iters = 200_000u32;
+        let measure = |label: &str, mut op: Box<dyn FnMut()>| {
+            for _ in 0..1_000 {
+                op();
+            }
+            let started = std::time::Instant::now();
+            for _ in 0..iters {
+                op();
+            }
+            println!(
+                "{label:24} {:8.1} ns/op",
+                started.elapsed().as_nanos() as f64 / f64::from(iters)
+            );
+        };
+        let persons = game.distribution()[0].len().max(1);
+        measure(
+            "participant_advice(0)",
+            Box::new(|| {
+                std::hint::black_box(game.participant_advice(0));
+            }),
+        );
+        measure(
+            "advice_slot_effect(0)",
+            Box::new(|| {
+                std::hint::black_box(game.advice_slot_effect(0));
+            }),
+        );
+        measure(
+            "shining_count(0)",
+            Box::new(|| {
+                std::hint::black_box(game.shining_count(0));
+            }),
+        );
+        println!("distribution[0] = {persons} 人");
+    }
+}

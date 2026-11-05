@@ -16,6 +16,7 @@ use umaai_core::gamedata::ActionValue;
 use umaai_core::{Data, Ill};
 use umasim::game::{FriendOutState, Game, Person, PersonType};
 
+use super::advice::ParticipantAdvice;
 use super::person::PersonOrigin;
 use super::{
     ActLedger, Action, MatsuriGame, ResourcePreview, TrainingPreview, act_gauge_add,
@@ -38,6 +39,63 @@ pub(crate) struct TrainingUpper {
     pub motivation: i32,
 }
 
+/// 训练标签（诊断用；`Display` 只在日志打开时求值，避免每次结算一次 `String` 分配）
+pub(crate) struct TrainingLabel {
+    /// 是否稽古
+    pub(crate) keiko: bool,
+    /// 训练位（普通训练）
+    pub(crate) train: usize,
+    /// 演目下标（稽古；普通训练为 `None`，不查表）
+    pub(crate) act: Option<usize>,
+}
+
+impl std::fmt::Display for TrainingLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.keiko {
+            write!(f, "稽古#{}", self.act.unwrap_or(self.train))
+        } else {
+            write!(f, "训练#{}", self.train)
+        }
+    }
+}
+
+/// 训练后摘要（诊断用；`Display` 只在日志打开时求值，正常跑局零分配）
+struct AfterTrainSummary {
+    friendship_sum: i32,
+    friendship_count: i32,
+    hint_count: usize,
+    queued: usize,
+    friend_clicked: bool,
+    yayoi_clicked: bool,
+    reporter_clicked: bool,
+}
+
+impl std::fmt::Display for AfterTrainSummary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "羁绊+{}（{} 人）",
+            self.friendship_sum, self.friendship_count
+        )?;
+        if self.hint_count > 0 {
+            write!(f, " 灵感 {} 人", self.hint_count)?;
+        }
+        if self.queued > 0 {
+            write!(f, " 追加事件 {}", self.queued)?;
+        }
+        if self.friend_clicked {
+            write!(f, " 友人点击")?;
+        }
+        if self.yayoi_clicked {
+            write!(f, " 理事长点击")?;
+        }
+        if self.reporter_clicked {
+            write!(f, " 记者点击")?;
+        }
+        Ok(())
+    }
+}
+
 impl MatsuriGame {
     /// 训练 / 演目稽古预览（手动核对 / 前端面板）
     ///
@@ -47,6 +105,18 @@ impl MatsuriGame {
     /// 并发约束：标记挂在局面对象上，同一局面不可被多线程同时预览 / 读训练值；
     /// 搜索的每个 rollout 各持克隆（fork_for_rollout），因此并行搜索不受影响。
     pub fn preview_training(&self, train: usize, keiko: bool) -> Result<TrainingPreview> {
+        Ok(self.preview_training_full(train, keiko)?.0)
+    }
+
+    /// 训练预览（附带本次参与教诲聚合与闪彩人数）
+    ///
+    /// 估值层同一候选要用到 `failure_rate` / `TrainingPreview` / 羁绊与闪彩人数；把
+    /// `participant_advice` / `shining_count` 一次算好后向下传，避免同一候选重算 3–4 遍。
+    pub(crate) fn preview_training_full(
+        &self,
+        train: usize,
+        keiko: bool,
+    ) -> Result<(TrainingPreview, ParticipantAdvice, usize)> {
         if train >= 5 {
             return Err(anyhow::anyhow!("普通训练下标越界: {train}（训练位 0–4）"));
         }
@@ -56,19 +126,29 @@ impl MatsuriGame {
     }
 
     /// 训练预览主体（调用前已切好稽古上下文）
-    fn preview_training_keiko(&self, train: usize, keiko: bool) -> Result<TrainingPreview> {
+    fn preview_training_keiko(
+        &self,
+        train: usize,
+        keiko: bool,
+    ) -> Result<(TrainingPreview, ParticipantAdvice, usize)> {
+        let advice = self.participant_advice(train);
+        let shining = self.shining_count(train);
         let buffs = self.calc_training_buff(train)?;
-        let failure_rate = self.calc_training_failure_rate(&buffs, train)?;
-        let mut value = self.calc_training_value(&buffs, train)?;
+        let failure_rate = self.calc_training_failure_rate_inner(&buffs, train, &advice)?;
+        let mut value = self.calc_training_value_inner(&buffs, train, &advice)?;
         // 【变胖】预览与正式结算同口径：训练 / 排练速度增量归零
         if self.is_fat() {
             value.status_pt[0] = 0;
         }
-        Ok(TrainingPreview {
-            value,
-            failure_rate,
-            keiko,
-        })
+        Ok((
+            TrainingPreview {
+                value,
+                failure_rate,
+                keiko,
+            },
+            advice,
+            shining,
+        ))
     }
 
     /// 动作的剧本资源预览：演目槽 / 演目 Lv 差值（正 = 增加，负 = 排练成功清槽）
@@ -179,13 +259,14 @@ impl MatsuriGame {
     fn settle_training(&mut self, train: usize, keiko: bool, rng: &mut impl Rng) -> Result<()> {
         // 诊断：结算前快照（成功 / 失败都打一行「动作 + 变化」）
         let before = self.key_state();
-        let label = if keiko {
-            format!("稽古#{}", self.act_of_train(train))
-        } else {
-            format!("训练#{train}")
+        let label = TrainingLabel {
+            keiko,
+            train,
+            act: keiko.then(|| self.act_of_train(train)),
         };
+        let advice = self.participant_advice(train);
         let buffs = self.calc_training_buff(train)?;
-        let failure_rate = self.calc_training_failure_rate(&buffs, train)?;
+        let failure_rate = self.calc_training_failure_rate_inner(&buffs, train, &advice)?;
         let fail_prob = f64::from(failure_rate) / 100.0;
         if rng.random_bool(fail_prob) {
             diag!(
@@ -196,7 +277,7 @@ impl MatsuriGame {
             );
             return self.apply_training_failure(fail_prob, rng);
         }
-        let mut value = self.calc_training_value(&buffs, train)?;
+        let mut value = self.calc_training_value_inner(&buffs, train, &advice)?;
         // 【变胖】训练 / 排练的速度增量归零；训练后事件 / 休息 / 出行 / 比赛 / 事件仍可加速度
         if self.is_fat() {
             value.status_pt[0] = 0;
@@ -215,7 +296,7 @@ impl MatsuriGame {
                 self.assist_support_left
             );
         }
-        self.after_train(train, keiko, rng)?;
+        self.after_train(train, keiko, &advice, rng)?;
         // 演目槽：普通训练按参与担当入账（闪彩 +2）；排练回合不涨
         if !keiko {
             self.gain_training_gauge(train);
@@ -291,13 +372,26 @@ impl MatsuriGame {
     }
 
     /// 上层训练数值（剧本来源；`lower` 为下层值，`keiko` 为排练上下文）
+    #[cfg(test)]
     pub(crate) fn training_upper(
         &self,
         train: usize,
         lower: &ActionValue,
         keiko: bool,
     ) -> TrainingUpper {
-        let advice = self.participant_advice(train).effect;
+        let advice = self.participant_advice(train);
+        self.training_upper_with(train, lower, keiko, &advice)
+    }
+
+    /// [`Self::training_upper`] 的 advice 复用版（同一次预览 / 结算只算一次参与教诲）
+    pub(crate) fn training_upper_with(
+        &self,
+        train: usize,
+        lower: &ActionValue,
+        keiko: bool,
+        advice: &ParticipantAdvice,
+    ) -> TrainingUpper {
+        let advice = advice.effect;
         let presentation = self.presentation_bonus();
         let five_types = self.deck_has_five_types();
         let friend_training = self.shining_count(train) > 0;
@@ -391,12 +485,21 @@ impl MatsuriGame {
     }
 
     /// 剧本失败率下降 %（不屈 / 本番演出；100 = 必定成功）
+    ///
+    /// 结算 / 估值热路径用 [`Self::scenario_fail_rate_drop_with`] 复用参与教诲；本包装供测试。
+    #[cfg(test)]
     pub(crate) fn scenario_fail_rate_drop(&self, train: usize) -> i32 {
+        let advice = self.participant_advice(train);
+        self.scenario_fail_rate_drop_with(&advice)
+    }
+
+    /// [`Self::scenario_fail_rate_drop`] 的 advice 复用版
+    pub(crate) fn scenario_fail_rate_drop_with(&self, advice: &ParticipantAdvice) -> i32 {
         let mut drop = 0;
         if self.ura_training_active() {
             drop = drop.max(self.data.finals_act.fail_rate_drop);
         }
-        if let Some(threshold) = self.participant_advice(train).effect.fail_vital_threshold
+        if let Some(threshold) = advice.effect.fail_vital_threshold
             && (threshold == 0 || self.uma().vital >= threshold)
         {
             drop = 100;
@@ -410,19 +513,25 @@ impl MatsuriGame {
     }
 
     /// 训练成功后的剧本后处理：羁绊 / 灵感事件 / 加练 / 点击（替换引擎默认实现）
-    fn after_train(&mut self, train: usize, keiko: bool, rng: &mut impl Rng) -> Result<()> {
+    fn after_train(
+        &mut self,
+        train: usize,
+        keiko: bool,
+        advice: &ParticipantAdvice,
+        rng: &mut impl Rng,
+    ) -> Result<()> {
         self.base.set_last_train(train);
         let queued_before = self.unresolved_events.len();
         let mut friendship_sum = 0;
         let mut friendship_count = 0;
-        let advice = self.participant_advice(train);
         let lesson = advice.relationship_gain;
-        let touches = self.base.distribution[train].clone();
         let mut hint_persons: Vec<usize> = Vec::new();
         let mut friend_clicked = false;
         let mut yayoi_clicked = false;
         let mut reporter_clicked = false;
-        for index in touches {
+        // 逐下标读参与名单（原实现整条 clone，一次训练一次分配）
+        for index in 0..self.base.distribution[train].len() {
+            let index = self.base.distribution[train][index];
             if index < 0 {
                 continue;
             }
@@ -470,7 +579,7 @@ impl MatsuriGame {
             && self.deck_has_five_types()
             && self.act_effect(self.act_of_train(train)).all_hint;
         let hint_level_bonus = if keiko {
-            self.participant_advice(train).effect.keiko_hint_level
+            advice.effect.keiko_hint_level
         } else {
             0
         };
@@ -526,29 +635,22 @@ impl MatsuriGame {
                 }
             }
         }
-        let mut parts = vec![format!("羁绊+{friendship_sum}（{friendship_count} 人）")];
-        if !hint_persons.is_empty() {
-            parts.push(format!("灵感 {} 人", hint_persons.len()));
-        }
         let queued = self.unresolved_events.len() - queued_before;
-        if queued > 0 {
-            parts.push(format!("追加事件 {queued}"));
-        }
-        if friend_clicked {
-            parts.push("友人点击".to_string());
-        }
-        if yayoi_clicked {
-            parts.push("理事长点击".to_string());
-        }
-        if reporter_clicked {
-            parts.push("记者点击".to_string());
-        }
-        let label = if keiko {
-            format!("稽古#{}", self.act_of_train(train))
-        } else {
-            format!("训练#{train}")
+        let summary = AfterTrainSummary {
+            friendship_sum,
+            friendship_count,
+            hint_count: hint_persons.len(),
+            queued,
+            friend_clicked,
+            yayoi_clicked,
+            reporter_clicked,
         };
-        diag!("【训练后】T{} {label} {}", self.turn(), parts.join(" "));
+        let label = TrainingLabel {
+            keiko,
+            train,
+            act: keiko.then(|| self.act_of_train(train)),
+        };
+        diag!("【训练后】T{} {label} {summary}", self.turn());
         Ok(())
     }
 
@@ -609,19 +711,11 @@ impl MatsuriGame {
         self.training_gauge_on(&mut acts, train, started, max);
         self.acts = acts;
         if gauge_before != self.acts.gauge {
-            let mut changes: Vec<String> = Vec::new();
-            for (act, (before, after)) in
-                gauge_before.iter().zip(self.acts.gauge.iter()).enumerate()
-            {
-                if before != after {
-                    changes.push(format!("演目{act}槽{before}→{after}"));
-                }
-            }
             diag!(
                 "【演目槽】T{} 训练#{} 入槽 {}",
                 self.turn(),
                 train,
-                changes.join(" ")
+                crate::game::diag::gauge_changes(&gauge_before, &self.acts.gauge)
             );
         }
     }
@@ -1070,7 +1164,9 @@ mod tests {
             .expect("应带 SSR 吾妻");
         game.base.distribution = vec![vec![friend as i32], vec![], vec![], vec![], vec![]];
         let mut rng = StdRng::seed_from_u64(5);
-        game.after_train(0, false, &mut rng).expect("训练后处理");
+        let advice = game.participant_advice(0);
+        game.after_train(0, false, &advice, &mut rng)
+            .expect("训练后处理");
         assert_eq!(
             game.base.friend.out_state,
             FriendOutState::BeforeUnlock,
@@ -1088,7 +1184,8 @@ mod tests {
         let mut hits = 0;
         for _ in 0..200 {
             game.unresolved_events.clear();
-            game.after_train(0, false, &mut rng).expect("训练后处理");
+            game.after_train(0, false, &advice, &mut rng)
+                .expect("训练后处理");
             if game
                 .unresolved_events
                 .iter()

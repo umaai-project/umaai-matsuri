@@ -85,23 +85,38 @@ impl ActionEnum for Action {
     }
 }
 
+/// 友人出行段标签（诊断用；只在日志打开时格式化）
+struct FriendOutingLabel(usize);
+
+impl std::fmt::Display for FriendOutingLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "友人出行第{}段", self.0)
+    }
+}
+
+/// 比赛 PT 倍率备注（诊断用；只在日志打开时格式化）
+struct PtNote(f64);
+
+impl std::fmt::Display for PtNote {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if (self.0 - 1.0).abs() > f64::EPSILON {
+            write!(f, " PT×{:.2}", self.0)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 impl MatsuriGame {
     /// 诊断：演目槽入账行（`label` = 动作名；`before` = 入账前槽位；无入账不输出）
-    fn diag_gauge_gain(&self, label: &str, before: &[i32; 5]) {
-        let parts: Vec<String> = self
-            .acts
-            .gauge
-            .iter()
-            .zip(before.iter())
-            .enumerate()
-            .filter(|(_, (after, before))| after != before)
-            .map(|(act, (after, before))| format!("演目{act}槽{before}→{after}"))
-            .collect();
-        if !parts.is_empty() {
+    ///
+    /// 摘要文本由 `diag!` 惰性求值：日志关闭时只做一次槽位数组比较。
+    fn diag_gauge_gain(&self, label: impl std::fmt::Display, before: &[i32; 5]) {
+        if self.acts.gauge != *before {
             diag!(
                 "【演目槽】T{} {label} 入槽 {}",
                 self.turn(),
-                parts.join(" ")
+                crate::game::diag::gauge_changes(before, &self.acts.gauge)
             );
         }
     }
@@ -131,14 +146,10 @@ impl MatsuriGame {
         };
         self.gain_lowest_act_gauge(gain);
         self.diag_gauge_gain(kind, &before.gauge);
-        let pt_note = if (pt_rate - 1.0).abs() > f64::EPSILON {
-            format!(" PT×{pt_rate:.2}")
-        } else {
-            String::new()
-        };
         diag!(
-            "【动作】T{} {kind} 加成×{scale:.2}{pt_note}｜变化 {}",
+            "【动作】T{} {kind} 加成×{scale:.2}{}｜变化 {}",
             self.turn(),
+            PtNote(pt_rate),
             before.diff(&self.key_state())
         );
         Ok(())
@@ -236,7 +247,7 @@ impl MatsuriGame {
         self.base.friend.out_used[step] = true;
         self.add_lowest_act_level(add_level);
         self.gain_lowest_act_gauge(self.data.rules.act_gauge_gain.other);
-        self.diag_gauge_gain(&format!("友人出行第{}段", step + 1), &before.gauge);
+        self.diag_gauge_gain(FriendOutingLabel(step + 1), &before.gauge);
         diag!(
             "【动作】T{} 友人出行 第{}段 演出目Lv+{} 事件#{}（已用 {}/5 段）",
             self.turn(),

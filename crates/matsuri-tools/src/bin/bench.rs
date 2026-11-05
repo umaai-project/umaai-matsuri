@@ -1,15 +1,20 @@
-//! 性能测量入口：手写档整局 / 决策链分段 / 搜索固定根
+//! 性能测量入口：手写档整局 / 决策链分段 / 搜索固定根 / rollout 阶段拆分
 //!
 //! 用法（仓根执行，先 cargo build --release --offline -p matsuri-tools）：
 //! - bench game --games 20 --seed 61444            整局耗时 + 终局 CSV（跨版本逐位对照）
 //! - bench micro --turn 32 --iters 2000            决策链分段 ns/op
 //! - bench root --turn 32 --search-n 512 --repeat 3 固定根搜索耗时 + 探针计数
+//! - bench stages --turn 32                        单次 rollout 按阶段机拆分
+//! - bench parts --turn 32 --iters 2000            Distribute / 事件管线单点 ns/op
+//! - bench flat --turn 32 --rollouts 2048 --threads 24  平铺线程池 rollout（并行上限对照）
 //!
 //! 测量纪律：双方同一 Release 构建、同一数据 / 配置；耗时只声明本机当轮。
 //! 日志不装 logger，避免把诊断格式化的成本算进测量。
 
+use std::alloc::{GlobalAlloc, Layout, System};
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -27,6 +32,44 @@ use umasim::search::{FlatSearch, FlatSearchGame, NoTerminal};
 
 /// 仓内数据根（相对仓根）
 const DATA_ROOT: &str = "data";
+
+/// 分配计数开关（只在 `bench allocs` 打开；关闭时每次分配多一次 Relaxed 读）
+static COUNT_ALLOCS: AtomicBool = AtomicBool::new(false);
+/// 累计分配次数
+static ALLOC_COUNT: AtomicU64 = AtomicU64::new(0);
+/// 累计分配字节
+static ALLOC_BYTES: AtomicU64 = AtomicU64::new(0);
+
+/// 计数分配器：只包一层原子计数，基准测量时关闭
+struct CountingAlloc;
+
+unsafe impl GlobalAlloc for CountingAlloc {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        if COUNT_ALLOCS.load(Ordering::Relaxed) {
+            ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+            ALLOC_BYTES.fetch_add(layout.size() as u64, Ordering::Relaxed);
+        }
+        // SAFETY: 转发给系统分配器，layout 由调用方保证有效
+        unsafe { System.alloc(layout) }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        // SAFETY: 指针与 layout 来自匹配的 System.alloc
+        unsafe { System.dealloc(ptr, layout) }
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        if COUNT_ALLOCS.load(Ordering::Relaxed) {
+            ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+            ALLOC_BYTES.fetch_add(new_size as u64, Ordering::Relaxed);
+        }
+        // SAFETY: 转发给系统分配器，参数由调用方保证有效
+        unsafe { System.realloc(ptr, layout, new_size) }
+    }
+}
+
+#[global_allocator]
+static GLOBAL_ALLOC: CountingAlloc = CountingAlloc;
 
 /// 一局终局观测
 struct Outcome {
@@ -337,7 +380,13 @@ fn main() -> Result<()> {
         "micro" => cmd_micro(&env, &args),
         "root" => cmd_root(&env, &args),
         "trace" => cmd_trace(&env, &args),
-        other => bail!("未知子命令: {other}（可选 game / micro / root）"),
+        "stages" => cmd_stages(&env, &args),
+        "flat" => cmd_flat(&env, &args),
+        "parts" => cmd_parts(&env, &args),
+        "allocs" => cmd_allocs(&env, &args),
+        other => bail!(
+            "未知子命令: {other}（可选 game / micro / root / trace / stages / parts / flat / allocs）"
+        ),
     }
 }
 
@@ -513,6 +562,400 @@ fn cmd_micro(env: &Env, args: &[String]) -> Result<()> {
         black_box(black_box(&game).list_actions().ok());
     });
     println!("list_actions           {list_ns:10.1}");
+    Ok(())
+}
+
+/// 只累计决策耗时的包装训练员（原子累加，不逐条记录，热路径开销最小）
+struct SumTrainer {
+    inner: MatsuriTrainer,
+    select_ns: AtomicU64,
+    select_n: AtomicU64,
+    event_ns: AtomicU64,
+    event_n: AtomicU64,
+}
+
+impl SumTrainer {
+    fn new(inner: MatsuriTrainer) -> Self {
+        Self {
+            inner,
+            select_ns: AtomicU64::new(0),
+            select_n: AtomicU64::new(0),
+            event_ns: AtomicU64::new(0),
+            event_n: AtomicU64::new(0),
+        }
+    }
+
+    fn add(counter: &AtomicU64, n: &AtomicU64, started: Instant) {
+        counter.fetch_add(started.elapsed().as_nanos() as u64, Ordering::Relaxed);
+        n.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+impl Trainer<MatsuriGame> for SumTrainer {
+    fn select_action(
+        &self,
+        game: &MatsuriGame,
+        actions: &[Action],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        let started = Instant::now();
+        let chosen = self.inner.select_action(game, actions, rng)?;
+        Self::add(&self.select_ns, &self.select_n, started);
+        Ok(chosen)
+    }
+
+    fn select_choice(
+        &self,
+        game: &MatsuriGame,
+        choices: &[Vec<EventChoice>],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        self.inner.select_choice(game, choices, rng)
+    }
+
+    fn select_event_choice(
+        &self,
+        game: &MatsuriGame,
+        event: &EventData,
+        choices: &[Vec<EventChoice>],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        let started = Instant::now();
+        let chosen = self.inner.select_event_choice(game, event, choices, rng)?;
+        Self::add(&self.event_ns, &self.event_n, started);
+        Ok(chosen)
+    }
+}
+
+/// 平铺并行（std::thread）rollout：bench flat --turn 32 --rollouts 2048 --threads 24
+///
+/// 与 `root` 的引擎嵌套 rayon 路径对照：同样从固定根跑 total 次 rollout，只把并行
+/// 组织换成「一层线程池 × 每线程串行 rollout」，用来判断瓶颈是搜索调度还是工作负载本身。
+fn cmd_flat(env: &Env, args: &[String]) -> Result<()> {
+    let turn = parse_i32(args, "--turn", 32)?;
+    let seed = parse_usize(args, "--seed", 61444)? as u64;
+    let total = parse_usize(args, "--rollouts", 2048)?;
+    let threads = parse_usize(args, "--threads", 8)?;
+    let config = env.config.clone();
+    let (game, actions) = capture_root(env, &config, seed, turn)?;
+    let game = Arc::new(game);
+    let actions = Arc::new(actions);
+    let pt = config.trainer.pt_favor_rate;
+    let trainer = Arc::new(MatsuriTrainer::new(config));
+    let per = total.div_ceil(threads);
+    let started = Instant::now();
+    let mut handles = Vec::with_capacity(threads);
+    for thread in 0..threads {
+        let game = game.clone();
+        let actions = actions.clone();
+        let trainer = trainer.clone();
+        handles.push(std::thread::spawn(move || -> f64 {
+            let mut sum = 0.0;
+            for k in 0..per {
+                let index = (thread * per + k) % actions.len().max(1);
+                let rollout_seed = seed.wrapping_add((thread * per + k) as u64);
+                if let Ok(score) = rollout_with(&game, &actions[index], rollout_seed, &*trainer, pt)
+                {
+                    sum += score;
+                }
+            }
+            sum
+        }));
+    }
+    let mut sum = 0.0;
+    for handle in handles {
+        sum += handle
+            .join()
+            .map_err(|_| anyhow::anyhow!("rollout 线程 panic"))?;
+    }
+    let elapsed = started.elapsed();
+    println!(
+        "# turn={turn} threads={threads} rollouts={} elapsed_ms={:.1} ns_per_rollout={:.0} checksum={sum:.1}",
+        per * threads,
+        elapsed.as_secs_f64() * 1000.0,
+        elapsed.as_nanos() as f64 / (per * threads) as f64
+    );
+    Ok(())
+}
+
+/// 统计训练员内部分配的包装训练员（`bench allocs` 用）
+struct AllocCountTrainer {
+    inner: MatsuriTrainer,
+    action: AtomicU64,
+    action_n: AtomicU64,
+    event: AtomicU64,
+    event_n: AtomicU64,
+}
+
+impl Trainer<MatsuriGame> for AllocCountTrainer {
+    fn select_action(
+        &self,
+        game: &MatsuriGame,
+        actions: &[Action],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        let before = ALLOC_COUNT.load(Ordering::Relaxed);
+        let chosen = self.inner.select_action(game, actions, rng)?;
+        self.action.fetch_add(
+            ALLOC_COUNT.load(Ordering::Relaxed) - before,
+            Ordering::Relaxed,
+        );
+        self.action_n.fetch_add(1, Ordering::Relaxed);
+        Ok(chosen)
+    }
+
+    fn select_choice(
+        &self,
+        game: &MatsuriGame,
+        choices: &[Vec<EventChoice>],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        self.inner.select_choice(game, choices, rng)
+    }
+
+    fn select_event_choice(
+        &self,
+        game: &MatsuriGame,
+        event: &EventData,
+        choices: &[Vec<EventChoice>],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        let before = ALLOC_COUNT.load(Ordering::Relaxed);
+        let chosen = self.inner.select_event_choice(game, event, choices, rng)?;
+        self.event.fetch_add(
+            ALLOC_COUNT.load(Ordering::Relaxed) - before,
+            Ordering::Relaxed,
+        );
+        self.event_n.fetch_add(1, Ordering::Relaxed);
+        Ok(chosen)
+    }
+}
+
+/// 阶段机编号 → 名称（`StageId` 显式赋号见 stage.rs）
+/// 单次 rollout 的分配计数：bench allocs --turn 32
+fn cmd_allocs(env: &Env, args: &[String]) -> Result<()> {
+    let turn = parse_i32(args, "--turn", 32)?;
+    let seed = parse_usize(args, "--seed", 61444)? as u64;
+    let action_index = parse_usize(args, "--action", 0)?;
+    let config = env.config.clone();
+    let (game, actions) = capture_root(env, &config, seed, turn)?;
+    let action = actions.get(action_index).context("动作下标越界")?;
+    let trainer = AllocCountTrainer {
+        inner: MatsuriTrainer::new(config),
+        action: AtomicU64::new(0),
+        action_n: AtomicU64::new(0),
+        event: AtomicU64::new(0),
+        event_n: AtomicU64::new(0),
+    };
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut sim = game.fork_for_rollout(seed);
+    sim.apply_root_action(action, &mut rng)?;
+    ALLOC_COUNT.store(0, Ordering::Relaxed);
+    ALLOC_BYTES.store(0, Ordering::Relaxed);
+    COUNT_ALLOCS.store(true, Ordering::Relaxed);
+    let started = Instant::now();
+    let mut turns = 0usize;
+    let mut stage_allocs = [0u64; 5];
+    let mut stage_counts = [0u64; 5];
+    while sim.next() {
+        let index = usize::try_from(sim.stage().get()).unwrap_or(4).min(4);
+        let before = ALLOC_COUNT.load(Ordering::Relaxed);
+        sim.run_stage(&trainer, &mut rng)?;
+        stage_allocs[index] += ALLOC_COUNT.load(Ordering::Relaxed) - before;
+        stage_counts[index] += 1;
+        turns += 1;
+    }
+    let end_before = ALLOC_COUNT.load(Ordering::Relaxed);
+    sim.on_simulation_end(&trainer, &mut rng)?;
+    let end_allocs = ALLOC_COUNT.load(Ordering::Relaxed) - end_before;
+    let elapsed = started.elapsed();
+    COUNT_ALLOCS.store(false, Ordering::Relaxed);
+    println!(
+        "# per_stage_allocs Begin={} Train={} End={} Distribute={} AfterTrain={} on_end={}",
+        stage_allocs[0],
+        stage_allocs[1],
+        stage_allocs[2],
+        stage_allocs[3],
+        stage_allocs[4],
+        end_allocs
+    );
+    println!(
+        "# per_stage_calls Begin={} Train={} End={} Distribute={} AfterTrain={}",
+        stage_counts[0], stage_counts[1], stage_counts[2], stage_counts[3], stage_counts[4]
+    );
+    let counts = ALLOC_COUNT.load(Ordering::Relaxed);
+    let bytes = ALLOC_BYTES.load(Ordering::Relaxed);
+    println!(
+        "# turn={turn} stages={turns} elapsed_us={:.1} allocs={counts} bytes={bytes} per_stage_allocs={:.1}",
+        elapsed.as_secs_f64() * 1e6,
+        counts as f64 / turns.max(1) as f64
+    );
+    println!(
+        "# avg_alloc_bytes={:.1} total_kib={:.1}",
+        bytes as f64 / counts.max(1) as f64,
+        bytes as f64 / 1024.0
+    );
+    println!(
+        "# trainer_allocs action={} n={} event={} n={}",
+        trainer.action.load(Ordering::Relaxed),
+        trainer.action_n.load(Ordering::Relaxed),
+        trainer.event.load(Ordering::Relaxed),
+        trainer.event_n.load(Ordering::Relaxed)
+    );
+    Ok(())
+}
+
+/// rollout 内按阶段拆分：bench stages --turn 32
+fn cmd_stages(env: &Env, args: &[String]) -> Result<()> {
+    let turn = parse_i32(args, "--turn", 32)?;
+    let seed = parse_usize(args, "--seed", 61444)? as u64;
+    let action_index = parse_usize(args, "--action", 0)?;
+    let config = env.config.clone();
+    let (game, actions) = capture_root(env, &config, seed, turn)?;
+    let action = actions.get(action_index).context("动作下标越界")?;
+    let trainer = SumTrainer::new(MatsuriTrainer::new(config.clone()));
+
+    let mut rng = StdRng::seed_from_u64(seed);
+    let fork_started = Instant::now();
+    let mut sim = game.fork_for_rollout(seed);
+    let fork_ns = fork_started.elapsed().as_nanos() as u64;
+    let root_started = Instant::now();
+    sim.apply_root_action(action, &mut rng)?;
+    let root_ns = root_started.elapsed().as_nanos() as u64;
+
+    let mut sums = [0u64; 5];
+    let mut counts = [0u64; 5];
+    let mut wait_ns = 0u64;
+    let mut wait_n = 0u64;
+    while {
+        let started = Instant::now();
+        let more = sim.next();
+        wait_ns += started.elapsed().as_nanos() as u64;
+        if more {
+            wait_n += 1;
+        }
+        more
+    } {
+        let id = sim.stage().get();
+        let index = usize::try_from(id).unwrap_or(4).min(4);
+        let started = Instant::now();
+        sim.run_stage(&trainer, &mut rng)?;
+        let elapsed = started.elapsed().as_nanos() as u64;
+        sums[index] += elapsed;
+        counts[index] += 1;
+    }
+    let end_started = Instant::now();
+    sim.on_simulation_end(&trainer, &mut rng)?;
+    let end_ns = end_started.elapsed().as_nanos() as u64;
+
+    let total: u64 = sums.iter().sum::<u64>() + fork_ns + root_ns + end_ns;
+    let select_ns = trainer.select_ns.load(Ordering::Relaxed);
+    let select_n = trainer.select_n.load(Ordering::Relaxed);
+    let event_ns = trainer.event_ns.load(Ordering::Relaxed);
+    let event_n = trainer.event_n.load(Ordering::Relaxed);
+    println!(
+        "# turn={turn} seed={seed} action={action} stage_calls={} total_us={:.1}",
+        counts.iter().sum::<u64>(),
+        total as f64 / 1e3
+    );
+    println!("stage,Begin,Train,End,Distribute,AfterTrain,next,root,fork,on_end,total");
+    let row = |values: &[f64]| {
+        values
+            .iter()
+            .map(|v| format!("{v:.1}"))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let us = |ns: u64| ns as f64 / 1e3;
+    println!(
+        "us,{}",
+        row(&[
+            us(sums[0]),
+            us(sums[1]),
+            us(sums[2]),
+            us(sums[3]),
+            us(sums[4]),
+            us(wait_ns),
+            us(root_ns),
+            us(fork_ns),
+            us(end_ns),
+            us(total),
+        ])
+    );
+    println!(
+        "share%,{}",
+        row(&[
+            shares(sums[0], total),
+            shares(sums[1], total),
+            shares(sums[2], total),
+            shares(sums[3], total),
+            shares(sums[4], total),
+            shares(wait_ns, total),
+            shares(root_ns, total),
+            shares(fork_ns, total),
+            shares(end_ns, total),
+            100.0,
+        ])
+    );
+    println!(
+        "calls,{},{},{},{},{},{},{},{},{},{}",
+        counts[0], counts[1], counts[2], counts[3], counts[4], wait_n, 1, 1, 1, 1
+    );
+    println!(
+        "# trainer.action_us={:.1} n={select_n} trainer.event_us={:.1} n={event_n}",
+        select_ns as f64 / 1e3,
+        event_ns as f64 / 1e3
+    );
+    Ok(())
+}
+
+/// 百分比（分母 0 时返回 0）
+fn shares(part: u64, total: u64) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        part as f64 * 100.0 / total as f64
+    }
+}
+
+/// 阶段内单点 ns/op：bench parts --turn 32 --iters 2000
+fn cmd_parts(env: &Env, args: &[String]) -> Result<()> {
+    let turn = parse_i32(args, "--turn", 32)?;
+    let iters = parse_usize(args, "--iters", 2000)?;
+    let seed = parse_usize(args, "--seed", 61444)? as u64;
+    let config = env.config.clone();
+    let (game, actions) = capture_root(env, &config, seed, turn)?;
+    println!("# turn={turn} actions={} iters={iters}", actions.len());
+
+    let mut rng = StdRng::seed_from_u64(seed);
+    let events_ns = bench(iters, || {
+        black_box(black_box(&game).generate_events(&mut rng));
+    });
+    println!("generate_events        {events_ns:10.1}");
+
+    let mut mutable = game.clone();
+    let distribute_ns = bench(iters, || {
+        black_box(black_box(&mut mutable).distribute_all(&mut rng).ok());
+    });
+    println!("distribute_all         {distribute_ns:10.1}");
+    let hint_ns = bench(iters, || {
+        black_box(black_box(&mut mutable).distribute_hint(&mut rng).ok());
+    });
+    println!("distribute_hint        {hint_ns:10.1}");
+    let list_ns = bench(iters.max(200), || {
+        black_box(black_box(&game).list_actions().ok());
+    });
+    println!("list_actions           {list_ns:10.1}");
+    let dist_clone_ns = bench(iters, || {
+        let mut copy = black_box(&game).clone();
+        black_box(black_box(&mut copy).distribute_all(&mut rng).ok());
+    });
+    println!(
+        "distribute+clone       {dist_clone_ns:10.1}  (clone 参考 {} )",
+        bench(iters, || {
+            black_box(black_box(&game).clone());
+        })
+    );
     Ok(())
 }
 

@@ -30,6 +30,17 @@ pub(crate) struct KeyState {
     pub(crate) level: Array5,
 }
 
+/// 演目槽变化摘要（诊断文本；只在日志打开时由调用方求值）
+pub(crate) fn gauge_changes(before: &[i32; 5], after: &[i32; 5]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for (act, (before, after)) in before.iter().zip(after.iter()).enumerate() {
+        if before != after {
+            parts.push(format!("演目{act}槽{before}→{after}"));
+        }
+    }
+    parts.join(" ")
+}
+
 impl KeyState {
     /// 与下一快照的差异摘要（零变化项省略；无变化返回「无变化」）
     pub(crate) fn diff(&self, next: &Self) -> String {

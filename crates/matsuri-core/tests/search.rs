@@ -8,7 +8,7 @@ use matsuri_core::{MAX_TURN, MatsuriConfig, MatsuriSearchTrainer, MatsuriTrainer
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use umasim::game::{Game, Trainer};
-use umasim::search::SearchConfig;
+use umasim::search::{FlatSearchGame, SearchConfig};
 
 /// 整局观测：评分 / PT / 终局快照
 type Outcome = (i32, i32, MatsuriView);
@@ -64,6 +64,36 @@ fn search_scopes_off_match_handwritten() -> Result<()> {
     let trainer = MatsuriSearchTrainer::new(cfg, search_config(1))?;
     let hand = MatsuriTrainer::new(MatsuriConfig::default());
     assert_eq!(run(61444, &trainer)?, run(61444, &hand)?);
+    Ok(())
+}
+
+/// rollout 分支静默事件明细：记录开关不影响决策与终局，fork 后 `event_log` 为空
+#[test]
+fn rollout_fork_skips_event_log_without_changing_game() -> Result<()> {
+    let mut base = sample_game();
+    base.set_rule_master(61444);
+    let trainer = MatsuriTrainer::new(MatsuriConfig::default());
+
+    let mut normal = base.clone();
+    let mut quiet = base.clone();
+    quiet.record_events = false;
+    let mut rng_normal = StdRng::seed_from_u64(7);
+    let mut rng_quiet = StdRng::seed_from_u64(7);
+    normal.run_full_game(&trainer, &mut rng_normal)?;
+    quiet.run_full_game(&trainer, &mut rng_quiet)?;
+    assert_eq!(
+        normal.uma().calc_score()?,
+        quiet.uma().calc_score()?,
+        "事件明细开关不应改变评分"
+    );
+    assert_eq!(normal.uma().total_pt()?, quiet.uma().total_pt()?);
+    assert!(!normal.event_log.is_empty(), "正常局面应记录事件");
+    assert!(quiet.event_log.is_empty(), "静默局面不应记录事件");
+
+    let mut forked = base.fork_for_rollout(61444);
+    assert!(!forked.record_events, "fork_for_rollout 应关闭事件明细");
+    forked.run_full_game(&trainer, &mut rng_quiet)?;
+    assert!(forked.event_log.is_empty(), "rollout 分支不应记录事件");
     Ok(())
 }
 

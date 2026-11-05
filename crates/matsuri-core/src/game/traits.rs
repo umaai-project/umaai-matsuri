@@ -15,6 +15,7 @@ use umasim::game::{
 };
 use umasim::search::FlatSearchGame;
 
+use super::advice::ParticipantAdvice;
 use super::person::{MatsuriPerson, PersonOrigin};
 use super::{Action, EventRecord, MatsuriGame, Stage};
 use crate::MAX_TURN;
@@ -296,38 +297,43 @@ impl Game for MatsuriGame {
             before.diff(&self.key_state())
         );
         // ⑦ 事件记录（手动 / 前端核对）：记录实际到账数值与状态变化
-        let mut detail = result
-            .as_ref()
-            .map(|result| result.value.to_string())
-            .unwrap_or_default();
-        if let Some(result) = &result {
-            if let Some(flags) = &result.add_flags
-                && !flags.to_string().is_empty()
-            {
-                if !detail.is_empty() {
-                    detail.push('；');
+        //
+        // 搜索 rollout 不记录（`record_events = false`）：明细构造含多次格式化与分配，
+        // 而 rollout 局面跑完即弃，`event_log` 无人消费。
+        if self.record_events {
+            let mut detail = result
+                .as_ref()
+                .map(|result| result.value.to_string())
+                .unwrap_or_default();
+            if let Some(result) = &result {
+                if let Some(flags) = &result.add_flags
+                    && !flags.to_string().is_empty()
+                {
+                    if !detail.is_empty() {
+                        detail.push('；');
+                    }
+                    detail.push_str("状态+");
+                    detail.push_str(&flags.to_string());
                 }
-                detail.push_str("状态+");
-                detail.push_str(&flags.to_string());
-            }
-            if let Some(flags) = &result.remove_flags
-                && !flags.to_string().is_empty()
-            {
-                if !detail.is_empty() {
-                    detail.push('；');
+                if let Some(flags) = &result.remove_flags
+                    && !flags.to_string().is_empty()
+                {
+                    if !detail.is_empty() {
+                        detail.push('；');
+                    }
+                    detail.push_str("状态-");
+                    detail.push_str(&flags.to_string());
                 }
-                detail.push_str("状态-");
-                detail.push_str(&flags.to_string());
             }
+            self.push_event_log(EventRecord {
+                seq: 0,
+                turn: self.turn(),
+                id: event.id,
+                name: event.name.clone(),
+                choice,
+                detail: (!detail.is_empty()).then_some(detail),
+            });
         }
-        self.push_event_log(EventRecord {
-            seq: 0,
-            turn: self.turn(),
-            id: event.id,
-            name: event.name.clone(),
-            choice,
-            detail: (!detail.is_empty()).then_some(detail),
-        });
         Ok(())
     }
 
@@ -423,59 +429,14 @@ impl Game for MatsuriGame {
 
     /// 训练值 = 下层（引擎默认公式）+ 上层（剧本来源：发布会 / 教え / 演目 Lv / 稽古 +10）
     fn calc_training_value(&self, buffs: &CardTrainingEffect, train: usize) -> Result<ActionValue> {
-        let mut value = self.default_calc_training_value(buffs, train)?;
-        let keiko = self.keiko_settling.get();
-        let upper = self.training_upper(train, &value, keiko);
-        for status in 0..5 {
-            value.status_pt[status] += upper.status[status];
-            if keiko {
-                value.status_pt[status] += upper.keiko_flat;
-            }
-        }
-        value.status_pt[5] += upper.skill_pt;
-        value.vital = upper.vital;
-        value.motivation += upper.motivation;
-        Ok(value)
+        let advice = self.participant_advice(train);
+        self.calc_training_value_inner(buffs, train, &advice)
     }
 
     /// 训练失败率：引擎基础局公式（口径同 §5.6）+ 剧本失败率下降（不屈 / 本番演出 -100%）
     fn calc_training_failure_rate(&self, buffs: &CardTrainingEffect, train: usize) -> Result<f32> {
-        let data = umaai_core::Data::get()?;
-        let thresholds = &data.consts.training_vital_threshold;
-        let row = thresholds.get(train).ok_or_else(|| {
-            anyhow!(
-                "训练类型错误: {train}（阈值表内训练数 {}）",
-                thresholds.len()
-            )
-        })?;
-        if row.is_empty() {
-            return Err(anyhow!("训练 {train} 的失败率阈值表为空"));
-        }
-        let level = self.train_level(train).clamp(1, row.len()) - 1;
-        let x0 = row[level];
-        let vital = self.uma().vital as f32;
-        let bias = if self.uma().flags.good_trainer {
-            -2.0
-        } else if self.uma().flags.bad_trainer {
-            2.0
-        } else {
-            0.0
-        };
-        let base = if vital < x0 {
-            (100.0 - vital) * (x0 - vital) / 40.0
-        } else {
-            0.0
-        }
-        .clamp(0.0, 99.0);
-        let scenario_drop = self.scenario_fail_rate_drop(train);
-        let card_factor = (100.0 - buffs.fail_rate_drop) / 100.0;
-        let scenario_factor = (100.0 - scenario_drop as f32) / 100.0;
-        let f = if scenario_drop >= 100 {
-            0.0
-        } else {
-            base * card_factor * scenario_factor + bias
-        };
-        Ok(f.clamp(0.0, 100.0))
+        let advice = self.participant_advice(train);
+        self.calc_training_failure_rate_inner(buffs, train, &advice)
     }
 
     /// 终局结算（育成终了奖励；技能灵感 / 粉丝不建模）
@@ -503,6 +464,75 @@ impl Game for MatsuriGame {
 
     fn deck(&self) -> &Vec<SupportCard> {
         &self.base.deck
+    }
+}
+
+impl MatsuriGame {
+    /// [`Game::calc_training_value`] 的 advice 复用版（同一次预览 / 结算只算一次参与教诲）
+    pub(crate) fn calc_training_value_inner(
+        &self,
+        buffs: &CardTrainingEffect,
+        train: usize,
+        advice: &ParticipantAdvice,
+    ) -> Result<ActionValue> {
+        let mut value = self.default_calc_training_value(buffs, train)?;
+        let keiko = self.keiko_settling.get();
+        let upper = self.training_upper_with(train, &value, keiko, advice);
+        for status in 0..5 {
+            value.status_pt[status] += upper.status[status];
+            if keiko {
+                value.status_pt[status] += upper.keiko_flat;
+            }
+        }
+        value.status_pt[5] += upper.skill_pt;
+        value.vital = upper.vital;
+        value.motivation += upper.motivation;
+        Ok(value)
+    }
+
+    /// [`Game::calc_training_failure_rate`] 的 advice 复用版
+    pub(crate) fn calc_training_failure_rate_inner(
+        &self,
+        buffs: &CardTrainingEffect,
+        train: usize,
+        advice: &ParticipantAdvice,
+    ) -> Result<f32> {
+        let data = umaai_core::Data::get()?;
+        let thresholds = &data.consts.training_vital_threshold;
+        let row = thresholds.get(train).ok_or_else(|| {
+            anyhow!(
+                "训练类型错误: {train}（阈值表内训练数 {}）",
+                thresholds.len()
+            )
+        })?;
+        if row.is_empty() {
+            return Err(anyhow!("训练 {train} 的失败率阈值表为空"));
+        }
+        let level = self.train_level(train).clamp(1, row.len()) - 1;
+        let x0 = row[level];
+        let vital = self.uma().vital as f32;
+        let bias = if self.uma().flags.good_trainer {
+            -2.0
+        } else if self.uma().flags.bad_trainer {
+            2.0
+        } else {
+            0.0
+        };
+        let base = if vital < x0 {
+            (100.0 - vital) * (x0 - vital) / 40.0
+        } else {
+            0.0
+        }
+        .clamp(0.0, 99.0);
+        let scenario_drop = self.scenario_fail_rate_drop_with(advice);
+        let card_factor = (100.0 - buffs.fail_rate_drop) / 100.0;
+        let scenario_factor = (100.0 - scenario_drop as f32) / 100.0;
+        let f = if scenario_drop >= 100 {
+            0.0
+        } else {
+            base * card_factor * scenario_factor + bias
+        };
+        Ok(f.clamp(0.0, 100.0))
     }
 }
 
@@ -545,6 +575,8 @@ impl FlatSearchGame for MatsuriGame {
         // 分支 = 克隆 + 注入 rollout 主种子；任何不由传入 rng 驱动的流都必须在这里重置
         let mut game = self.clone();
         game.set_rule_master(rollout_seed);
+        // rollout 局面跑完即弃：事件明细只给手动面板 / 前端核对，搜索分支不记录
+        game.record_events = false;
         game
     }
 

@@ -220,6 +220,8 @@ pub struct MatsuriGame {
     pub deck_warnings: Vec<DeckWarning>,
     /// 最近事件记录（手动 / 前端核对用；事件结算后追加，容量上限 [`EVENT_LOG_CAPACITY`]）
     pub event_log: Vec<EventRecord>,
+    /// 是否记录事件明细（搜索 rollout 置 `false`：局面跑完即弃，明细无人消费）
+    pub record_events: bool,
     /// 当前 stage 待结算事件队列（事件搜索从下一事件继续用；正常推进逐项消费）
     pub event_queue: Vec<EventData>,
     /// 当前事件队列游标（下标 = 正在决策的事件）
@@ -287,6 +289,7 @@ impl MatsuriGame {
             finals_done: false,
             deck_warnings: Vec::new(),
             event_log: Vec::new(),
+            record_events: true,
             event_queue: Vec::new(),
             event_cursor: 0,
             assist_support_left: 0,

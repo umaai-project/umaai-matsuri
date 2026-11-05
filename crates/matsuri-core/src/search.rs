@@ -209,7 +209,8 @@ impl MatsuriSearchTrainer {
                 // 同一 stage 的剩余事件从下一个继续（fallback 决策 / 结算）
                 let mut sim_rng = StdRng::seed_from_u64(seed);
                 while sim.event_cursor < sim.event_queue.len() {
-                    let next = sim.event_queue[sim.event_cursor].clone();
+                    // 与 `run_event_queue` 同口径：取走当前槽留占位，避免每事件一次深拷贝
+                    let next = std::mem::take(&mut sim.event_queue[sim.event_cursor]);
                     sim.run_event(&next, fallback, &mut sim_rng, &mut streams.event)?;
                     sim.event_cursor += 1;
                 }

@@ -165,7 +165,7 @@
 | 疲劳回复 | 疲労回復 | 吾妻出行解锁时获得 flag；体力 ≤49 时**一次性 +15**（剧本自持，后续可下沉引擎基础库） |
 | 手动核对面板 | ManualTrainer / `manual` 档 | 终端交互面板：开局育成配置（马娘 / 卡组 / 继承）/ 回合结构 / 数值状态 / 剧本资源（演目短名 · 槽 x/y · Lv · 教诲→転成 · 担当）与彩色训练明细表（人物着色 · Hint 亮黄叹号 · 羁绊未满 100；普通支援卡白；**稽古列助力担当黄；掷中时含研鑽担当的列标题加紫「追加稽古」行**）/ 合宿（仅合宿回合）·友人链·赛程 / 教诲分配结果行 / 动作预览（附槽增量 + 助力支撑✓；Inquire 选择）/ 事件回显与选项分支（**所有事件名亮蓝**、Inquire 选择；非 TTY 退回编号输入）/ **五维与上限按 >1200 显示减半** / 「变化」含 **演目槽 x→y / 清空** 行（S8 先行 + 多轮显示调整） |
 | 训练预览 | `preview_training` | 在局面克隆上算成功收益 + 失败率（下层 + 上层、含变胖速度归零）；不改原局面、不耗随机流 |
-| 事件记录 | `EventRecord` / `recent_events` | 事件结算后的回合 / id / 名称 / 选项 / 到账摘要；容量 32 滚动，经 `MatsuriView.recent_events` 供前端回显 |
+| 事件记录 | `EventRecord` / `recent_events` | 事件结算后的回合 / id / 名称 / 选项 / 到账摘要；容量 32 滚动，经 `MatsuriView.recent_events` 供前端回显。搜索 rollout 分支不记录（`record_events=false`，见 §9 决定记录） |
 | 回合信息快照 | `MatsuriView` / `view()` | 完整回合快照（S8 2026-11-02）：分节 `turn / resources / uma / board / schedule / friend / camp` + 编成警告 / 事件记录；手动面板 / 前端 / 在线外壳的**单一数据源**。名称文本不进（呈现层查静态表）、动作候选与预览不进（决策上下文）、建局配置不进；值快照 + serde，`non_exhaustive` |
 | 诊断日志 | `diag!` / `crate::diag` | 复用引擎 `umaai_core::diag!`：target = `diagnostic`，编译期 feature + 运行时开关；`DiagGuard` 供搜索 rollout / 预览静默。本仓埋点打「关键状态变化」（回合 / 动作 / 事件 / 教诲 / 発表会 / 分布 / 决策），日志器由 `matsuri-cli` 按 `[output] log_level` 安装；未装日志器时记录静默丢弃 |
 | 友人链槽位 | first / click / out / newyear / outing / end | 吾妻 `809052001`=first、`032`=click（40%）、`004`=out（出行解锁上/下）、`021`=newyear、`011–015`=出行 1–5、`023`=end；`002/003/033`=R 卡、`022`=未满 5 段结局变体、`031`=随机事件（忽略） |
@@ -387,6 +387,7 @@
 | 2026-11-04 | **本番非大成功档暂不处理** | 本番未达大成功时是否仍吃 URA 本番演出加成（+30 体力 / -100% 失败率）暂不建模，维持现状（finals_done 结算后即生效） | user 2026-11-04「暂不考虑非大成功」 | 无 |
 | 2026-11-05 | **MCTS 激进度取 0** | `radical_factor_max=0`：搜索排序用算术均值（引擎 `weighted_mean` 在因子 <1e-6 时直接返回均值），不做高分尾部加权 | user 2026-11-05 拍板「mcts的激进度实际应设为0」 | 有（搜索档终局分数位移；旧 1024/2048 单局数字为 radical=50 口径，不再可比；见 [perf_profiling.md](perf_profiling.md)） |
 | 2026-11-05 | **手写决策链预览零克隆** | 训练预览用原子稽古标记临时切换后恢复；资源预览在局部演目账本副本上模拟，与正式结算共用账本助手 | 性能轮次（[perf_profiling.md](perf_profiling.md)）；决策与终局逐位一致 | 无（行为等价） |
+| 2026-11-05 | **rollout 静默事件明细** | `MatsuriGame.record_events` 默认 `true`；`fork_for_rollout` 置 `false`，`apply_event` 跳过到账摘要 / 状态文本 / 事件名克隆与记录追加。正常整局、解释模式、手动面板与离线工具不变；搜索 rollout 局面跑完即弃，`event_log` 为空 | 性能轮次（[perf_profiling.md](perf_profiling.md) §11）；用户 2026-11-05 确认「接受 rollout 静默」 | 无（内部状态；决策与终局逐位一致，新增 `rollout_fork_skips_event_log_without_changing_game` 守门） |
 
 ## 10. 与旧实现 / 资料的已知分歧
 

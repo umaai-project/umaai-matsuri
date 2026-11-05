@@ -361,7 +361,10 @@ impl MatsuriGame {
         self.event_queue = events;
         self.event_cursor = 0;
         while self.event_cursor < self.event_queue.len() {
-            let event = self.event_queue[self.event_cursor].clone();
+            // 取走当前槽（留空占位）：事件深拷贝（name + choices 嵌套 Vec）只在这里发生一次；
+            // 事件搜索 fork 只检查 `event_queue.get(cursor).is_some()` 并从 `cursor + 1` 续跑，
+            // 不读当前槽内容，因此占位与原件等价。
+            let event = std::mem::take(&mut self.event_queue[self.event_cursor]);
             self.run_event(&event, trainer, decision, event_rng)?;
             self.event_cursor += 1;
         }

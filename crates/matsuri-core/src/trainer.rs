@@ -90,18 +90,20 @@ impl MatsuriTrainer {
             .all(|action| matches!(action, Action::AssignAdvice(_)))
         {
             let model = Model::new(game, &self.config.trainer)?;
-            // 手写打分先给全部候选排序：既是无搜索时的答案，也是有搜索时的剪枝依据
-            let mut scored: Vec<(f64, usize)> = Vec::with_capacity(actions.len());
+            // 单遍取最大：与「全量排序取首项」等价（并列取最小下标；方案分不含 NaN）
+            let mut best_value = f64::NEG_INFINITY;
+            let mut best = 0;
             for (index, action) in actions.iter().enumerate() {
                 let Action::AssignAdvice(assign) = action else {
                     continue;
                 };
-                scored.push((model.assignment_value(assign), index));
+                let value = model.assignment_value(assign);
+                debug_assert!(!value.is_nan(), "教诲分配方案分不应为 NaN");
+                if value > best_value {
+                    best_value = value;
+                    best = index;
+                }
             }
-            scored.sort_by(|a, b| b.0.total_cmp(&a.0));
-            let (best_value, best) = scored
-                .first()
-                .map_or((f64::NEG_INFINITY, 0), |&(value, index)| (value, index));
             diag!(
                 "【决策】T{} 教诲分配 值={:.1} 方案 {}",
                 game.turn(),
