@@ -71,14 +71,14 @@ radical_factor_max = 0.0
 # UCB 动态分配开关
 use_ucb = true
 
-# UCB 每组追加的搜索次数
-search_group_size = 512
+# UCB 的分组大小：首轮每个候选取一组，之后按 UCB 追加
+search_group_size = 1024
 
 # UCB 探索常数
 search_cpuct = 1.0
 
-# 探索项使用的预期分数标准差
-expected_search_stdev = 2200.0
+# 探索项使用的预期分数标准差（分数量纲）；0 = 用本次搜索实测的合并标准差
+expected_search_stdev = 3300.0
 
 # 是否按 rollout 序号保留有序原始分（仅教师数据采集用）
 record_ordered_rollouts = false

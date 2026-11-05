@@ -1,0 +1,35 @@
+{
+  "name": "b-ideal",
+  "note": "狄杜斯 + 小切 + 心情盾 2（理想测试档）",
+  "uma": 106302,
+  "qie": "xiaoqie",
+  "shield": 2,
+  "config": {
+    "pt_favor_rate": 1.7271,
+    "search_n": 8192,
+    "search_group_size": 1024,
+    "expected_search_stdev": 3300.0
+  },
+  "records": [
+    {
+      "trainer": "handwritten",
+      "search_n": 0,
+      "seed0": 73200,
+      "games": 100,
+      "score_mean": 84219.9,
+      "score_sd": 2566.5,
+      "pt_mean": 11890.8,
+      "pt_sd": 446.0
+    },
+    {
+      "trainer": "search",
+      "search_n": 8192,
+      "seed0": 73200,
+      "games": 10,
+      "score_mean": 87646.6,
+      "score_sd": 491.2,
+      "pt_mean": 12923.4,
+      "pt_sd": 243.2
+    }
+  ]
+}

@@ -72,10 +72,10 @@ cargo test --workspace --release --offline
 | S5 机制 | ☑ | `core/src/game/*`：人头分布（`distribute.rs`）/ 训练两层公式（`train.rs`）/ 教诲（`advice.rs`）/ 回合末结算（`settle.rs`）；演目 gauge / Lv / 稽古两档 / 教え / 発表会 / 本番 / 合宿 +1 / URA 训练 / 育成终了；四档绿（81 内联 + 13 L2 + 25 机制 = 119 测例）；冒烟 34368 / UE9 |
 | S6 事件 | ☑ | `core/src/game/event.rs`：回合开始事件链（固定 / 随机分布 / 合宿抑制 / 友人链）+ 事件结算扩展（flags / 羁绊 / event_extras）+ 追加稽古事件化 + 变胖状态 + turn 66 hint 记账；四档绿（95 内联 + 15 L2 + 27 机制 = 137 测例）；冒烟 44946 / UC6、PT 7496 |
 | S7 训练员 | ☑ | 手写训练员（2026-11-02）：pt_favor 目标口径（官方评分 + PT×`pt_favor_rate`，1.0 = 官方评分）+ `MatsuriConfig [trainer]` 旋钮 + 守门链 / 打分表 + 事件选项期望值策略 + 教诲分配（T2 Begin + 5 个 End 窗口，每窗口合并 120 候选）全部走 Trainer；融合仍走配置预设（`fusion_plan` 留「将来交 Trainer」替换点）；落点 `core/src/{trainer,value}.rs`；四档绿（157 测例，整局冒烟 54683 / UB9、PT 9024，同种子两次逐位一致；S9 前不建基线）；**2026-11-06 合并 lab 实验仓成果**：守门链②–⑤ + 满体力闲置惩罚 + 动态权重层 + 落位先验 + 冠军档成默认层（见 §3） |
-| S8 装配与呈现 | ◐ | `core/src/game/{view,diag}.rs` + `cli`（**手动核对面板已落，2026-11-01；育成配置 / 彩色训练明细表 / 剧本资源与教诲 / 演目短名 / Inquire 动作与事件选择 / 教诲分配结果 / T2 闸门与 T2 Begin 教诲生效**；**2026-11-02：View 补全为回合信息完整快照（分节重构）+ diag 诊断接线与埋点已落**；在线外壳 / 训练员选择器待做） |
-| S9 基线、文档与验收 | ☐ | `baselines/` + `docs/` |
-| 扩展：搜索（FlatSearch） | ◐ | M2 搜索档已接（`MatsuriSearchTrainer`）：Train / 教诲 / 事件三路、`search_n` 每候选、事件队列续跑、叶估接口；单局 1024/2048 已验证（seed 61444：83326 / PT 11602；83519 / PT 11901）；8192 待机制完全实现后；NN 暂不做 |
-| 优化轨 O0–O4 | ☐ | 按需；方法见引擎 `perf_plan.md` |
+| S8 装配与呈现 | ◐ | `core/src/game/{view,diag}.rs` + `cli`（**手动核对面板已落，2026-11-01；育成配置 / 彩色训练明细表 / 剧本资源与教诲 / 演目短名 / Inquire 动作与事件选择 / 教诲分配结果 / T2 闸门与 T2 Begin 教诲生效**；**2026-11-02：View 补全为回合信息完整快照（分节重构）+ diag 诊断接线与埋点已落**；在线外壳待做：`matsuri-ai` 仍为骨架；训练员选择器已在 CLI 支持 `matsuri` / `random` / `manual`） |
+| S9 基线、文档与验收 | ◐ | 两档基线已录并落 `baselines/`（`a-normal` / `b-ideal`，seeds 73200 起）；`bench baseline` 复跑 + `matsuri-sim::baseline` 判定已接（含解析自检用例）；搜索档补满 100 局待做 |
+| 扩展：搜索（FlatSearch） | ☑ | M2 搜索档已落：Train / 教诲 / 事件三路、`search_n` 每候选、事件队列续跑（Begin 内结算补跑阶段尾部）、叶估接口预留；默认 `search_n=8192`、`search_group_size=1024`、`expected_search_stdev=3300`；NN 暂不做 |
+| 优化轨 O0–O4 | ☑ | 四轮已落地（诊断载荷惰性化、假共享修复等），测量与复现见 `perf_profiling.md` §11–§13 |
 
 ## 3. 决策记录
 
@@ -443,8 +443,8 @@ cargo test --workspace --release --offline
   `event_queue` 下一事件继续；排序口径 `search_score(pt_favor_rate)`；失败分支按实际分；
   叶子估值器仅预留 `LeafEvaluator` 接口，生产 `max_depth=0`。
   单局 1024/2048 已验证；默认 `search_n=0` 保持手写基线。
-- **下一步**：单局 1024/2048 调优（作用面开关 / `radical_factor_max` / 事件续跑口径）→
-  机制完全实现后跑 8192 → S9 基线（只录一次）。
+- **已定档**：`search_n = 8192`、`search_group_size = 1024`、`expected_search_stdev = 3300`；
+  两档基线已录（README 基线表）。
 
 ## 6. 剧本专属实现项（状态）
 
@@ -456,5 +456,5 @@ cargo test --workspace --release --offline
 | 人头与比赛 | `MatsuriPerson`（act / origin / 可用回合）+ 名单构建 + 担当分配 + 建局门禁（S4 前置）；比赛结算（目标赛 / URA / 自选 → `push_race_event`）；**每回合分布**（亮起锁担当 / 神驹不在率 / 吾妻补位 / 分身 / 得意率）已落（S5） | `game/person.rs`、`game/roster.rs`、`game/distribute.rs`、`game/action.rs` | 已落地（S4 前置 + S5 分布） |
 | 资源账本与 View | 5 条 gauge（上限 5）/ 5 个演目 Lv / 教え槽位 / 転成状态；入账 / 消费全部落地（非生涯赛 / 休息 / 出行 +1、目标赛 +4、训练参与 +1 / 闪彩 +2、稽古成功清槽 + Lv+1；排练回合 5 槽不涨）；View 补 S5 字段（发布会 buff / 助力支撑 / 追加稽古 / 訓練 Lv 提升） | `game/mod.rs`（`ActLedger` / `AdviceLedger` / `view()`） | S3 建账本 / S5 入账+View 扩展 |
 | 教え与転成 | 10 种效果 / 逐级数值；**永远 5 槽**；turn 23 选 2 + 特化 / 研钻、turn 47 剩余 3 + 协助 / 不屈 / 兼修；**默认融合固定预设 + 在线覆盖**；**分配每窗口 120 全枚举接口**；401+801 硬约束；效果按绑定演目 Lv × 参与人数聚合（絆 +3 平摊 / 助力支撑 / 研鑽追加稽古 / 不屈 / 両道） | `game/advice.rs`、`trainer.rs` | 已落地（S5）/ 分配策略已落（S7） |
-| 训练员 / 搜索档 | 手写训练员（S7 已落）：pt_favor 目标口径 + 守门链 / 打分表 + 事件选项 + 教诲分配择优；搜索档（M2）待确认 | `trainer.rs`、`value.rs`、`config.rs` | 手写已落 / 搜索待确认 |
-| 工具面 | 批量跑局 / 基线 / 测卡 / 固定根；评分与技能价格锚可用 | `sim` / `tools` | 待确认 |
+| 训练员 / 搜索档 | 手写训练员（S7 已落）：pt_favor 目标口径 + 守门链 / 打分表 + 事件选项 + 教诲分配择优；搜索档（M2）已落并定档 8192 | `trainer.rs`、`value.rs`、`config.rs` | 均落地 |
+| 工具面 | 批量跑局 / 基线 / 测卡 / 固定根；评分与技能价格锚可用。**测量函数归 `matsuri-tools`**（`bench` / `sweep`）；`matsuri-sim` 只保留跑局与基线裁判，不承载测量入口 | `sim` / `tools` | 工具面已落（测量函数落点已定） |

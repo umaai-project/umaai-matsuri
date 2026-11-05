@@ -21,7 +21,7 @@ use umasim::search::{FlatSearch, FlatSearchGame, NoTerminal, SearchConfig};
 
 use crate::config::{MatsuriConfig, SearchScopeConfig};
 use crate::diag;
-use crate::game::{Action, MatsuriGame};
+use crate::game::{Action, MatsuriGame, Stage};
 use crate::trainer::MatsuriTrainer;
 
 /// 教诲候选剪枝宽度：120 排列全搜不可行，按 lab / 本轮定档取 16
@@ -217,6 +217,17 @@ impl MatsuriSearchTrainer {
                 sim.event_queue.clear();
                 sim.event_cursor = 0;
                 sim.base.put_rule_streams(streams);
+                // 事件在 Begin 内部结算：`next()` 会直接进入下一阶段，不补跑 Begin 尾部
+                // 就会丢掉 turn 2 的教诲授予与首分配，rollout 到融合窗口即报「尚未获得
+                // 教诲」→ 该候选全部 rollout 失败 → 整次搜索 bail。
+                if sim.stage == Stage::Begin {
+                    let mut strategy = sim.strategy.take().ok_or_else(|| {
+                        anyhow::anyhow!("策略流缺失：rollout 分支应由 fork_for_rollout 派生")
+                    })?;
+                    let tail = sim.begin_tail(fallback, &mut sim_rng, &mut strategy);
+                    sim.strategy = Some(strategy);
+                    tail?;
+                }
                 while sim.next() {
                     sim.run_stage(fallback, &mut sim_rng)?;
                 }

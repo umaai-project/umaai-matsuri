@@ -249,6 +249,29 @@ impl MatsuriGame {
         }
     }
 
+    /// Begin 阶段在事件链之后的固定收尾
+    ///
+    /// 从 `stage_body` 抽出，供两处共用：真实推进，以及事件搜索的 rollout——后者从
+    /// Begin 内部的事件处 fork，`next()` 会直接进入下一阶段，不补跑本段就会丢掉
+    /// turn 2 的教诲授予（后续融合窗口即报「尚未获得教诲」）。
+    pub(crate) fn begin_tail<T: Trainer<Self>>(
+        &mut self,
+        trainer: &T,
+        decision: &mut StdRng,
+        strategy: &mut StrategyRng,
+    ) -> Result<()> {
+        // turn 2：NPC / 友人加入（本回合起可用）后立即授予 5 个基础教诲；
+        // 教诲效果须从本回合的分布 / 训练起生效（memo §4）。
+        if self.base.turn == crate::SCENARIO_START_TURN {
+            self.acquire_advice();
+            // 首次分配也交给 Trainer（合并 120 候选；确定性、不耗结算随机）
+            self.decide_advice_assignment(trainer, decision)?;
+        }
+        // 研鑽「追加の稽古」：回合开始用策略流预掷（掷中后未点对应训练则作废）
+        self.roll_kensan(strategy);
+        Ok(())
+    }
+
     /// 单阶段推进
     pub(crate) fn stage_body<T: Trainer<Self>>(
         &mut self,
@@ -278,15 +301,7 @@ impl MatsuriGame {
                 self.append_begin_friend_event(&mut events);
                 self.queue_after_train_events();
                 self.run_event_queue(events, trainer, decision, &mut streams.event)?;
-                // turn 2：NPC / 友人加入（本回合起可用）后立即授予 5 个基础教诲；
-                // 教诲效果须从本回合的分布 / 训练起生效（memo §4）。
-                if self.base.turn == crate::SCENARIO_START_TURN {
-                    self.acquire_advice();
-                    // 首次分配也交给 Trainer（合并 120 候选；确定性、不耗结算随机）
-                    self.decide_advice_assignment(trainer, decision)?;
-                }
-                // 研鑽「追加の稽古」：回合开始用策略流预掷（掷中后未点对应训练则作废）
-                self.roll_kensan(strategy);
+                self.begin_tail(trainer, decision, strategy)?;
             }
             Stage::Distribute => {
                 // 真实人头分布（亮起锁担当 / NPC 不在率 / 吾妻补位 / 分身）+ 灵感图标

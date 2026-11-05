@@ -37,17 +37,20 @@ target = 1001
 # ---------- 育成前（局外）状态 ----------
 
 [pre]
-# 小切（勉強家）：技能花费 PT −4%（评分 PT 项 ×1.04）；局内获得切者后失效
-# 与引擎 `[sim]` 的种马因子同属建局前输入，剧本自持。按自己的种马 / 局外状态开关。
-xiaoqie = false
+# 局外「切」状态：none / xiaoqie / qiezhe（默认不注入）
+#   xiaoqie（小切 / 勉強家）：评分 PT 项 ×1.04；局内获得切者后失效
+#   qiezhe（切者）：评分 PT 项 ×1.1；与小切互斥
+# 与引擎 `[sim]` 的种马因子同属建局前输入，剧本自持。按自己的种马 / 局外状态开关；
+# 理想测试档用 `bench --qie xiaoqie --shield 2` 或工作目录覆盖层开启。
+qie = "none"
 # 心情盾（ポジティブ思考）次数：抵消 N 次干劲下降（一次扣减只消耗 1 层）
 positive_thinking = 0
 
 # ---------- 搜索档作用面（FlatSearch；search_n = 0 时全部退化回手写档） ----------
 
 [search]
-# 每个候选的 rollout 次数：0 = 手写档；默认 12288（第四轮后 24 线程单局约 24 s）
-search_n = 12288
+# 每个候选的 rollout 次数（首组也取 `ai_config [search].search_group_size`）：0 = 手写档
+search_n = 8192
 # 三类决策是否走 FlatSearch
 train = true
 advice = true

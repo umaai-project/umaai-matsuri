@@ -336,8 +336,17 @@ impl MatsuriGame {
     #[must_use]
     pub fn with_config(mut self, config: crate::MatsuriConfig) -> Self {
         self.config = config;
-        if self.config.pre.xiaoqie && !self.base.uma.flags.qiezhe {
-            self.base.uma.flags.xiaoqie = true;
+        match self.config.pre.qie {
+            crate::config::Qie::None => {}
+            crate::config::Qie::Xiaoqie => {
+                if !self.base.uma.flags.qiezhe {
+                    self.base.uma.flags.xiaoqie = true;
+                }
+            }
+            crate::config::Qie::Qiezhe => {
+                self.base.uma.flags.qiezhe = true;
+                self.base.uma.flags.xiaoqie = false;
+            }
         }
         if self.config.pre.positive_thinking > 0 {
             self.base.uma.flags.positive_thinking_count = self.config.pre.positive_thinking;

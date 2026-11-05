@@ -553,14 +553,15 @@
 | 状态 | 获得 | 效果 | 实现落点 |
 |---|---|---|---|
 | 切者 | 局内事件 `5007`「马娘事件-通用切」的 3% 档（`add_flags.qiezhe`） | 技能花费 PT −10%，评分 PT 项 ×1.1 | 事件 `add_flags` → `Uma::update_flags` → `UmaFlagsExt::gain_qiezhe`（清小切） |
-| 小切 | 局外（育成前），由 `matsuri_config.toml` `[pre] xiaoqie = true` 注入 | 技能花费 PT −4%，评分 PT 项 ×1.04 | 建局后 `MatsuriGame::with_config` 置 `UmaFlags::xiaoqie` |
+| 小切 | 局外（育成前），由 `matsuri_config.toml` `[pre] qie = "xiaoqie"` 注入（默认 `none`） | 技能花费 PT −4%，评分 PT 项 ×1.04 | 建局后 `MatsuriGame::with_config` 置 `UmaFlags::xiaoqie` |
+| 切者（局外注入） | 同上，`[pre] qie = "qiezhe"` | 评分 PT 项 ×1.1 | 建局后 `MatsuriGame::with_config` 置 `UmaFlags::qiezhe` 并清小切 |
 | 心情盾 | 局外（育成前），由 `matsuri_config.toml` `[pre] positive_thinking = N` 注入 | 抵消 N 次干劲下降（一次扣减无论几级只消耗 1 层） | 建局后 `MatsuriGame::with_config` 置 `UmaFlags::positive_thinking_count` |
 
 - 两者互斥（切者优先）；评分按引擎 `Uma::calc_score` 的 PT 项折算（`pt_score_rate` ×2.0 × 系数），
   不改变 `total_pt` 的 PT 数量口径。
 - 与引擎样例局 `BasicGame` 的差异：样例局不结算事件 `add_flags`，用「5007 + 5% 判定」近似；
   本仓走事件数据自带 3% 档，**不叠加**该 5%，避免双计。
-- 小切 / 心情盾是局外状态，默认关闭（`[pre]` 全 0）；按自己的种马 / 局外状态开启。
+- 局外切状态取 `[pre] qie`（`none` / `xiaoqie` / `qiezhe`，默认 `none`），心情盾默认 0 层；按自己的种马 / 局外状态改。
 
 ### 5.6 开局预设：蓝因子 / 剧本因子的边际与定档（2026-11-05 扫参）
 

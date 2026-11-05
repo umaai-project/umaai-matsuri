@@ -51,7 +51,7 @@
 
 | 子命令 | 用途 | 输出 |
 |---|---|---|
-| `bench game --games N --seed S [--search-n M]` | 整局耗时 + 终局 CSV（缺省取配置，默认 12288） | `seed,score,pt,turn,elapsed_us` + 均值行 |
+| `bench game --games N --seed S [--search-n M]` | 整局耗时 + 终局 CSV（缺省取配置，默认 8192） | `seed,score,pt,turn,elapsed_us` + 均值行 |
 | `bench micro --turn T --iters N` | 固定回合的决策链分段 | 各段 ns/op（克隆 / 训练预览 / 资源预览 / 整决策 / 搜索分）|
 | `bench trace --turn T` | rollout 内逐决策耗时 | `turn,actions,us,advice` |
 | `bench root --turn T --search-n M --repeat R` | 固定根搜索 | 每轮耗时、planned / failed、ns/rollout、best |
@@ -350,7 +350,7 @@ Distribute 阶段 486 → 8 次、AfterTrain 1898 → 929 次（剩余大头在�
 
 - `cargo fmt --all --check`、`cargo clippy --workspace --all-targets --offline -- -D warnings`、
   `cargo test --workspace --release --offline`、`cargo doc --workspace --no-deps --offline` 全绿。
-- 测试 221 通过 + 2 手动档（1024 整局复现、教诲微基准）。
+- 测试 225 通过 + 2 手动档（1024 整局复现、教诲微基准）。
 - 新增：`rollout_fork_skips_event_log_without_changing_game`（记录开关不改变评分 / PT；
   `fork_for_rollout` 后事件日志为空）、`microbench_participant_advice`（`#[ignore]`，给出
   `participant_advice` 20 ns/op、`advice_slot_effect` 10 ns/op、`shining_count` 1.2 ns/op，
@@ -486,7 +486,7 @@ Distribute 阶段 486 → 8 次、AfterTrain 1898 → 929 次（剩余大头在�
 
 - 30 种子整局 CSV 的 `seed/score/pt/turn` 逐位一致（均值 79132.5 / PT 11191.6）；固定根 N=256 的
   best=5、8 个候选均值（95848.6）一致；整局 N=256（85544 / 12360）与 N=1024（85566 / 12371）一致。
-- 剧本仓 221 通过 + 2 手动档；引擎仓全量 release 测试通过（含 diag 5 例）。
+- 剧本仓 225 通过 + 2 手动档；引擎仓全量 release 测试通过（含 diag 5 例）。
 
 ### 13.6 结论修正
 
@@ -520,7 +520,7 @@ Distribute 阶段 486 → 8 次、AfterTrain 1898 → 929 次（剩余大头在�
   （`calc_training_value_inner` + `calc_training_effect` + `default_calc_training_buff` ≈ 11%）、
   值模型（`Model::new` + `train_value` + `resource_value` ≈ 10%）。按本文纪律先补 microbench。
 - 预算：24T 单局 N=8192 = 19.3 s（85700 / 12438）、N=12288 = 24.3 s（85804 / 12490），
-  分数仍随预算上升。默认档 `[search].search_n` 已定为 **12288**（`0` 显式切回手写档）。
+  分数仍随预算上升。默认档 `[search].search_n` 已定为 **8192**（`0` 显式切回手写档）。
 
 ### 13.8 复现
 

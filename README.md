@@ -5,7 +5,7 @@
 - **开发代号**：`matsuri`（别名：mee-umasim 参考库用 `shuntaisai`，本仓统一用 `matsuri`）
 - **形态**：workspace 五 crate（与 `umaai-onsen` 同构）——`matsuri-core`（机制 + 训练员 + 装配，
   宿主稳定面）/ `matsuri-sim`（模拟器与基线裁判）/ `matsuri-ai`（在线决策核心，骨架）/
-  `matsuri-cli`（终端入口与手动训练员）/ `matsuri-tools`（测卡 / 复盘，骨架）。
+  `matsuri-cli`（终端入口与手动训练员）/ `matsuri-tools`（测量与外围工具）。
 - **依赖**：开发期以 path 引用 `../umaai_next` 的 `umaai-core` / `umasim` / `umaai`；稳定期换
   git tag。不 fork 引擎、不在引擎仓加剧本 crate。
 - **数据**：引擎静态数据已拷入 `data/`；剧本资产 `scenario_matsuri.json` 与配置默认层
@@ -19,25 +19,33 @@
   合宿 / URA / 终局奖励；事件链（固定 / 随机 / 合宿抑制 / 友人链 / 追加稽古 / 变胖）；手写训练员
   （守门链 + 打分表 + 事件选项 + 教诲分配择优）；诊断日志 `diag!`。
 - **搜索**：`FlatSearchGame` 集成层已接（`MatsuriSearchTrainer`，引擎扁平 MC + UCB + CRN）；
-  `matsuri_config [search].search_n` = 每候选 rollout 次数（**默认 12288**；0 = 手写档），
+  `matsuri_config [search].search_n` = 每候选 rollout 次数（**默认 8192**；0 = 手写档），
   `train` / `advice` / `event` 分开关；教诲 120 候选剪枝到 top-16；
-  事件搜索用事件队列从下一事件续跑；叶子估值器仅预留接口，生产 `max_depth=0`。
-  搜索排序口径 `radical_factor_max=0`（算术均值，不做高分尾部加权）。
+  事件搜索在 Begin 内部结算时会补跑该阶段尾部（T2 教诲授予与首分配），
+  叶子估值器仅预留接口，生产 `max_depth=0`。
+  搜索排序口径 `radical_factor_max=0`（算术均值，不做高分尾部加权）；
+  `search_group_size=1024`（每候选样本下限），`expected_search_stdev=3300`。
 - **搜索单局验证**（默认马娘 105902、seed 61444、24 线程、`radical_factor_max=0`）：
   N=1024 **85309 / PT 12427**（3.7 s）；N=8192 **86290 / PT 12733**（17.1 s）；
   N=12288 **85458 / PT 12317**（23.8 s）。单局冒烟，不是基线；单 seed 下 N 不单调（搜索噪声）。
 - **搜索理想测试**（单 seed，Train-only、`radical=0.0`，旧预设口径）：普通 100101 + 小切 / 盾×2
   手写 **82807 / LG10** → 4096 **85184 / LG14（+2377）**；狄杜斯 106301 → **85384 → 86955**
   （+1571，铁心后五维近上限，边际更小）。
-- **默认档**：`data/matsuri_config.toml` = 冠军档 `ga-r2`（`pt_favor_rate=1.7271`，`search_n=12288`）；
+- **默认档**：`data/matsuri_config.toml` = 冠军档 `ga-r2`（`pt_favor_rate=1.7271`，`search_n=8192`）；
   默认测试马娘 **105902**（目白多伯，2026-11-05 全马娘扫测定档）；手写档用 `MATSURI_SEARCH_N=0`
-  或工作目录覆盖层关闭。
-- **基线**：默认马娘 105902 手写 100 局（seeds 61444–61543）均 **79253.9** / PT **11291.0**；
-  旧默认马娘 100101 手写 100 局均 78476.0 / PT 11080.1（历史口径，不与新默认混比）；
-  102102（freeRaces）均 76370.4。2026-11-05 默认开局预设改为 `extra_count = [10,10,120,140,0,100]`
-  （100101 扫参，2000 种子配对 +869.3 ± 56.6，见 [docs/mechanism.md](docs/mechanism.md) §5.6；
-  该预设未按新默认马娘重扫）。
-- **验收**：workspace **221 通过 + 2 手动档**（1024 整局复现、教诲微基准，均 `#[ignore]`）；
+  或工作目录覆盖层关闭。局外状态默认不注入（`[pre] qie = "none"`、`positive_thinking = 0`）；理想测试档用
+  `bench --qie xiaoqie --shield 2` 覆盖，`--uma` 可换马娘。
+- **基线**（seeds 73200 起，2026-11-05 录；两档分开，不与任何旧数字混比）：
+
+| 档 | 手写 100 局 | 搜索 10 局（N=8192） |
+|---|---|---|
+| 普通马娘 105902，无 buff | **80291.3** / PT 11262.5（sd 2635） | **84639.2** / PT 12247.4（sd 1526，22.8 s/局） |
+| 狄杜斯 106302，小切 + 盾 2 | **84219.9** / PT 11890.8（sd 2566） | **87646.6** / PT 12923.4（sd 491，21.2 s/局） |
+
+  搜索档 10 局的均分标准误约 ±483 / ±155；跑满 100 局可把标准误压到 ±150 / ±50。
+  默认开局预设为 `extra_count = [10,10,120,140,0,100]`（100101 扫参结果，见
+  [docs/mechanism.md](docs/mechanism.md) §5.6，未按新默认马娘重扫）。
+- **验收**：workspace **225 通过 + 2 手动档**（1024 整局复现、教诲微基准，均 `#[ignore]`）；
   `fmt --check` / `check` / `clippy -D warnings` / `test` 四门绿。
 - **性能**：四轮 O0–O4 优化，配对测量与复现见 [`docs/perf_profiling.md`](docs/perf_profiling.md)：
   第一轮（预览零克隆 / 教诲查表 / 原因惰性化）整局 N=1024 55.7 s → 24.7 s；第二轮
@@ -48,9 +56,8 @@
   第四轮（诊断 guard 冗余 store 假共享）并行倍率约 4× → 12.6×（24T flat 每 rollout
   33.4–35.2 → 11.3–11.7 μs），整局 N=256 6.00 → 1.81 s、N=1024 13.40 → 4.13 s（24T）。
   四轮均决策与终局逐位一致。
-- **下一步**：做 S9 基线（只录一次）——默认档 N=12288 × 100 局（seeds 61444–61543、24 线程、
-  约 40 min）；手写档 100 局同种子已录（79253.9 / 11291.0）。之后按第四轮剖面
-  （教诲链 / 训练估值链）先补 microbench。调参一律换全新种子块。
+- **下一步**：两档基线补到 100 局搜索（seeds 73200–73299）；之后转入评分口径与事件质量，
+  不再加搜索预算（分辨率实测已饱和）。调参一律换全新种子块（73200 起已用）。
 ## 结构
 
 | crate / 文件 | 职责 |
@@ -79,9 +86,9 @@
 | `crates/matsuri-cli/src/explain.rs` | 手写档决策解释包装（`--explain`）：复用 `panel.rs` 面板，面板后追加候选打分表（`explain_action` 同源）与决策理由；教诲分配 top-10、事件选项期望值；**只打印不改决策** |
 | `crates/matsuri-cli/src/manual.rs` | 手动核对面板（面板渲染在 `panel.rs`）：逐决策人机交互（Inquire / 非 TTY 编号输入），教诲分配只支持「保持现状」；事件选项组回显 |
 | `crates/matsuri-cli/src/logging.rs` | stderr 日志器：消费 `[output] log_level`，承接引擎 / 剧本 `diag!` 记录（默认 `info`、`off` 静默） |
-| `crates/matsuri-sim` | 模拟器与基线裁判（骨架） |
+| `crates/matsuri-sim` | 基线裁判（`baseline` 模块：JSON 解析 / 自检 / 判定）；测量函数不放这里 |
 | `crates/matsuri-ai` | 在线决策核心（骨架） |
-| `crates/matsuri-tools` | 外围工具：性能测量 bin `bench`（整局 / 决策分段 / rollout 分布 / 固定根 / 阶段拆分 / 分配计数 / 平铺并行对照；测卡 / 复盘待补） |
+| `crates/matsuri-tools` | 外围工具与**全部测量入口**：`bench`（整局 / 决策分段 / rollout 分布 / 固定根 / 阶段拆分 / 分配计数 / 平铺并行对照 / 剖面）、`sweep`（开局预设 / 全马娘扫测）、`baseline`（按 `baselines/` 复跑并判定）、`audit_search` / `probe_fail`（固定根分辨率审计 / rollout 失败定位）；测卡 / 复盘待补 |
 | `data/` | 引擎静态表 + 剧本资产 `scenario_matsuri.json` + 双配置默认层 |
 | `docs/` | 本仓文档骨架 |
 
@@ -103,7 +110,7 @@
 
 ```powershell
 # 数据根是代码级常量 data/（crates/matsuri-cli/src/main.rs 的 DATA_ROOT）
-cargo run --release --bin matsuri --            # 默认搜索档（search_n=12288；单局约 24 s / 24 线程）
+cargo run --release --bin matsuri --            # 默认搜索档（search_n=8192；单局约 21 s / 24 线程）
 $env:MATSURI_SEARCH_N=0; cargo run --release --bin matsuri --   # 手写档
 cargo run --release --bin matsuri -- random     # 引擎随机基线（对照用）
 cargo run --release --bin matsuri -- manual     # 手动核对面板（动作 Inquire；Esc 退出，非 TTY 退回编号输入）

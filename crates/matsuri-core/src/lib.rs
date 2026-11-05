@@ -18,7 +18,7 @@ pub mod testing;
 pub mod trainer;
 mod value;
 
-pub use config::MatsuriConfig;
+pub use config::{MatsuriConfig, Qie};
 pub use data::MatsuriData;
 pub use game::{
     ActLedger, Action, AdviceLedger, BoardView, CampState, CampView, CheckPointNeed, DeckError,

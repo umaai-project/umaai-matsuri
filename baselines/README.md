@@ -1,0 +1,35 @@
+# 基线（变更探测器）
+
+一档一个 JSON，记录**固定局面条件 + 固定种子块**下的均分。判定只比分数与 PT 的均值，
+不比耗时（耗时随机器负载漂移）。`README.md` 不是基线，判定时跳过。
+
+## 档位
+
+| 文件 | 局面条件 |
+|---|---|
+| `a-normal.json` | 普通马娘 105902，无局外 buff（`qie=none`、`shield=0`，= 仓内默认档） |
+| `b-ideal.json` | 狄杜斯 106302，小切 + 心情盾 2（`qie=xiaoqie`、`shield=2`） |
+
+每条记录按训练员与 `search_n` 分开：手写档 100 局（每局约 0.3 ms），搜索档当前 10 局
+（N=8192，单局约 20 s）。搜索档补满 100 局后把 `games` 与均值一并更新。
+
+## 复跑
+
+```bash
+# 全部档、两种训练员
+./target/release/bench baseline
+
+# 只跑理想档的手写项
+./target/release/bench baseline --name b-ideal --trainer hand
+
+# 缩短局数（判定容差会按合并标准误自动放宽）
+./target/release/bench baseline --games 20
+```
+
+判定规则：`|Δ| ≤ max(3 × 合并标准误, 1% × 基线均值)` 视为通过，任一档不通过即非零退出。
+容差可用 `--sigma`（默认 3）与 `--rel`（默认 0.01）调整。
+
+## 更新纪律
+
+口径变更或数值修正后重录，并在 `docs/glossary.md` 的决定记录写明位移原因与影响面。
+不要为了让门禁变绿而调容差。

@@ -1,9 +1,15 @@
-# 剧本模拟器业务（基线裁判 / 批量跑局 / 测卡测量函数）
+# 剧本模拟器业务（跑局 / 基线裁判）
 #
-# 本仓只立骨架；基线 JSON 与基线测试由后续实现仓自持。
-# 依赖待对应业务落地时再登记，避免空转依赖。
+# 职责：批量跑局与基线裁判（「变更探测器」）。**测量入口不放这里**，统一在 `matsuri-tools`
+# （user 2026-11-05 定：测量函数应放 tools）。
+# 基线数据在仓根 `baselines/`，一档一 JSON，由本 crate 的 `baseline` 模块解析与判定。
 [package]
 name = "matsuri-sim"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true

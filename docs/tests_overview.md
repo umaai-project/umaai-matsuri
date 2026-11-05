@@ -5,7 +5,8 @@
 > 分工：单元（内联，私有细节 / 纯函数，`assert`）/ 机制集成（`tests/`，打印 + `Result`）/
 > 冒烟（`cli/tests/`）/ 基线（`baselines/`，自动判定）。
 > 测试 cwd 在各 crate 目录；路径统一经 `matsuri_core::testing` 取仓根。
-> **测试基准马娘 = 100101（特别周）**；106301 / 106302 只做「铁心」专项验证，不作普适调参 / 基线（评分虚高）。
+> **测试基准马娘 = 105902（目白多伯）**；106301 / 106302 只做「铁心」专项验证，不作普适调参 / 基线（评分虚高）。
+> 基线复跑：`bench baseline [--name …] [--trainer hand|search|both] [--games N]`，判定在 `matsuri-sim::baseline`。
 
 ## 1. 分 crate
 
@@ -100,7 +101,7 @@
 | `handwritten_trainer_covers_all_decision_points` | 整局：教诲分配决策恰好 6 次（T2 Begin + 11/23/35/47/59 End）、融合已应用、事件选项决策被调用 | §6 / §6.2 |
 | `handwritten_trainer_is_deterministic` | 同种子同配置两次跑局：五维 / PT / 演目账本 / 発表会结果逐位一致 | §6.2 |
 | `inheritance_settles_stats_pt_and_limit` | 继承（T30 第二年 / T54 第三年）零值事件按公式结算：速 += 蓝因子 15×6 = 90、上限 += floor(15×5.33) = 79、PT ∈ 500–1500（剧本因子 1000） | §5.4 |
-| `pre_xiaoqie_flag_and_score_factor` | 育成前小切：`[pre] xiaoqie = true` → 建局即带小切；评分 PT 项增量 = total_pt × 2.0 × 0.04（截断） | §5.5 |
+| `pre_xiaoqie_flag_and_score_factor` | 育成前小切：`[pre] qie = "xiaoqie"` → 建局即带小切；评分 PT 项增量 = total_pt × 2.0 × 0.04（截断） | §5.5 |
 | `qiezhe_event_flag_clears_xiaoqie` | 通用切：`5007` 数据带 `add_flags.qiezhe` 档；事件结算置切者并清掉小切（切者优先互斥） | §5.5 |
 | `pre_motivation_shield_blocks_drops` | 育成前心情盾 ×2：挡两次干劲下降；一次扣多级只耗 1 层；盾尽后正常掉干劲 | §5.5 |
 
@@ -180,3 +181,4 @@
 | 2026-11-04 | **M2 前置修复（H1/H2 + 4 条 Medium）** | Agent | ① `apply_root_action` 改走自持策略流（新增 `apply_selected_action`，测试 `apply_root_action_uses_strategy_stream`）；② `search_n` 不再被 CLI 缺省 0 覆盖，`data/ai_config.toml` 置 0、env 非法报错；③ `flags_value` 增益/惩罚分号并去掉 `BAD_TRAINER` 双计；④ 友人出行先校验后写；⑤ 融合整批校验；⑥ `AdviceAssignment` 越界拒绝 + 先验查表改 `get`；⑦ 面板教诲窗口 / 友人事件改数据源。新增 4 个内联测试；四档绿 **209 测例**（148 内联 + 15 L2 + 36 机制 + 1 diag + 7 CLI 内联 + 2 CLI 冒烟）；seed 61444 冒烟 **81553 / LG8、PT 11490** 逐位不变 | 有（估值 / 面板口径修正；基准种子零差） |
 | 2026-11-04 | **M2 搜索档接 FlatSearch（ramen 集成层）** | 用户 + Agent | `MatsuriSearchTrainer` 包 `FlatSearch<MatsuriGame>`，rollout 基策 = 手写训练员（无搜索）；`matsuri_config [search].search_n` 每候选预算 + `train` / `advice` / `event` 分开关；教诲 120 候选剪枝 top-16；事件 dummy token + `search_with`，应用当前选项后从 `event_queue` 下一事件继续；`search_score` 用 `pt_favor_rate` 口径，失败分支按实际分；叶估 `LeafEvaluator` 预留，`max_depth=0`；搜索日志 `DiagGuard` 静默 + 每决策一行摘要；搜索只消费一个决策流随机字，局面规则流独立派生。新增 5 内联 + 4 搜索集成（1 ignored）+ 1 CLI 冒烟；四档绿 **218 测例**（153 内联 + 15 L2 + 36 机制 + 1 diag + 7 CLI 内联 + 3 CLI 冒烟 + 3 搜索集成，另 1 ignored）；seed 61444 单局 1024 → **83326 / LG11、PT 11602**（90.8 s）、2048 → **83519 / LG11、PT 11901**（180 s）；`search_n=0` 手写零差 | 搜索单局验证；批量 / 8192 待机制完全实现后再跑 |
 
+| 2026-11-05 | 基线库与自动判定 | Agent | 新增 `baselines/`（`a-normal` 普通马娘无 buff、`b-ideal` 狄杜斯理想档）与 `matsuri-sim::baseline`（JSON 自检 / 合并标准误 × 相对容差判定）；`bench baseline` 按档复跑并判定，任一档漂移非零退出；新增 4 个内联用例（同分布通过 / 超容差判漂移 / 空样本拒判 / 仓根基线可解析） | 测试数 221 → 225；基线数据不参与 CI 重跑（搜索档单局约 20 s） |

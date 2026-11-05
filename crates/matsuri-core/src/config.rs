@@ -42,13 +42,13 @@ pub struct MatsuriConfig {
 
 /// 搜索档作用面：预算 + 每一类决策走搜索还是手写
 ///
-/// `search_n` 归剧本配置（每候选 rollout 次数，`0` = 手写档，默认 12288）；其余内核参数
+/// `search_n` 归剧本配置（每候选 rollout 次数，`0` = 手写档，默认 8192）；其余内核参数
 /// （`max_depth` / UCB / 激进度）仍取引擎 `[search]`。候选剪枝宽度不进配置，
 /// 由搜索训练员的常量决定（Train 全量、教诲 16）。
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SearchScopeConfig {
-    /// 每个候选的 rollout 次数（0 = 手写档；测试 1/1024；默认 12288）
+    /// 每个候选的 rollout 次数（0 = 手写档；测试 1/1024；默认 8192）
     pub search_n: usize,
     /// Train 主动作是否走搜索
     pub train: bool,
@@ -62,7 +62,7 @@ impl Default for SearchScopeConfig {
     /// 与仓内默认层 `[search]` 段同值
     fn default() -> Self {
         Self {
-            search_n: 12288,
+            search_n: 8192,
             train: true,
             advice: true,
             event: true,
@@ -70,16 +70,39 @@ impl Default for SearchScopeConfig {
     }
 }
 
+/// 局外「切」状态：小切 / 切者二选一，建局时注入
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Qie {
+    /// 不注入（默认：按账号实际情况用覆盖层选）
+    #[default]
+    None,
+    /// 小切（勉強家）：评分 PT 项 ×1.04；局内获得切者后失效
+    Xiaoqie,
+    /// 切者：评分 PT 项 ×1.1；与小切互斥，局内获得切者时同样落到本状态
+    Qiezhe,
+}
+
 /// 育成前（局外）状态
 ///
 /// 与引擎 `[sim]` 的种马因子同属**建局前**输入；剧本自持，不进引擎配置。
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+/// 默认不注入任何局外状态；理想测试档用 `bench --qie xiaoqie --shield 2` 或覆盖层开启。
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct PreConfig {
-    /// 小切（勉強家）：技能花费 PT −4%（评分 PT 项 ×1.04）；局内获得切者后失效（默认关）
-    pub xiaoqie: bool,
+    /// 局外切状态（默认不注入）
+    pub qie: Qie,
     /// 心情盾（ポジティブ思考）次数：抵消 N 次干劲下降（引擎 `positive_thinking_count`）
     pub positive_thinking: i32,
+}
+
+impl Default for PreConfig {
+    fn default() -> Self {
+        Self {
+            qie: Qie::None,
+            positive_thinking: 0,
+        }
+    }
 }
 
 /// 手写训练员策略旋钮（全部可扫参；默认档 = 攻略 / memo 方向）

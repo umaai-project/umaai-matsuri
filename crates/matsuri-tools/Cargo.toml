@@ -23,6 +23,7 @@ profile = ["dep:pprof"]
 
 [dependencies]
 matsuri-core.workspace = true
+matsuri-sim.workspace = true
 umaai-core.workspace = true
 umasim.workspace = true
 umaai.workspace = true

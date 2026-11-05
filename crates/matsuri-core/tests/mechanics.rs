@@ -2290,7 +2290,7 @@ fn pre_xiaoqie_flag_and_score_factor() -> Result<()> {
     let repo = Repo::load()?;
     let plain = repo.game(repo.cfg.sim.uma)?;
     let mut cfg = MatsuriConfig::default();
-    cfg.pre.xiaoqie = true;
+    cfg.pre.qie = matsuri_core::Qie::Xiaoqie;
     let small = repo.game(repo.cfg.sim.uma)?.with_config(cfg);
 
     assert!(
@@ -2335,7 +2335,7 @@ fn qiezhe_event_flag_clears_xiaoqie() -> Result<()> {
     );
 
     let mut cfg = MatsuriConfig::default();
-    cfg.pre.xiaoqie = true;
+    cfg.pre.qie = matsuri_core::Qie::Xiaoqie;
     let mut game = repo.game(repo.cfg.sim.uma)?.with_config(cfg);
     assert!(game.uma().flags.xiaoqie);
 

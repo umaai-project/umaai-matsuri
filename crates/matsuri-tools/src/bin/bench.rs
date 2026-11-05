@@ -1,7 +1,7 @@
 //! 性能测量入口：手写档整局 / 决策链分段 / 搜索固定根 / rollout 阶段拆分
 //!
 //! 用法（仓根执行，先 cargo build --release --offline -p matsuri-tools）：
-//! - bench game --games 20 --seed 61444 --search-n 0  整局耗时 + 终局 CSV（手写档；缺省走配置 search_n=12288）
+//! - bench game --games 20 --seed 61444 --search-n 0  整局耗时 + 终局 CSV（手写档；缺省走配置 search_n=8192）
 //! - bench micro --turn 32 --iters 2000            决策链分段 ns/op
 //! - bench root --turn 32 --search-n 512 --repeat 3 固定根搜索耗时 + 探针计数
 //! - bench stages --turn 32                        单次 rollout 按阶段机拆分
@@ -22,8 +22,9 @@ use std::time::Instant;
 use anyhow::{Context, Result, bail};
 use matsuri_core::game::Action;
 use matsuri_core::{
-    MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer, MatsuriTrainer, build_game,
+    MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer, MatsuriTrainer, Qie, build_game,
 };
+use matsuri_sim::baseline::judge;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use umaai_core::Data;
@@ -121,7 +122,18 @@ fn play(
     seed: u64,
     trainer: &impl Trainer<MatsuriGame>,
 ) -> Result<Outcome> {
-    let mut game = env.build(config)?;
+    play_with_engine(env, &env.engine, config, seed, trainer)
+}
+
+/// 同 [`play`]，但允许换引擎配置（基线复跑要按档切马娘）
+fn play_with_engine(
+    env: &Env,
+    engine: &umaai::Config,
+    config: &MatsuriConfig,
+    seed: u64,
+    trainer: &impl Trainer<MatsuriGame>,
+) -> Result<Outcome> {
+    let mut game = build_game(engine, env.data.clone())?.with_config(config.clone());
     game.set_rule_master(seed);
     let mut rng = StdRng::seed_from_u64(seed);
     game.run_stage(trainer, &mut rng)?;
@@ -375,7 +387,9 @@ fn main() -> Result<()> {
     umaai_core::diag::set_enabled(false);
     let args: Vec<String> = std::env::args().collect();
     let command = args.get(1).map(String::as_str).unwrap_or("game");
-    let env = Env::load()?;
+    let mut env = Env::load()?;
+    // 理想测试固定条件：缺省取 data 默认层，命令行可覆盖（马娘 / 切状态 / 心情盾层数）
+    apply_fixture(&mut env, &args)?;
     match command {
         "game" => cmd_game(&env, &args),
         "micro" => cmd_micro(&env, &args),
@@ -385,12 +399,172 @@ fn main() -> Result<()> {
         "flat" => cmd_flat(&env, &args),
         "parts" => cmd_parts(&env, &args),
         "allocs" => cmd_allocs(&env, &args),
+        "baseline" => cmd_baseline(&env, &args),
         #[cfg(feature = "profile")]
         "prof" => prof::cmd_prof(&env, &args),
         other => bail!(
             "未知子命令: {other}（可选 game / micro / root / trace / stages / parts / flat / allocs）"
         ),
     }
+}
+
+/// 切状态的显示名（CSV 头用）
+fn qie_name(qie: Qie) -> &'static str {
+    match qie {
+        Qie::None => "none",
+        Qie::Xiaoqie => "xiaoqie",
+        Qie::Qiezhe => "qiezhe",
+    }
+}
+
+/// 理想测试固定条件的命令行覆盖：`--uma` / `--qie` / `--shield`
+///
+/// 缺省取 `data/` 默认层（马娘 105902、小切、心情盾 2 层）。只改本进程内存中的配置，
+/// 不写回文件；所有子命令共用同一入口，保证同一次测量里条件一致。
+fn apply_fixture(env: &mut Env, args: &[String]) -> Result<()> {
+    if let Some(raw) = parse_arg(args, "--uma") {
+        env.engine.sim.uma = raw.parse().with_context(|| format!("--uma 非法: {raw}"))?;
+    }
+    if let Some(raw) = parse_arg(args, "--qie") {
+        env.config.pre.qie = match raw.as_str() {
+            "none" => Qie::None,
+            "xiaoqie" => Qie::Xiaoqie,
+            "qiezhe" => Qie::Qiezhe,
+            other => bail!("--qie 只能取 none / xiaoqie / qiezhe（收到 {other}）"),
+        };
+    }
+    if let Some(raw) = parse_arg(args, "--shield") {
+        env.config.pre.positive_thinking = raw
+            .parse()
+            .with_context(|| format!("--shield 非法: {raw}"))?;
+    }
+    Ok(())
+}
+
+/// 基线复跑：`bench baseline [--name a-normal] [--trainer hand|search|both] [--games N]`
+///
+/// 读仓根 `baselines/*.json`，按档内的马娘 / 切状态 / 心情盾 / 搜索参数复跑，再按
+/// 合并标准误与相对容差判定。任一档漂移即以非零退出码返回，便于 CI 当门禁用。
+fn cmd_baseline(env: &Env, args: &[String]) -> Result<()> {
+    let only = parse_arg(args, "--name");
+    let games = parse_usize(args, "--games", 0)?;
+    let sigma = parse_arg(args, "--sigma")
+        .map(|v| v.parse::<f64>())
+        .transpose()
+        .with_context(|| "--sigma 非法")?
+        .unwrap_or(3.0);
+    let rel = parse_arg(args, "--rel")
+        .map(|v| v.parse::<f64>())
+        .transpose()
+        .with_context(|| "--rel 非法")?
+        .unwrap_or(0.01);
+    let want = parse_arg(args, "--trainer").unwrap_or_else(|| "both".to_string());
+
+    let dir = env.root.join("baselines");
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .with_context(|| format!("读取基线目录失败: {}", dir.display()))?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("json"))
+        .filter(|path| path.file_name().and_then(|s| s.to_str()) != Some("README.json"))
+        .collect();
+    files.sort();
+    if files.is_empty() {
+        bail!("{} 下没有基线文件", dir.display());
+    }
+
+    let mut failed = 0;
+    for path in files {
+        let case = matsuri_sim::baseline::Case::load(&path)?;
+        if only.as_deref().is_some_and(|name| name != case.name) {
+            continue;
+        }
+        println!(
+            "# 基线 {} uma={} qie={} shield={}（{}）",
+            case.name, case.uma, case.qie, case.shield, case.note
+        );
+        println!(
+            "trainer,search_n,games,score_mean,score_delta,score_allow,pt_mean,pt_delta,pt_allow,verdict"
+        );
+        for record in &case.records {
+            let run_search = match want.as_str() {
+                "both" => true,
+                "search" => record.search_n > 0,
+                "hand" | "handwritten" => record.search_n == 0,
+                other => bail!("--trainer 只能取 hand / search / both（收到 {other}）"),
+            };
+            if !run_search {
+                continue;
+            }
+            let n = if games > 0 { games } else { record.games };
+            let mut config = env.config.clone();
+            config.search.search_n = record.search_n;
+            config.pre.qie = match case.qie.as_str() {
+                "none" => Qie::None,
+                "xiaoqie" => Qie::Xiaoqie,
+                "qiezhe" => Qie::Qiezhe,
+                other => bail!("基线 {} 的 qie 非法: {other}", case.name),
+            };
+            config.pre.positive_thinking = case.shield;
+            let mut engine = env.engine.clone();
+            engine.sim.uma = case.uma;
+            let started = Instant::now();
+            let samples: Vec<(i32, i32)> = if record.search_n > 0 {
+                let trainer = MatsuriSearchTrainer::new(
+                    config.clone(),
+                    engine.search.clone().with_search_n(record.search_n),
+                )?;
+                (0..n)
+                    .map(|i| {
+                        let outcome = play_with_engine(
+                            env,
+                            &engine,
+                            &config,
+                            record.seed0 + i as u64,
+                            &trainer,
+                        )?;
+                        Ok((outcome.score, outcome.pt))
+                    })
+                    .collect::<Result<Vec<_>>>()?
+            } else {
+                let trainer = MatsuriTrainer::new(config.clone());
+                (0..n)
+                    .map(|i| {
+                        let outcome = play_with_engine(
+                            env,
+                            &engine,
+                            &config,
+                            record.seed0 + i as u64,
+                            &trainer,
+                        )?;
+                        Ok((outcome.score, outcome.pt))
+                    })
+                    .collect::<Result<Vec<_>>>()?
+            };
+            let verdict = judge(record, &samples, sigma, rel);
+            println!(
+                "{},{},{},{:.1},{:+.1},{:.1},{:.1},{:+.1},{:.1},{}（{:.1}s）",
+                record.trainer,
+                record.search_n,
+                n,
+                samples.iter().map(|(s, _)| f64::from(*s)).sum::<f64>() / n as f64,
+                verdict.score_delta,
+                verdict.score_allow,
+                samples.iter().map(|(_, p)| f64::from(*p)).sum::<f64>() / n as f64,
+                verdict.pt_delta,
+                verdict.pt_allow,
+                if verdict.ok { "OK" } else { "DRIFT" },
+                started.elapsed().as_secs_f64()
+            );
+            if !verdict.ok {
+                failed += 1;
+            }
+        }
+    }
+    if failed > 0 {
+        bail!("{failed} 条基线漂移");
+    }
+    Ok(())
 }
 
 /// 整局：bench game --games 20 --seed 61444 [--search-n 0] [--warmup 1]
@@ -449,7 +623,10 @@ fn run_batch<T: Trainer<MatsuriGame>>(
     }
     let mean_ms = total.as_secs_f64() * 1000.0 / games as f64;
     println!(
-        "# search_n={search_n} games={games} seed={seed} root={}",
+        "# search_n={search_n} games={games} seed={seed} uma={} qie={} shield={} root={}",
+        env.engine.sim.uma,
+        qie_name(config.pre.qie),
+        config.pre.positive_thinking,
         env.root.display()
     );
     println!("seed,score,pt,turn,elapsed_us");
