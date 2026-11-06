@@ -1516,6 +1516,7 @@ mod tests {
         assert_eq!(display_status(1201), 1200, "超出部分向下取整");
         assert_eq!(display_status(1600), 1400, "1600 显示 1400");
         assert_eq!(display_status(3179), 2189, "上限 3179 显示 2189");
+        assert_eq!(display_status(3200), 2200, "剧本 15 速度上限显示 2200");
     }
 
     #[test]

@@ -1,8 +1,8 @@
 {
   "scenario_id": 15,
   "limits": {
-    "five_status_limit_base": [2200, 1850, 1800, 1700, 1800],
-    "five_status_limit_upper": [2500, 2500, 2500, 2500, 2500],
+    "five_status_limit_base": [3200, 2500, 2400, 2200, 2400],
+    "five_status_limit_upper": [3800, 3800, 3800, 3800, 3800],
     "support_num": 5,
     "max_skill_point": 99999
   },

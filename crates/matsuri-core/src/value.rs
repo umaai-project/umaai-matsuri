@@ -1,7 +1,9 @@
 //! 手写训练员估值层：局面 / 动作 / 事件 / 教诲分配 → 统一评分单位
 //!
-//! 目标口径：官方评分（`consts.five_status_final_score` 查表 + PT × `pt_score_rate`），
+//! 目标口径：官方评分（`umaai_core::score::status_point` 单项属性公式 + PT × `pt_score_rate`），
 //! PT 再乘训练员配置的 `pt_favor_rate`（`1.0` = 官方评分，引擎既有定档 `2.0`）。
+//! 五维公式以原始属性为输入、没有属性上限；`data/constants.json` 已删除
+//! `five_status_final_score` 表（该表在引擎侧仅为旧数据兼容保留）。
 //! 全部估值都是**评分点**，训练员只比较同一量纲的分数，不加第二个评分轴。
 //!
 //! 纪律：只读局面（`preview_*` 不耗随机流、不写局面）；纯函数式打分，供手写训练员与
@@ -733,20 +735,11 @@ impl<'a> Model<'a> {
     // 基础折算
     // ------------------------------------------------------------------
 
-    /// 五维查表评分（先按本局上限夹取，再查 `five_status_final_score`）
+    /// 五维公式评分（先按本局上限夹取，再代入单项属性公式）
     fn status_score(&self, axis: usize, value: i32) -> f64 {
-        let table = &self.consts.five_status_final_score;
-        let Some(&last) = table.last() else {
-            return 0.0;
-        };
         let limit = self.game.uma().five_status_limit[axis];
-        let value = value.min(limit).max(0) as usize;
-        let index = value.min(table.len() - 1);
-        if index == table.len() - 1 {
-            f64::from(last)
-        } else {
-            f64::from(table[index])
-        }
+        let value = value.min(limit).max(0);
+        f64::from(umaai_core::score::status_point(value))
     }
 
     /// 五维增量评分（含策略权重 `status_weights`）
@@ -1119,7 +1112,7 @@ impl<'a> Model<'a> {
         value +=
             f64::from(effect.kensan_rate) / 100.0 * (train + keiko) * 150.0 * self.advice.level;
         // 特化上限（601 特別稽古）：抬高该演目的训练基础上限 `status_limit` 点
-        // （满级 +25；基础上限 2200 到硬顶 2500 只剩 300 余量，属末期稀缺资源）
+        // （满级 +25；基础上限 3200 到硬顶 3800 只剩 600 余量，属末期稀缺资源）
         value += f64::from(effect.status_limit) * (train + keiko) * self.advice.status_limit;
         // 助力の支え（401）：非友情训练的保底收益，是个开关量，不按数值放大
         if effect.support_assist {

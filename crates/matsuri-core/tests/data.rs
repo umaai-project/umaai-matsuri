@@ -29,12 +29,27 @@ fn limits() -> Result<()> {
     let data = MatsuriData::load(data_dir())?;
     assert_eq!(
         data.limits.five_status_limit_base,
-        [2200, 1850, 1800, 1700, 1800]
+        [3200, 2500, 2400, 2200, 2400]
     );
-    assert_eq!(data.limits.five_status_limit_upper, [2500; 5]);
+    assert_eq!(data.limits.five_status_limit_upper, [3800; 5]);
     assert_eq!(data.limits.support_num, 5);
     assert_eq!(data.limits.max_skill_point, 99999);
     Ok(())
+}
+
+/// 建局上限取剧本资产，而不是引擎通用兜底表 `constants.json`
+#[test]
+fn newgame_limit_from_scenario_asset() {
+    use matsuri_core::testing::sample_game;
+    use umasim::game::Game;
+
+    let data = MatsuriData::load(data_dir()).expect("资产载入失败");
+    let lim = sample_game().uma().five_status_limit;
+    // 开局继承增量只落在速度位：blue_count=[18,0,0,0,0] → floor(18 × 5.33) = 95
+    assert_eq!(lim[0], data.limits.five_status_limit_base[0] + 95);
+    for i in 1..5 {
+        assert_eq!(lim[i], data.limits.five_status_limit_base[i]);
+    }
 }
 
 /// 演目 ↔ 命令 ↔ 训练位 ↔ 神驹（`act_info` + `act_member` + `single_mode_training`）

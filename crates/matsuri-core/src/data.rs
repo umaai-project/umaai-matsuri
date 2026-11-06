@@ -5,7 +5,8 @@
 //!
 //! 数据来源：`master.mdb` 的 `single_mode_15_*` 11 张表 + `single_mode_training_effect`
 //! （scenario 15，普通训练 / Junior 稽古）+ 官方 / `memo` 口径（普通训练 Lv2–5、Classic 稽古、
-//! 基础上限 2200 一组、一次性奖励成功档等）；资产 ↔ 表映射见 [`docs/plan/intake.md`] §4.1。
+//! 属性上限按 1200 以上不减半口径存（官方 2200 一组换算为 3200 一组）、一次性奖励成功档等）；
+//! 资产 ↔ 表映射见 [`docs/plan/intake.md`] §4.1。
 //! 所有回合字段已转 **0 基**（`mdb` 为 1 基）。
 //!
 //! [`docs/plan/intake.md`]: ../../../docs/plan/intake.md
@@ -92,9 +93,10 @@ pub struct MatsuriData {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Limits {
-    /// 五维基础上限（速 / 耐 / 力 / 根 / 智；官方 + memo 口径，非 mdb `max_*`）
+    /// 五维基础上限（速 / 耐 / 力 / 根 / 智）；1200 以上不减半口径，
+    /// 由官方 / memo 的协议原值换算：`x > 1200 ? 2x - 1200 : x`
     pub five_status_limit_base: Array5,
-    /// 五维绝对上限（上限突破后）
+    /// 五维绝对上限（上限突破后）；同基础上限口径，原值 2500 换算为 3800
     pub five_status_limit_upper: Array5,
     /// 普通支援卡位数（友人另占 1 位）
     pub support_num: i32,

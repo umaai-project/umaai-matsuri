@@ -27,7 +27,7 @@ use anyhow::Result;
 use umaai::Config;
 use umaai_core::gamedata::{ActionValue, EventData};
 use umaai_core::rng::StrategyRng;
-use umaai_core::{Array5, Data};
+use umaai_core::Array5;
 use umasim::game::base::BaseGame;
 use umasim::game::{Game, InheritInfo, TrainingBasicTable};
 
@@ -286,7 +286,8 @@ impl MatsuriGame {
                 uma_id,
                 deck_ids,
                 inherit,
-                Data::get()?.consts.five_status_limit_base,
+                // 剧本 15 专属上限（1200 以上不减半口径）；`consts` 只是通用兜底默认值
+                data.limits.five_status_limit_base,
                 race_grades,
             )?,
             persons: Vec::new(),

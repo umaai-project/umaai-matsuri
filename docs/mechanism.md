@@ -673,10 +673,12 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
 
 **目标口径（pt_favor）**
 
-- 单位统一为评分点：`官方评分 = Σ 五维查表分（five_status_final_score，按本局上限夹取）+ PT × pt_score_rate`；
+- 单位统一为评分点：`官方评分 = Σ 五维公式分（umaai_core::score::status_point，按本局上限夹取）+ PT × pt_score_rate`；
   训练员再对 PT 施加 `pt_favor_rate`（`1.0` = 官方评分，默认 `2.0` 沿用引擎既有定档）；
   动作 / 事件 / 教诲分配全部折算到同一量纲，不加第二评分轴。
-- 五维边际 = `查表(夹取后 after) − 查表(夹取后 before)`；超过本局上限后边际为 0。
+- 公式以原始属性为输入、没有属性上限；`data/constants.json` 已删除 `five_status_final_score`
+  表（该表在引擎侧仅为旧数据兼容保留），本仓数据资产不再带这份查表数据。
+- 五维边际 = `公式(夹取后 after) − 公式(夹取后 before)`；超过本局上限后边际为 0。
 
 **动作决策（`Trainer::select_action`）**
 
@@ -819,7 +821,7 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
     应用当前选项后，从 `event_queue` 的下一个事件继续（`event_cursor` 留在局面上），
     再跑后续 stage 到终局。
 - **搜索口径**：`MatsuriGame::search_score(pt_favor_rate)` = 技能 + PT×`pt_score_rate`×`pt_favor_rate`
-  + 五维查表；`pt_favor_rate` 取 `[trainer].pt_favor_rate`，与手写剪枝同一目标函数。
+  + 五维公式；`pt_favor_rate` 取 `[trainer].pt_favor_rate`，与手写剪枝同一目标函数。
   失败分支（`career_failed`）按实际 `calc_score`，不加额外罚。
 - **排序与激进度**：中选下标用 `weighted_mean(radical_factor)`（`rank_ratio^rf` 加权）。
   `radical_factor_max = 0.0` 即普通均值；越大越偏高尾。理想测试（106301 + 小切 + 心情盾×2，

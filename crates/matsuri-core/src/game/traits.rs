@@ -580,7 +580,7 @@ impl FlatSearchGame for MatsuriGame {
         game
     }
 
-    /// 搜索口径 = 引擎默认单轴：技能 + PT×`pt_score_rate`×`pt_favor_rate` + 五维查表
+    /// 搜索口径 = 引擎默认单轴：技能 + PT×`pt_score_rate`×`pt_favor_rate` + 五维公式
     ///
     /// `pt_favor_rate = 1.0` 即官方评分；生产取 `[trainer].pt_favor_rate`，与手写剪枝
     /// 的目标函数同口径。引擎默认实现会先乘 `pt_score_rate` 再乘 `pt_favor_rate`，
