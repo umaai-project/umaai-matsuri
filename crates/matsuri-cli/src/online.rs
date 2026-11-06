@@ -20,10 +20,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
-use matsuri_ai::output::OnlineTurnOutput;
-use matsuri_ai::{FrameSource, OnlineSession, TrainerKind, TurnKind, resolve_live_root};
+use matsuri_ai::output::{FinalTurnOutput, OnlineTurnOutput};
+use matsuri_ai::{
+    FrameSource, OnlineSession, TrainerKind, TurnKind, connected_payload, error_payload,
+    resolve_live_root,
+};
 use matsuri_core::{MatsuriConfig, MatsuriData};
-use umaai::Config;
+use umaai::{Config, FrameKind};
 use umaai_cli::render::term;
 use umaai_core::Data;
 
@@ -87,10 +90,12 @@ pub fn parse(argv: &[String]) -> Result<Args> {
 pub fn usage() -> String {
     "用法: matsuri online [--root <游戏根目录>] [--replay <帧目录>] [--trainer matsuri|search] [--json] [--verify-training]\n\
      \n  --root            真机游戏根目录（含 .portable）；缺省读 MATSURI_ROOT，再缺省当前目录\n  \
-     --replay          回放目录（game{id}_turn{n}.json）；给了就不挂真机监听\n  \
-     --trainer         训练员：matsuri（手写，默认） / search（搜索）\n  \
+     --replay          回放目录（game{id}_turn{n}.json + game{id}_finalScore.json）；给了就不挂真机监听\n  \
+     --trainer         训练员：matsuri（手写） / search（搜索）；缺省按配置 [search].search_n 决定（0 = 手写，>0 = 搜索）\n  \
      --json            stdout 每行一条 JSON（日志与面板走 stderr）\n  \
-     --verify-training 附训练验算表（帧真值 vs 还原态预览，G13）"
+     --verify-training 附训练验算表（帧真值 vs 还原态预览，G13）\n\
+     \n配置与环境：默认层 data/ai_config.toml + data/matsuri_config.toml，工作目录同名覆盖层；\n\
+     MATSURI_SEARCH_N / MATSURI_SEARCH_RADICAL 可临时覆盖搜索预算与激进度。"
         .to_string()
 }
 
@@ -98,15 +103,35 @@ pub fn usage() -> String {
 pub fn run(argv: &[String]) -> Result<()> {
     let args = parse(argv)?;
     // 配置两份同名不同位：默认层在数据根、覆盖层在当前目录（与离线档同约定）
-    let cfg = Config::load_with_overlay_file(crate::DATA_ROOT, ".").context("载入配置失败")?;
+    let mut cfg = Config::load_with_overlay_file(crate::DATA_ROOT, ".").context("载入配置失败")?;
     logging::init_logger(&cfg.output.log_level).context("初始化日志器失败")?;
     Data::init(crate::DATA_ROOT)
         .map(|_| ())
         .context("引擎静态数据初始化失败")?;
     let data = Arc::new(MatsuriData::load(crate::DATA_ROOT).context("载入剧本数据失败")?);
-    let matsuri_cfg =
+    let mut matsuri_cfg =
         MatsuriConfig::load_with_overlay_file(crate::DATA_ROOT, ".").context("载入剧本配置失败")?;
-    let trainer = TrainerKind::parse(args.trainer.as_deref().unwrap_or("matsuri"))?;
+    // 在线档与离线档读同一套配置：预算取 `matsuri_config [search].search_n`，
+    // 环境变量只作为临时覆盖（`MATSURI_SEARCH_N` / `MATSURI_SEARCH_RADICAL`）。
+    let search_n =
+        crate::env_parse::<usize>("MATSURI_SEARCH_N")?.unwrap_or(matsuri_cfg.search.search_n);
+    matsuri_cfg.search.search_n = search_n;
+    if let Some(radical) = crate::env_parse::<f64>("MATSURI_SEARCH_RADICAL")? {
+        cfg.search.radical_factor_max = radical;
+    }
+    // 未显式给 `--trainer` 时按配置决定：`search_n > 0` = 搜索档，`0` = 手写档
+    // （与离线 `matsuri` 训练员的默认口径一致）
+    let trainer = match args.trainer.as_deref() {
+        Some(name) => TrainerKind::parse(name)?,
+        None if search_n > 0 => TrainerKind::Search,
+        None => TrainerKind::Hand,
+    };
+    if !args.json {
+        eprintln!(
+            "在线档：训练员 {}（[search].search_n = {search_n}；0 = 手写）",
+            if trainer.is_search() { "search" } else { "matsuri" }
+        );
+    }
     let mut session = OnlineSession::new(&cfg, data, matsuri_cfg, trainer, args.verify)?;
 
     let mut source = match &args.replay {
@@ -125,8 +150,19 @@ pub fn run(argv: &[String]) -> Result<()> {
     // 面板：JSON 模式一律关色（stdout 只允许 JSON）
     let mut panel = BoardPanel::new(term::use_color(args.json));
     let mut stdout = std::io::stdout();
+    if args.json {
+        // 启动握手：消费者据此判断「进程已就绪、开始接收帧」
+        writeln!(
+            stdout,
+            "{}",
+            serde_json::to_string(&connected_payload("matsuri"))?
+        )?;
+        stdout.flush()?;
+    }
     let mut frames = 0usize;
     let mut decisions = 0usize;
+    let mut finals = 0usize;
+    let mut errors = 0usize;
 
     loop {
         let timeout = if replay {
@@ -147,18 +183,43 @@ pub fn run(argv: &[String]) -> Result<()> {
         for note in source.drain_notes() {
             eprintln!("通道提示：{note:?}");
         }
-        frames += 1;
-        let output = session
-            .handle_frame(&frame.contents)
-            .with_context(|| format!("第 {frames} 帧处理失败（拒绝计算）"))?;
-        if output.kind == TurnKind::Decision {
-            decisions += 1;
+        match frame.kind {
+            FrameKind::ThisTurn => {
+                frames += 1;
+                match session.handle_frame(&frame.contents) {
+                    Ok(output) => {
+                        if output.kind == TurnKind::Decision {
+                            decisions += 1;
+                        }
+                        render(&mut stdout, &mut panel, &output, args.json)?;
+                    }
+                    Err(err) => {
+                        // 真机档单帧失败不终止循环（等下一帧）；回放档累计后在结束时报错
+                        errors += 1;
+                        render_error(&mut stdout, args.json, &err)?;
+                    }
+                }
+            }
+            FrameKind::FinalScore => {
+                finals += 1;
+                match session.handle_final(&frame.contents) {
+                    Ok(output) => render_final(&mut stdout, &output, args.json)?,
+                    Err(err) => {
+                        errors += 1;
+                        render_error(&mut stdout, args.json, &err)?;
+                    }
+                }
+            }
         }
-        render(&mut stdout, &mut panel, &output, args.json)?;
     }
 
     if !args.json {
-        eprintln!("结束：处理 {frames} 帧，其中 {decisions} 次决策");
+        eprintln!(
+            "结束：处理 {frames} 帧（{decisions} 次决策 / {finals} 张终局帧），失败 {errors} 帧"
+        );
+    }
+    if replay && errors > 0 {
+        return Err(anyhow!("回放有 {errors} 帧处理失败"));
     }
     Ok(())
 }
@@ -182,10 +243,12 @@ fn render(
     }
     match output.kind {
         TurnKind::Decision => {
+            let scores = (!output.candidate_scores.is_empty())
+                .then_some(output.candidate_scores.as_slice());
             write!(
                 stdout,
                 "{}",
-                panel.render(&output.game, &output.actions, None)?
+                panel.render(&output.game, &output.actions, scores)?
             )?;
             if let Some(record) = &output.record {
                 let reason = record
@@ -218,6 +281,54 @@ fn render(
     }
     if let Some(report) = &output.verify {
         write!(stdout, "{}", render_verify(report))?;
+    }
+    stdout.flush()?;
+    Ok(())
+}
+
+/// 渲染终局帧（`type = final`）
+fn render_final(
+    stdout: &mut impl Write,
+    output: &FinalTurnOutput,
+    json: bool,
+) -> Result<()> {
+    if json {
+        writeln!(
+            stdout,
+            "{}",
+            serde_json::to_string(&output.json_payload())?
+        )?;
+    } else if output.accepted {
+        writeln!(
+            stdout,
+            "【终局】T{} 评分 {} 档次 {}",
+            output.turn,
+            output.score.unwrap_or(0),
+            output.rank.as_deref().unwrap_or("—")
+        )?;
+    } else {
+        writeln!(
+            stdout,
+            "【终局】T{} 未接受：{}",
+            output.turn,
+            output.reason.as_deref().unwrap_or("—")
+        )?;
+    }
+    stdout.flush()?;
+    Ok(())
+}
+
+/// 单帧失败：JSON 档一行 `type = error`，人类档一行提示
+fn render_error(stdout: &mut impl Write, json: bool, err: &anyhow::Error) -> Result<()> {
+    let message = format!("{err:#}");
+    if json {
+        writeln!(
+            stdout,
+            "{}",
+            serde_json::to_string(&error_payload(&message))?
+        )?;
+    } else {
+        writeln!(stdout, "帧处理失败：{message}")?;
     }
     stdout.flush()?;
     Ok(())

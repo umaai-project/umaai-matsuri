@@ -93,13 +93,15 @@ pub fn pending_event(game: &MatsuriGame) -> Option<&EventData> {
 pub struct TrainExplanation<'a> {
     /// 全部候选评分 `(动作下标, 分数)`
     pub candidates: &'a [(usize, f64)],
+    /// 与 `candidates` 同长的搜索样本数；手写档为 `None`（记 0）
+    pub counts: Option<&'a [u32]>,
     /// 中选动作下标
     pub chosen: usize,
     /// 中选原因
     pub reason: String,
 }
 
-/// 训练决策记录：手写档带打分表，搜索档只有动作名（搜索分在会话外可取）
+/// 训练决策记录：手写档带打分表；搜索档带候选均分 / 样本数（由会话从 `last_search()` 取出）
 pub fn train_record(
     game: &MatsuriGame,
     actions: &[Action],
@@ -116,18 +118,28 @@ pub fn train_record(
     match explanation {
         Some(TrainExplanation {
             candidates,
+            counts,
             chosen,
             reason,
         }) => {
             record.candidates = candidates
                 .iter()
-                .map(|(index, score)| Candidate {
+                .enumerate()
+                .map(|(position, (index, score))| Candidate {
                     description: describe(*index),
                     score: Some(*score),
-                    n: 0,
+                    n: counts
+                        .and_then(|counts| counts.get(position))
+                        .copied()
+                        .unwrap_or(0),
                 })
                 .collect();
-            record.action_index = chosen;
+            // `DecisionRecord.action_index` 是**候选表下标**（不是动作下标）：
+            // 教诲分配搜索只搜剪枝子集，必须把原动作下标映射回它在候选表里的位置。
+            record.action_index = candidates
+                .iter()
+                .position(|(index, _)| *index == chosen)
+                .unwrap_or(chosen);
             record.action_desc = describe(chosen);
             record.extra = Some(serde_json::json!({ "reason": reason }));
         }
@@ -148,16 +160,30 @@ pub fn train_record(
 }
 
 /// 事件决策记录：候选 = 选项组序号（协议没有选项名，用「选项 n」+ 事件名）
+///
+/// `scores` 为搜索档的 `(选项下标, 均分, 样本数)`；手写档传 `None`（保持旧 JSON 口径）。
 #[must_use]
-pub fn event_record(event: &EventData, choice: usize) -> DecisionRecord {
+pub fn event_record(
+    event: &EventData,
+    choice: usize,
+    scores: Option<&[(usize, f64, u32)]>,
+) -> DecisionRecord {
     let candidates: Vec<Candidate> = event
         .choices
         .iter()
         .enumerate()
-        .map(|(index, _group)| Candidate {
-            description: format!("选项{}", index + 1),
-            score: None,
-            n: 0,
+        .map(|(index, _group)| {
+            let scored = scores.and_then(|scores| {
+                scores
+                    .iter()
+                    .find(|(candidate, _, _)| *candidate == index)
+                    .map(|(_, score, n)| (*score, *n))
+            });
+            Candidate {
+                description: format!("选项{}", index + 1),
+                score: scored.map(|(score, _)| score),
+                n: scored.map_or(0, |(_, n)| n),
+            }
         })
         .collect();
     let mut record = DecisionRecord::action_only("event", format!("选项{}", choice + 1));

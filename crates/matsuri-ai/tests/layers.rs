@@ -49,6 +49,9 @@ fn dump_training_layers() -> Result<()> {
     let mut source = FrameSource::open_replay(&dir)?;
 
     while let Some(frame) = source.next_frame(Duration::ZERO)? {
+        if frame.kind != umaai::FrameKind::ThisTurn {
+            continue;
+        }
         let parsed = matsuri_ai::ParsedFrame::parse(&frame.contents)?;
         if parsed.epoch_key() != 6310 {
             continue;

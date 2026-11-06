@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use matsuri_ai::{FrameSource, OnlineSession, TrainerKind, TurnKind};
+use umaai::FrameKind;
 use matsuri_core::testing::data_dir;
 use matsuri_core::{MatsuriConfig, MatsuriData};
 use umaai_core::Data;
@@ -49,6 +50,8 @@ fn replay_real_frames() -> Result<()> {
     let mut frames = 0usize;
     let mut decisions = 0usize;
     let mut skipped = 0usize;
+    let mut finals = 0usize;
+    let mut accepted_finals = 0usize;
     let mut train_kinds: std::collections::BTreeMap<String, usize> = Default::default();
     let mut max_deviation = 0i32;
     let mut deviation_frames = 0usize;
@@ -65,6 +68,21 @@ fn replay_real_frames() -> Result<()> {
     // (回合, 训练位, 稽古, |Δ|max, Δ, 闪彩数, 友情%)
     let mut outliers: Vec<(i32, usize, bool, i32, Vec<i32>, usize, f32)> = Vec::new();
     while let Some(frame) = source.next_frame(Duration::ZERO)? {
+        // 终局帧不进决策链：只走三道闸 + 终局评分
+        if frame.kind == FrameKind::FinalScore {
+            finals += 1;
+            let output = session.handle_final(&frame.contents)?;
+            assert!(
+                output.accepted || output.reason.is_some(),
+                "终局帧必须给出接受 / 拒绝原因"
+            );
+            if output.accepted {
+                accepted_finals += 1;
+                assert!(output.score.is_some_and(|score| score > 0), "终局应有评分");
+                assert!(output.rank.is_some(), "终局应有档次");
+            }
+            continue;
+        }
         frames += 1;
         let output = session
             .handle_frame(&frame.contents)
@@ -234,6 +252,9 @@ fn replay_real_frames() -> Result<()> {
     for (delta, count) in top.into_iter().take(8) {
         println!("   {delta:?} × {count}");
     }
+    println!(
+        "终局帧 {finals} 张：接受 {accepted_finals} 张（旧固定名 `finalScore.json` 不参与回放）"
+    );
 
     assert!(frames >= 70, "真机帧应有 78 帧左右，实际 {frames}");
     assert!(decisions >= 20, "决策帧过少，实际 {decisions}");
@@ -241,6 +262,8 @@ fn replay_real_frames() -> Result<()> {
         train_kinds.contains_key("train") || train_kinds.contains_key("race"),
         "应至少有一帧训练 / 比赛决策"
     );
+    assert!(finals >= 1, "回放应载入终局帧");
+    assert!(accepted_finals >= 1, "至少一局终局帧应通过三道闸");
     Ok(())
 }
 

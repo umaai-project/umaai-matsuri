@@ -28,9 +28,10 @@ use umaai_core::rng::{StreamTag, derive_seed};
 use umaai_core::{Array5, Array6, Data};
 use umasim::game::{Game, SupportCard, Trainer};
 
+use crate::final_score::parse_final_score;
 use crate::frame::ParsedFrame;
 use crate::online::{self, Route};
-use crate::output::{OnlineTurnOutput, TurnKind};
+use crate::output::{FinalTurnOutput, OnlineTurnOutput, TurnKind};
 
 /// 剧本友人（吾妻）首次点击事件 id（`BaseParams.friend_first_event`；0 = 未知则跳过判定）
 pub const FRIEND_FIRST_EVENT: i32 = 809052001;
@@ -78,9 +79,6 @@ impl TrainerChoice {
         }
     }
 
-    fn is_search(&self) -> bool {
-        matches!(self, Self::Search(_))
-    }
 }
 
 /// 在线会话：装配一次、逐帧喂入
@@ -190,6 +188,7 @@ impl OnlineSession {
                 verify: None,
                 game,
                 actions: Vec::new(),
+                candidate_scores: Vec::new(),
             });
         }
 
@@ -216,6 +215,7 @@ impl OnlineSession {
                 verify,
                 game,
                 actions: Vec::new(),
+                candidate_scores: Vec::new(),
             },
             Route::Event => {
                 let event = online::pending_event(&game)
@@ -227,7 +227,19 @@ impl OnlineSession {
                     &event.choices,
                     &mut rng,
                 )?;
-                let record = online::event_record(event, choice);
+                // 搜索档：把本次搜索的选项均分带进记录；手写档保持 `None`（无搜索分）
+                let scores: Option<Vec<(usize, f64, u32)>> = match &self.trainer {
+                    TrainerChoice::Search(trainer) => trainer.last_search().map(|summary| {
+                        summary
+                            .candidates
+                            .iter()
+                            .map(|candidate| (candidate.index, candidate.score, candidate.n))
+                            .collect()
+                    }),
+                    TrainerChoice::Hand(_) => None,
+                };
+                let search_backed = scores.is_some();
+                let record = online::event_record(event, choice, scores.as_deref());
                 OnlineTurnOutput {
                     turn,
                     epoch: frame.epoch_key(),
@@ -238,10 +250,11 @@ impl OnlineSession {
                     skip_reason: None,
                     notes: notes.clone(),
                     view,
-                    search_backed: false,
+                    search_backed,
                     verify,
                     game,
                     actions: Vec::new(),
+                    candidate_scores: Vec::new(),
                 }
             }
             Route::Train => {
@@ -261,6 +274,7 @@ impl OnlineSession {
                         verify,
                         game,
                         actions: Vec::new(),
+                        candidate_scores: Vec::new(),
                     }
                 } else {
                     let actions = game.list_actions()?;
@@ -269,24 +283,57 @@ impl OnlineSession {
                         .trainer
                         .as_dyn()
                         .select_action(&game, &actions, &mut rng)?;
-                    // 手写档：解释与实际决策同源（`explain_action` 内部走同一个 `choose_action`）
-                    let record = match &self.trainer {
+                    // 手写档：解释与实际决策同源（`explain_action` 内部走同一个 `choose_action`）；
+                    // 搜索档：把最近一次搜索的候选均分 / 样本数带进记录（fallback 时保持无分）
+                    let (record, candidate_scores, search_backed) = match &self.trainer {
                         TrainerChoice::Hand(trainer) => {
                             let explain = trainer.explain_action(&game, &actions)?;
-                            online::train_record(
+                            let scores = explain.candidates.clone();
+                            let record = online::train_record(
                                 &game,
                                 &actions,
                                 index,
                                 Some(online::TrainExplanation {
                                     candidates: explain.candidates.as_slice(),
+                                    counts: None,
                                     chosen: explain.chosen,
                                     reason: explain.reason.clone(),
                                 }),
-                            )?
+                            )?;
+                            // 手写档的候选分只给面板看；JSON 仍是 `score = 0`（无搜索分）
+                            (record, scores, false)
                         }
-                        TrainerChoice::Search(_) => {
-                            online::train_record(&game, &actions, index, None)?
-                        }
+                        TrainerChoice::Search(trainer) => match trainer.last_search() {
+                            Some(summary) => {
+                                let candidates: Vec<(usize, f64)> = summary
+                                    .candidates
+                                    .iter()
+                                    .map(|candidate| (candidate.index, candidate.score))
+                                    .collect();
+                                let counts: Vec<u32> = summary
+                                    .candidates
+                                    .iter()
+                                    .map(|candidate| candidate.n)
+                                    .collect();
+                                let record = online::train_record(
+                                    &game,
+                                    &actions,
+                                    index,
+                                    Some(online::TrainExplanation {
+                                        candidates: candidates.as_slice(),
+                                        counts: Some(counts.as_slice()),
+                                        chosen: index,
+                                        reason: "搜索：候选排名加权均分最高".to_string(),
+                                    }),
+                                )?;
+                                (record, candidates, true)
+                            }
+                            None => (
+                                online::train_record(&game, &actions, index, None)?,
+                                Vec::new(),
+                                false,
+                            ),
+                        },
                     };
                     self.last_train_turn = Some(turn);
                     OnlineTurnOutput {
@@ -299,15 +346,71 @@ impl OnlineSession {
                         skip_reason: None,
                         notes: notes.clone(),
                         view,
-                        search_backed: self.trainer.is_search(),
+                        search_backed,
                         verify,
                         game,
                         actions,
+                        candidate_scores,
                     }
                 }
             }
         };
         Ok(output)
+    }
+
+    /// 处理终局帧（`game{id}_finalScore.json`）
+    ///
+    /// 三道闸顺序与引擎一致：**必填解析 → `is_usable` → 局号匹配 → 算分**。
+    /// 局号不符 / 数值不可用只拒绝本帧（`accepted = false`），不推进 / 不清会话；
+    /// 换局仍由下一张 `load` 帧的 [`Self::sync_epoch`] 处理。
+    pub fn handle_final(&mut self, contents: &str) -> Result<FinalTurnOutput> {
+        let frame = parse_final_score(contents)?;
+        let scenario = "matsuri".to_string();
+        let current = self.epoch;
+        let epoch = current.unwrap_or_else(|| frame.epoch_key().unwrap_or(0));
+
+        if !frame.is_usable() {
+            return Ok(FinalTurnOutput {
+                turn: frame.turn,
+                epoch,
+                scenario,
+                accepted: false,
+                score: None,
+                rank: None,
+                reason: Some("终局帧数值不可用（五维或上限全零）".to_string()),
+            });
+        }
+        let Some(current) = current else {
+            return Ok(FinalTurnOutput {
+                turn: frame.turn,
+                epoch,
+                scenario,
+                accepted: false,
+                score: None,
+                rank: None,
+                reason: Some("本会话尚未建立局号，无法匹配终局帧".to_string()),
+            });
+        };
+        if !frame.matches_epoch(current) {
+            return Ok(FinalTurnOutput {
+                turn: frame.turn,
+                epoch,
+                scenario,
+                accepted: false,
+                score: None,
+                rank: None,
+                reason: Some(format!("局号不匹配（当前 {current}）")),
+            });
+        }
+        Ok(FinalTurnOutput {
+            turn: frame.turn,
+            epoch,
+            scenario,
+            accepted: true,
+            score: Some(frame.calc_score()?),
+            rank: Some(frame.rank_name()?),
+            reason: None,
+        })
     }
 
     /// 帧 → 局面

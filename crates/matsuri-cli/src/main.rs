@@ -57,7 +57,7 @@ fn dispatch(argv: &[String]) -> Result<()> {
 }
 
 /// 读取可选环境变量并解析：未设置返回 `None`，非法值报错（不静默回退）
-fn env_parse<T>(name: &str) -> Result<Option<T>>
+pub(crate) fn env_parse<T>(name: &str) -> Result<Option<T>>
 where
     T: std::str::FromStr,
     T::Err: std::fmt::Display,

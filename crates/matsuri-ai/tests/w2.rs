@@ -63,6 +63,9 @@ fn reverse_engineer_lower_multiplier() -> Result<()> {
         "回合", "cmd", "位", "轴", "帧", "我", "当前", "上限", "余量", "隐含真值"
     );
     while let Some(frame) = source.next_frame(Duration::ZERO)? {
+        if frame.kind != umaai::FrameKind::ThisTurn {
+            continue;
+        }
         let parsed = matsuri_ai::ParsedFrame::parse(&frame.contents)?;
         if !GAMES.contains(&parsed.epoch_key()) {
             continue;
@@ -241,6 +244,9 @@ fn solve_basic_value() -> Result<()> {
         // (训练位, 轴) → [(帧原始 lower, bonus, 乘子积, 是否折半)]
         let mut samples: Vec<Sample> = Vec::new();
         while let Some(frame) = source.next_frame(Duration::ZERO)? {
+            if frame.kind != umaai::FrameKind::ThisTurn {
+                continue;
+            }
             let parsed = matsuri_ai::ParsedFrame::parse(&frame.contents)?;
             if parsed.epoch_key() != game {
                 continue;
@@ -397,6 +403,9 @@ fn dump_outliers() -> Result<()> {
     let mut source = FrameSource::open_replay(&dir)?;
 
     while let Some(frame) = source.next_frame(Duration::ZERO)? {
+        if frame.kind != umaai::FrameKind::ThisTurn {
+            continue;
+        }
         let parsed = matsuri_ai::ParsedFrame::parse(&frame.contents)?;
         if !matches!(parsed.epoch_key(), 6308 | 6309 | 6310) {
             continue;

@@ -534,7 +534,7 @@ candidate_descriptions / candidate_n / scenario_extra`；`type ∈ decision/info
 | **M1 还原** | `FestaState` + `restore` + `export_festa` | 离线 round-trip：`restore(base.clone(), export_festa(&g), …)` 与 `g` 逐字段 `assert_eq`；白名单只排除 `strategy` / `keiko_settling` / `event_log`。另断言：`persons_per_act` 逐演目相等、每训练位人数与 origin 构成相等、卡位 `chara_id` 完全相等（G11 口径）；`level_unknown` 按 G12 规则 |
 | **M2 在线编排** | `frame.rs` + `urafile.rs` + `online.rs` + `output.rs` | 单帧一决策不报错；同回合重复帧只决策一次（G7）；`source = special` / `playing_state != 1` 不入决策（G10）；`trainLevelTotal = 0` 的帧等级不跳变（G12）；`--verify-training` 能输出偏差表（G13） |
 | **M3 CLI** | `online` 子命令 + 面板 / JSON / `--version` | 终端逐帧出面板；`--json` 每行一条、无杂字；`--version` 可核对；横幅与日志走 stderr |
-| **M4 闭环** | `--replay` 78 帧 + 真机 game6310 | 决策一致率；终局评分对照只作趋势，不作基线 |
+| **M4 闭环** | 终局帧消费 + `--replay` 全量收束 + 真机换局 | 终局帧三道闸、真机终局不退出、换局状态不串；**决策一致率审计按用户决定留到复盘阶段**（见 §9.10） |
 
 M1 的 round-trip 是**整套方案的核心守门**：它能在没有真机的情况下，先把「帧字段 ↔ 状态字段」
 的映射钉死；真机只用来验证取值口径（`§7` 的 `G#`）。M2 起改用真机 `thisTurn.json` 做端到端核对。
@@ -862,3 +862,44 @@ PT（`status_pt[5]`）与体力不参与这条上限（T69 帧 PT 288 = 本仓 2
 | 端到端 CLI 回放 | — | 249 帧 / 187 次决策，T77 URA 决赛收束 |
 
 438 行中 284 行逐项全等，其余全部 ±1–2（乘法取整顺序差），无一条超差。
+
+### 9.10 在线档收尾（2026-11-06 晚，本轮已落地）
+
+**① 终局帧通道**
+
+- `matsuri-ai/src/final_score.rs`（新）：`FinalScoreFrame` 解析 + `scenarioId == 15` 门禁；
+  三道闸在 `OnlineSession::handle_final` 按「必填解析 → `is_usable` → 局号匹配 → 算分」执行，
+  局号不符 / 数值不可用只拒绝本帧，不推进 / 不清会话。
+- `ReplaySource` 在每局最后一个回合帧之后追加 `game{id}_finalScore.json`；旧固定名
+  `finalScore.json` 不识别。真机 `FileChannel` 的 `FrameKind::FinalScore` 直接进同一方法。
+- CLI：`ThisTurn` / `FinalScore` 按信道分流；人类档打印「终局评分 / 档次」，JSON 档输出
+  `type = final`。真机到终局不退出，下一张 `load` 帧照常换局；回放继续下一局。
+
+**② 搜索档候选分**
+
+- `MatsuriSearchTrainer` 新增 `SearchSummary` / `last_search()`：
+  Train 全量、教诲剪枝子集（映射回原动作下标）、事件选项三种搜索路径都缓存
+  「候选描述 / 加权均分 / 样本数 / 中选下标」；走手写 fallback 时 `last_search() = None`。
+- 在线记录：搜索档把候选分与 `candidate_n` 写入 `DecisionRecord`，`json_payload` 的
+  `score` 为真实搜索均分、`scenario_extra.score_source = "search"`；手写档仍 `score = 0`、
+  `candidate_n = 0`、`score_source = "hand"`，但候选打分表继续供面板显示。
+- `DecisionRecord.action_index` 修正为**候选表下标**（教诲分配剪枝后必须映射回子集位置）。
+
+**③ 在线档配置驱动**
+
+- 在线档与离线档读同一套默认层 + 工作目录覆盖层：
+  `data/ai_config.toml` + `data/matsuri_config.toml`。
+- `--trainer` 未显式给出时按 `[search].search_n` 决定：`0` = 手写，`>0` = 搜索（与离线
+  `matsuri` 训练员一致）；`MATSURI_SEARCH_N` / `MATSURI_SEARCH_RADICAL` 仍可临时覆盖。
+- **不新增 `--search-n`**：在线预算与离线共用配置文件。
+
+**④ JSON 接入可观测性**
+
+- `--json` 第一行固定 `{"type":"info","event":"connected","scenario":"matsuri"}`。
+- 单帧失败 → `{"type":"error","scenario":"matsuri","message":...}`；真机档继续监听下一帧，
+  回放档累计错误并在结束时报非零退出。
+
+**⑤ M4 决策一致率审计：暂不做（用户 2026-11-06 决定）**
+
+- 终局帧里的 `actions` 只作为复盘材料保留，在线档不读取、不比对。
+- 本轮 M4 验收口径缩为：终局帧三道闸、回放全量无解析错误、真机终局 / 换局不崩。

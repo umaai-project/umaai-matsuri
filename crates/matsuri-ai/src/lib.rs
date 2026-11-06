@@ -24,19 +24,25 @@
 //! ## 模块
 //!
 //! - [`frame`]：帧信封解析（剧本段 + `scenarioId` 校验 + 训练预览真值）
+//! - [`final_score`]：终局帧解析与剧本门禁
 //! - [`urafile`]：帧来源（真机目录 / 离线回放）
 //! - [`session`]：装配与「一帧一决策」主循环
 //! - [`online`]：路由、决策记录构造、`--verify-training` 验算
 //! - [`output`]：输出 DTO 与 JSON 行（10 字段，沿用旧 schema）
 
+pub mod final_score;
 pub mod frame;
 pub mod online;
 pub mod output;
 pub mod session;
 pub mod urafile;
 
+pub use final_score::parse_final_score;
 pub use frame::{MATSURI_SCENARIO_ID, ParsedFrame, TrainingFrame};
 pub use online::Route;
-pub use output::{OnlineTurnOutput, TrainingDeviation, TrainingReport, TurnKind};
+pub use output::{
+    FinalTurnOutput, OnlineTurnOutput, TrainingDeviation, TrainingReport, TurnKind,
+    connected_payload, error_payload,
+};
 pub use session::{FRIEND_FIRST_EVENT, OnlineSession, TrainerKind};
 pub use urafile::{FrameSource, ROOT_ENV, ReplaySource, resolve_live_root};

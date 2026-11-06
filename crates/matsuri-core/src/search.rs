@@ -10,6 +10,7 @@
 //! `search_n` 是**每个候选**的 rollout 次数（引擎口径）。搜索 interval 内全部
 //! `diag!` 由引擎 `DiagGuard` 静默，结束后只打一行摘要。
 
+use std::sync::Mutex;
 use std::time::Instant;
 
 use anyhow::{Result, bail};
@@ -47,6 +48,31 @@ impl LeafEvaluator for ScoreLeaf {
     }
 }
 
+/// 一次搜索里的单个候选（供在线输出 / 面板使用）
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchCandidate {
+    /// 候选在下标空间里的原始位置（动作下标 / 事件选项下标）
+    pub index: usize,
+    /// 人类可读描述
+    pub description: String,
+    /// 排名加权均分（与搜索排序同口径）
+    pub score: f64,
+    /// rollout 样本数
+    pub n: u32,
+}
+
+/// 最近一次搜索的摘要
+///
+/// `chosen` 与 `candidates[].index` 都在**调用方传入的完整候选空间**里：
+/// 教诲分配会在剪枝后搜索，本结构负责把子集下标映射回原动作下标。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SearchSummary {
+    /// 全部候选（按搜索输入顺序）
+    pub candidates: Vec<SearchCandidate>,
+    /// 中选候选在完整候选空间里的下标
+    pub chosen: usize,
+}
+
 /// FlatSearch 搜索训练员
 pub struct MatsuriSearchTrainer {
     /// 引擎扁平搜索内核
@@ -57,6 +83,8 @@ pub struct MatsuriSearchTrainer {
     scope: SearchScopeConfig,
     /// 搜索排序的 PT 偏好（与手写剪枝同口径）
     pt_favor_rate: f64,
+    /// 最近一次搜索摘要（在线档取候选分；`None` = 本次走了手写 fallback）
+    last: Mutex<Option<SearchSummary>>,
 }
 
 impl MatsuriSearchTrainer {
@@ -84,7 +112,61 @@ impl MatsuriSearchTrainer {
             fallback,
             scope,
             pt_favor_rate,
+            last: Mutex::new(None),
         })
+    }
+
+    /// 最近一次搜索摘要（在线档在 `select_action` / `select_event_choice` 之后取）
+    ///
+    /// 走手写 fallback 时返回 `None`（不构造伪分数，保持「0 = 无搜索分」口径）。
+    #[must_use]
+    pub fn last_search(&self) -> Option<SearchSummary> {
+        self.last
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// 写入最近一次搜索摘要
+    fn set_last(&self, summary: SearchSummary) {
+        *self
+            .last
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(summary);
+    }
+
+    /// 清空上一次摘要（本次走 fallback 时必须调用，避免把旧候选分贴到新决策上）
+    fn clear_last(&self) {
+        *self
+            .last
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
+
+    /// 搜索结果 → 摘要（`index_map` 把搜索输入下标映射回完整候选空间）
+    fn summary_of(
+        out: &umasim::search::SearchOutput<Action>,
+        index_map: impl Fn(usize) -> usize,
+        describe: impl Fn(usize) -> String,
+        chosen: usize,
+    ) -> SearchSummary {
+        SearchSummary {
+            candidates: out
+                .action_results
+                .iter()
+                .enumerate()
+                .map(|(position, result)| {
+                    let index = index_map(position);
+                    SearchCandidate {
+                        index,
+                        description: describe(index),
+                        score: result.weighted_mean(out.radical_factor),
+                        n: result.count(),
+                    }
+                })
+                .collect(),
+            chosen,
+        }
     }
 
     /// 候选剪枝：手写分排序取前 K，并强制并入手写 argmax
@@ -134,6 +216,12 @@ impl MatsuriSearchTrainer {
             .search::<NoTerminal, _>(game, actions, rng, |_| NoTerminal)?;
         let chosen = out.best_action_idx;
         let mean = out.action_results[chosen].weighted_mean(out.radical_factor);
+        self.set_last(Self::summary_of(
+            &out,
+            |index| index,
+            |index| actions[index].to_string(),
+            chosen,
+        ));
         diag!(
             "【搜索】T{} Train 候选 {} × {} → #{} {} 均值={:.0} 耗时={}ms",
             game.turn(),
@@ -165,6 +253,12 @@ impl MatsuriSearchTrainer {
         let picked = out.best_action_idx;
         let chosen = map[picked];
         let mean = out.action_results[picked].weighted_mean(out.radical_factor);
+        self.set_last(Self::summary_of(
+            &out,
+            |position| map[position],
+            |index| actions[index].to_string(),
+            chosen,
+        ));
         diag!(
             "【搜索】T{} 教诲 候选 {}→{} × {} → 方案{} 均值={:.0} 耗时={}ms",
             game.turn(),
@@ -236,6 +330,12 @@ impl MatsuriSearchTrainer {
             })?;
         let picked = out.best_action_idx;
         let mean = out.action_results[picked].weighted_mean(out.radical_factor);
+        self.set_last(Self::summary_of(
+            &out,
+            |position| position,
+            |index| format!("选项{}", index + 1),
+            picked,
+        ));
         diag!(
             "【搜索】T{} 事件#{} {} 选项{} × {} → 第{}项 均值={:.0} 耗时={}ms",
             game.turn(),
@@ -258,6 +358,8 @@ impl Trainer<MatsuriGame> for MatsuriSearchTrainer {
         actions: &[Action],
         rng: &mut StdRng,
     ) -> Result<usize> {
+        // 本次若走 fallback（单候选 / 关闭作用面），在线档不应看到上一次搜索的旧摘要
+        self.clear_last();
         if actions.is_empty() {
             bail!("候选动作为空，无法选择");
         }
@@ -297,6 +399,7 @@ impl Trainer<MatsuriGame> for MatsuriSearchTrainer {
         choices: &[Vec<EventChoice>],
         rng: &mut StdRng,
     ) -> Result<usize> {
+        self.clear_last();
         if !self.scope.event
             || choices.len() <= 1
             || choices.len() > EVENT_MAX_CHOICES
@@ -350,6 +453,45 @@ mod tests {
             game.search_score(1.0).expect("搜索分"),
             "占位叶估应等于 pt_favor=1.0 的搜索分"
         );
+    }
+
+    /// 最近一次搜索摘要：候选分 / 样本数 / 中选下标与返回值一致；fallback 时清空
+    #[test]
+    fn search_summary_matches_selected_candidate() {
+        let mut cfg = MatsuriConfig::default();
+        cfg.search.search_n = 1;
+        let trainer = MatsuriSearchTrainer::new(cfg, SearchConfig::default().with_search_n(1))
+            .expect("搜索训练员");
+        let mut game = crate::testing::sample_game();
+        game.stage = Stage::Train;
+        game.plan = game.derive_plan();
+        game.base.distribution = vec![Vec::new(); 5];
+
+        let actions = vec![Action::Train(0), Action::Rest];
+        let mut rng = StdRng::seed_from_u64(42);
+        let chosen = trainer
+            .select_action(&game, &actions, &mut rng)
+            .expect("搜索决策");
+        let summary = trainer.last_search().expect("搜索路径应留下摘要");
+        assert_eq!(summary.chosen, chosen, "摘要中选下标应与返回值一致");
+        assert_eq!(
+            summary.candidates.len(),
+            actions.len(),
+            "Train 搜索候选应覆盖全部动作"
+        );
+        for (position, candidate) in summary.candidates.iter().enumerate() {
+            assert_eq!(candidate.index, position, "Train 摘要保留下标顺序");
+            assert!(candidate.score.is_finite(), "候选分应为有限值");
+            assert!(candidate.n > 0, "搜索过就应有样本");
+            assert_eq!(candidate.description, actions[position].to_string());
+        }
+
+        // 单候选走 fallback → 必须清空上一次摘要（在线档不能贴旧分）
+        let single = vec![Action::Race];
+        trainer
+            .select_action(&game, &single, &mut rng)
+            .expect("单候选决策");
+        assert!(trainer.last_search().is_none(), "fallback 不应留下摘要");
     }
 
     /// 搜索随机流独立派生：不消费调用方决策流

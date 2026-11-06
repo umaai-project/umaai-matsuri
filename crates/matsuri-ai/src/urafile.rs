@@ -62,8 +62,8 @@ impl FrameSource {
 /// `game6310_*`），跨局按回合混排会让在线会话反复切局（跨帧基准每帧清零）。回放的多局
 /// 语义就是「一局跑完再跑下一局」。
 pub struct ReplaySource {
-    /// `(文件名, 原文)`
-    frames: VecDeque<(String, String)>,
+    /// `(文件名, 原文, 信道)`
+    frames: VecDeque<(String, String, FrameKind)>,
     /// 已吐出帧数（给宿主报进度）
     emitted: usize,
     /// 目录里出现的局号（升序、去重）
@@ -71,42 +71,60 @@ pub struct ReplaySource {
 }
 
 impl ReplaySource {
-    /// 载入目录里的全部回合帧（按 `turn` 升序、同回合按文件名升序）
+    /// 载入目录里的全部回合帧（按 `turn` 升序、同回合按文件名升序），
+    /// 并在**每局最后一个回合帧之后**追加该局的终局帧
     pub fn load(dir: &Path) -> Result<Self> {
         let dir = locate_replay_dir(dir)?;
         // (局号, 回合, 文件名, 路径)
-        let mut entries: Vec<(u64, i32, String, PathBuf)> = Vec::new();
+        let mut turns: Vec<(u64, i32, String, PathBuf)> = Vec::new();
+        // (局号, 文件名, 路径)
+        let mut finals: Vec<(u64, String, PathBuf)> = Vec::new();
         let reader = std::fs::read_dir(&dir)
             .with_context(|| format!("读回放目录失败：{}", dir.display()))?;
         for entry in reader {
             let entry = entry?;
             let name = entry.file_name().to_string_lossy().into_owned();
-            let Some((game, turn)) = replay_key_of(&name) else {
-                continue;
-            };
-            entries.push((game, turn, name, entry.path()));
+            if let Some((game, turn)) = replay_key_of(&name) {
+                turns.push((game, turn, name, entry.path()));
+            } else if let Some(game) = final_game_of(&name) {
+                finals.push((game, name, entry.path()));
+            }
         }
-        if entries.is_empty() {
+        if turns.is_empty() {
             bail!(
                 "回放目录里没有回合帧（{}）：期望 `game{{id}}_turn{{n}}.json`",
                 dir.display()
             );
         }
-        entries.sort_by(|a, b| {
+        turns.sort_by(|a, b| {
             a.0.cmp(&b.0)
                 .then_with(|| a.1.cmp(&b.1))
                 .then_with(|| a.2.cmp(&b.2))
         });
+        finals.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
         let games = {
-            let mut games: Vec<u64> = entries.iter().map(|entry| entry.0).collect();
+            let mut games: Vec<u64> = turns
+                .iter()
+                .map(|entry| entry.0)
+                .chain(finals.iter().map(|entry| entry.0))
+                .collect();
+            games.sort_unstable();
             games.dedup();
             games
         };
-        let mut frames = VecDeque::with_capacity(entries.len());
-        for (_, _, name, path) in entries {
-            let contents = std::fs::read_to_string(&path)
-                .with_context(|| format!("读回放帧失败：{}", path.display()))?;
-            frames.push_back((name, contents));
+
+        let mut frames = VecDeque::with_capacity(turns.len() + finals.len());
+        for game in &games {
+            for (_, _, name, path) in turns.iter().filter(|entry| entry.0 == *game) {
+                let contents = std::fs::read_to_string(path)
+                    .with_context(|| format!("读回放帧失败：{}", path.display()))?;
+                frames.push_back((name.clone(), contents, FrameKind::ThisTurn));
+            }
+            for (_, name, path) in finals.iter().filter(|entry| entry.0 == *game) {
+                let contents = std::fs::read_to_string(path)
+                    .with_context(|| format!("读回放终局帧失败：{}", path.display()))?;
+                frames.push_back((name.clone(), contents, FrameKind::FinalScore));
+            }
         }
         Ok(Self {
             frames,
@@ -117,13 +135,10 @@ impl ReplaySource {
 
     /// 下一帧（吐完返回 `None`）
     pub fn next_frame(&mut self) -> Option<RawFrame> {
-        let (name, contents) = self.frames.pop_front()?;
+        let (name, contents, kind) = self.frames.pop_front()?;
         self.emitted += 1;
         log::debug!("回放帧 #{name}（第 {} 帧）", self.emitted);
-        Some(RawFrame {
-            kind: FrameKind::ThisTurn,
-            contents,
-        })
+        Some(RawFrame { kind, contents })
     }
 
     /// 已吐出帧数
@@ -145,9 +160,10 @@ impl ReplaySource {
     }
 }
 
-/// 文件名 → `(局号, 回合号)`：`game{id}_turn{n}.json` / `game{id}_turn{n}_{k}.json` / `thisTurn.json`
+/// 文件名 → `(局号, 回合号)`：`game{id}_turn{n}.json` / `game{id}_turn{n}_{k}.json`
 ///
-/// 终局帧（`game{id}_finalScore.json`）不是回合帧，回放时跳过。
+/// `thisTurn.json`（滚动副本）与终局帧不是回合帧，不在这里匹配；
+/// 终局帧由 [`final_game_of`] 单独识别，并追加在每局末尾。
 fn replay_key_of(name: &str) -> Option<(u64, i32)> {
     if name == umaai::protocol::channel::FRAME_THIS_TURN {
         // `thisTurn.json` 是「当前这一帧」的滚动副本（内容等于某局的最后一帧）：
@@ -160,6 +176,19 @@ fn replay_key_of(name: &str) -> Option<(u64, i32)> {
     let digits: String = tail.chars().take_while(|ch| ch.is_ascii_digit()).collect();
     let turn: i32 = digits.parse().ok()?;
     Some((game, turn))
+}
+
+/// 终局帧文件名 → 局号：`game{id}_finalScore.json`
+///
+/// 旧固定名 `finalScore.json` 不含局号、引擎也不识别，回放时忽略（否则无法做局号匹配）。
+fn final_game_of(name: &str) -> Option<u64> {
+    let rest = name
+        .strip_prefix("game")?
+        .strip_suffix(umaai::protocol::channel::FINAL_SCORE_SUFFIX)?;
+    if rest.is_empty() || !rest.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    rest.parse().ok()
 }
 
 /// 回放目录定位：给的可能是游戏根（含 `.portable`），也可能是插件目录本身
@@ -209,9 +238,14 @@ mod tests {
         assert_eq!(replay_key_of("thisTurn.json"), None, "滚动副本不参与回放");
         assert_eq!(replay_key_of("game6310_finalScore.json"), None);
         assert_eq!(replay_key_of("notes.txt"), None);
+
+        assert_eq!(final_game_of("game6310_finalScore.json"), Some(6310));
+        assert_eq!(final_game_of("finalScore.json"), None, "旧固定名不识别");
+        assert_eq!(final_game_of("game6310_turn40.json"), None);
+        assert_eq!(final_game_of("game_finalScore.json"), None);
     }
 
-    /// 回放顺序：**先按局分组**，局内按回合、同回合按文件名；终局帧不参与
+    /// 回放顺序：**先按局分组**，局内按回合、同回合按文件名；终局帧追加在局末
     #[test]
     fn replay_orders_by_game_then_turn() {
         let dir = std::env::temp_dir().join(format!("matsuri_replay_{}", std::process::id()));
@@ -236,8 +270,8 @@ mod tests {
         }
         assert_eq!(
             order,
-            vec!["g1t0", "g1t1", "g1t1b", "g1t2", "g2t0", "g2t1"],
-            "先跑完 1 局再跑 2 局；同回合 `_k` 在后"
+            vec!["g1t0", "g1t1", "g1t1b", "g1t2", "final", "g2t0", "g2t1"],
+            "先跑完 1 局再跑 2 局；同回合 `_k` 在后；终局帧在局末"
         );
         assert_eq!(replay.games(), &[1, 2]);
         let _ = std::fs::remove_dir_all(&dir);

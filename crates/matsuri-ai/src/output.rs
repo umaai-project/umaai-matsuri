@@ -51,6 +51,8 @@ pub struct OnlineTurnOutput {
     pub game: MatsuriGame,
     /// 本帧的动作候选（面板列名；跳过帧为空）
     pub actions: Vec<Action>,
+    /// 面板用候选分 `(动作下标, 分数)`；JSON 不读（手写档为打分表，搜索档为搜索均分）
+    pub candidate_scores: Vec<(usize, f64)>,
 }
 
 impl OnlineTurnOutput {
@@ -145,6 +147,60 @@ impl OnlineTurnOutput {
             "reason": reason,
         })
     }
+}
+
+/// 终局帧处理结果（`matsuri-ai` 只产出值，渲染归 CLI）
+#[derive(Debug, Clone)]
+pub struct FinalTurnOutput {
+    /// 终局回合（0 基）
+    pub turn: i32,
+    /// 育成局号
+    pub epoch: u64,
+    /// 剧本名（JSON `scenario` 字段）
+    pub scenario: String,
+    /// 是否被本会话接受（局号不符 / 数值不可用 → false）
+    pub accepted: bool,
+    /// 终局评分（点技能前口径）；未接受时 `None`
+    pub score: Option<i32>,
+    /// 档次名；未接受时 `None`
+    pub rank: Option<String>,
+    /// 未接受原因
+    pub reason: Option<String>,
+}
+
+impl FinalTurnOutput {
+    /// 终局帧的 JSON 行（`type = final`）
+    #[must_use]
+    pub fn json_payload(&self) -> Value {
+        OnlineTurnOutput::final_payload(
+            self.turn,
+            &self.scenario,
+            self.accepted,
+            self.score,
+            self.rank.as_deref(),
+            self.reason.as_deref(),
+        )
+    }
+}
+
+/// 启动握手：`--json` 模式的第一行，告诉消费者「已开始接收帧」
+#[must_use]
+pub fn connected_payload(scenario: &str) -> Value {
+    json!({
+        "type": "info",
+        "event": "connected",
+        "scenario": scenario,
+    })
+}
+
+/// 单帧失败（真机档不终止循环；由 CLI 决定是否继续）
+#[must_use]
+pub fn error_payload(message: &str) -> Value {
+    json!({
+        "type": "error",
+        "scenario": "matsuri",
+        "message": message,
+    })
 }
 
 /// 训练验算偏差表（`--verify-training`）
