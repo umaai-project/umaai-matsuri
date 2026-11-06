@@ -17,6 +17,11 @@ path = "src/bin/bench.rs"
 name = "sweep"
 path = "src/bin/sweep.rs"
 
+# 测卡：卡池扫描 / 卡组装配 / 多卡组同种子配对跑测
+[[bin]]
+name = "cardtest"
+path = "src/bin/cardtest.rs"
+
 [features]
 # CPU 剖面（pprof）：只在 bench 的 `prof` 子命令用到，默认不编译、不进 core / 下游
 profile = ["dep:pprof"]

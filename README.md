@@ -88,7 +88,8 @@
 | `crates/matsuri-cli/src/logging.rs` | stderr 日志器：消费 `[output] log_level`，承接引擎 / 剧本 `diag!` 记录（默认 `info`、`off` 静默） |
 | `crates/matsuri-sim` | 基线裁判（`baseline` 模块：JSON 解析 / 自检 / 判定）；测量函数不放这里 |
 | `crates/matsuri-ai` | 在线决策核心（骨架） |
-| `crates/matsuri-tools` | 外围工具与**全部测量入口**：`bench`（整局 / 决策分段 / rollout 分布 / 固定根 / 阶段拆分 / 分配计数 / 平铺并行对照 / 剖面）、`sweep`（开局预设 / 全马娘扫测）、`baseline`（按 `baselines/` 复跑并判定）、`audit_search` / `probe_fail`（固定根分辨率审计 / rollout 失败定位）；测卡 / 复盘待补 |
+| `crates/matsuri-tools` | 外围工具与**全部测量入口**：`bench`（整局 / 决策分段 / rollout 分布 / 固定根 / 阶段拆分 / 分配计数 / 平铺并行对照 / 剖面）、`sweep`（开局预设 / 全马娘扫测）、`baseline`（按 `baselines/` 复跑并判定）、`audit_search` / `probe_fail`（固定根分辨率审计 / rollout 失败定位）、`cardtest`（测卡：卡池榜 / 卡组装配 / 多卡组同种子配对跑测）；复盘待补 |
+| `crates/matsuri-tools/src/bin/cardtest.rs` | 测卡工具：`pool`（卡池榜：面板分 / 得意率 / 羁绊 / 链接钉位 / 剔除项）、`build`（构成码 5 位 + `panel` / `measured` 装配，`--with-default` 带仓内默认参照臂）、`run`（多卡组同种子配对，出对比表 + 评分归因 + 决策分布 + 分辨率） |
 | `data/` | 引擎静态表 + 剧本资产 `scenario_matsuri.json` + 双配置默认层 |
 | `docs/` | 本仓文档骨架 |
 
@@ -115,6 +116,10 @@ $env:MATSURI_SEARCH_N=0; cargo run --release --bin matsuri --   # 手写档
 cargo run --release --bin matsuri -- random     # 引擎随机基线（对照用）
 cargo run --release --bin matsuri -- manual     # 手动核对面板（动作 Inquire；Esc 退出，非 TTY 退回编号输入）
 $env:MATSURI_SEARCH_N=0; cargo run --release --bin matsuri -- matsuri --explain   # 决策解释（仅手写档）
+# 测卡（手写档；卡组清单在 decks/，实验输出落 logs/）
+./target/release/cardtest pool --top 12                                   # 卡池榜（含链接钉位 / 剔除项）
+./target/release/cardtest build --comp all --pick measured --with-default --out decks/measured.csv
+./target/release/cardtest run --decks decks/measured.csv --ref default_21101 --games 3000 --seed 82000
 # 诊断日志级别见 data/ai_config.toml [output] log_level（默认 info；工作目录覆盖层可设 off 静默）
 
 cargo fmt --all --check

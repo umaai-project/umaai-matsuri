@@ -54,12 +54,12 @@
 | `crates/matsuri-core/src/search.rs` | FlatSearch 搜索训练员 `MatsuriSearchTrainer`（Train / 教诲 / 事件三路 + 事件队列续跑 + 叶估接口） |
 | `crates/matsuri-core/src/value.rs` | 训练员估值层（官方评分边际 + pt_favor + 动作 / 事件 / 教诲分配折算；私有模块） |
 | `crates/matsuri-core/src/testing.rs` | 测试定位件（仓根 / 数据根） |
-| `crates/matsuri-sim` | 离线模拟：跑一局 / 批量跑局 / 基线裁判 / 测卡；只出 lib |
+| `crates/matsuri-sim` | 离线模拟：基线裁判（跑局与判定原语）；只出 lib。测量入口不放这里 |
 | `crates/matsuri-ai` | 在线决策：帧段解析 / Session 接线 / 决策循环；只出 lib |
 | `crates/matsuri-cli` | 终端入口：bin `matsuri`（切 `matsuri` / `random` / `manual`） |
 | `crates/matsuri-cli/src/manual.rs` | 手动核对面板（人工核对机制）：状态取 `MatsuriView`（纯呈现）+ 育成配置 + 彩色训练明细表 + 剧本资源 / 教诲分配结果 + 动作槽增量预览 + Inquire 动作 / 事件选择 |
 | `crates/matsuri-cli/src/logging.rs` | stderr 日志器：消费 `[output] log_level`，承接 `diag!` 记录 |
-| `crates/matsuri-tools` | 外围工具：测卡 / 复盘；单 bin 多子命令 |
+| `crates/matsuri-tools` | 外围工具（一个子面一个 bin）：`bench` / `sweep` / `cardtest`（测卡）/ `audit_search` / `probe_fail`；复盘待补 |
 
 - **契约 trait impl 不可拆文件**：一个 trait 的 `impl` 必须整体落在同一文件。
 - **可见性**：crate 内跨模块调用标 `pub(crate)`；跨 crate 消费面标 `pub`。

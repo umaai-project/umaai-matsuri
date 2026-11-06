@@ -134,6 +134,7 @@
 | 手动档冒烟 | `manual` 管道输入（全 0）跑满 78 回合（非 TTY 动作选择退回编号输入）；面板关键块（剧本资源 / T2 闸门标记 / 未分配 / 训练表 / 事件回显 / **教诲名称 / 演目槽变化行 / 配色图例**）、S6 关键事件回显（含 **駿大祭合宿の申し出**）、非 TTY 无 ANSI | 退出码 + 文本标记 |
 | 手写档 explain 冒烟 | `matsuri matsuri --explain` 跑满整局：每回合 **手动档同款面板** + 「【候选打分】」+「【决策理由】」；教诲分配 **6 窗口 top-10**；终局块正常 | 退出码 + 文本标记 + 候选表 ≥80 处 |
 | 搜索档冒烟 | `MATSURI_SEARCH_N=1 matsuri matsuri` 跑满整局：退出码 0、stderr 出现 `【搜索】` 摘要、stdout 出现终局评分 | 退出码 + 文本标记 |
+| 测卡冒烟 | `cardtest build --comp all --pick panel --with-default --out decks/panel.csv` 出 5 行（4 套 + 默认参照臂，kinds=5、warnings=0）；`cardtest run --decks decks/panel.csv --ref default_21101 --games 300 --seed 82000` 出对比表 / 评分归因 / 决策分布 / 分辨率四块，参照臂 Δ=0 且 W/L/T=0/0/n；**同参数两次 diff 为空**（已核） | 退出码 + 两次输出逐行一致 |
 | 基线 | 一基线一 JSON（`input` 自持、`expect` 逐项容差、`meta` 不含路径） | 自动比对，失败返回 `Err` |
 
 - 重录命令：`<cargo ... baseline --update>`（S9 落地）
