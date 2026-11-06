@@ -484,7 +484,7 @@ fn cmd_baseline(env: &Env, args: &[String]) -> Result<()> {
             case.name, case.uma, case.qie, case.shield, case.note
         );
         println!(
-            "trainer,search_n,games,score_mean,score_delta,score_allow,pt_mean,pt_delta,pt_allow,verdict"
+            "trainer,search_n,games,score_mean,score_sd,score_delta,score_allow,pt_mean,pt_sd,pt_delta,pt_allow,verdict"
         );
         for record in &case.records {
             let run_search = match want.as_str() {
@@ -542,15 +542,19 @@ fn cmd_baseline(env: &Env, args: &[String]) -> Result<()> {
                     .collect::<Result<Vec<_>>>()?
             };
             let verdict = judge(record, &samples, sigma, rel);
+            let score: Vec<f64> = samples.iter().map(|(s, _)| f64::from(*s)).collect();
+            let pts: Vec<f64> = samples.iter().map(|(_, p)| f64::from(*p)).collect();
             println!(
-                "{},{},{},{:.1},{:+.1},{:.1},{:.1},{:+.1},{:.1},{}（{:.1}s）",
+                "{},{},{},{:.1},{:.1},{:+.1},{:.1},{:.1},{:.1},{:+.1},{:.1},{}（{:.1}s）",
                 record.trainer,
                 record.search_n,
                 n,
-                samples.iter().map(|(s, _)| f64::from(*s)).sum::<f64>() / n as f64,
+                umaai_core::stats::mean(&score),
+                umaai_core::stats::stdev(&score),
                 verdict.score_delta,
                 verdict.score_allow,
-                samples.iter().map(|(_, p)| f64::from(*p)).sum::<f64>() / n as f64,
+                umaai_core::stats::mean(&pts),
+                umaai_core::stats::stdev(&pts),
                 verdict.pt_delta,
                 verdict.pt_allow,
                 if verdict.ok { "OK" } else { "DRIFT" },

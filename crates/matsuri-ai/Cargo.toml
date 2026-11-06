@@ -1,8 +1,19 @@
-# 剧本在线决策核心（帧段解析 / Session 接线 / 决策循环）
+# 剧本在线决策核心（帧段解析 / 在线编排 / 决策循环）
 #
-# 本仓只立骨架；依赖与模块待实现时再登记。
+# 只出 lib：不打印、不解析参数、不落盘（终端外壳归 `matsuri-cli`）。
 [package]
 name = "matsuri-ai"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[dependencies]
+matsuri-core.workspace = true
+umaai-core.workspace = true
+umasim.workspace = true
+umaai.workspace = true
+anyhow.workspace = true
+log.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true

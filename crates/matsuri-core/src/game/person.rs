@@ -130,6 +130,12 @@ impl MatsuriPerson {
         self.base.chara_id
     }
 
+    /// 羁绊值（呈现 / 还原自检用；引擎 `Person` 契约同样有该字段）
+    #[must_use]
+    pub fn friendship(&self) -> i32 {
+        self.base.friendship
+    }
+
     /// 人头短名（终端展示用；编成外神驹显示 `[NPC]` + 角色名前两字）
     #[must_use]
     pub fn short_name(&self) -> String {

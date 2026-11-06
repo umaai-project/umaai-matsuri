@@ -11,7 +11,9 @@ pub mod deck;
 mod diag;
 pub mod distribute;
 pub mod event;
+pub mod festa;
 pub mod person;
+pub mod restore;
 pub mod roster;
 pub mod settle;
 pub mod stage;
@@ -25,9 +27,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
 use umaai::Config;
+use umaai_core::Array5;
 use umaai_core::gamedata::{ActionValue, EventData};
 use umaai_core::rng::StrategyRng;
-use umaai_core::Array5;
 use umasim::game::base::BaseGame;
 use umasim::game::{Game, InheritInfo, TrainingBasicTable};
 
@@ -35,6 +37,7 @@ pub use action::Action;
 pub use deck::{DeckError, DeckReport, DeckWarning};
 pub use person::{MatsuriPerson, PersonOrigin};
 pub use stage::{CampState, Stage, TurnPlan, URA_START_TURN};
+pub use train::{TrainingBreakdown, TrainingLayers};
 pub use view::{
     BoardView, CampView, CheckPointNeed, EVENT_LOG_CAPACITY, EventRecord, FriendView, MatsuriView,
     MatsuriYear, MemberView, PersonView, ResourceView, ScheduleView, SelfRace, TurnView, UmaView,
@@ -46,6 +49,37 @@ use crate::data::{ActLevelEffect, CheckPointResult, MatsuriData};
 ///
 /// 0–1 回合剧本系统还没开始：没有担当分配，训练 / 休息 / 出行 / 事件也都不获取演目槽等剧本资源。
 pub const SCENARIO_START_TURN: i32 = 2;
+
+/// 「表示値折半」阈值（`ReviseOver1200`）：属性 ≥ 1200 时，游戏**显示**的训练上昇量
+/// 按折半口径给出（帧内 `baseGame.training` 就是这份表示値）。
+///
+/// **实际增量不折半**：本仓 `preview_training` 给的是真值。两者对照（`--verify-training`）
+/// 时要把帧值 ×2 还原，见 `matsuri-ai::online::verify_training`。
+/// 真机 78 帧核对：跨过 1200 的那一回合起，帧值正好是真值的一半（1200 以下两者相等）。
+pub const DISPLAY_HALF_FROM_STATUS: i32 = 1200;
+
+/// 把帧里的「表示値」还原成**未折半的实际增益**
+///
+/// 帧的 `baseGame.training` 永远是表示値（`ReviseOver1200`），分两种情形：
+///
+/// - 当前值已 ≥1200：整段增益都折半显示 → `shown × 2`；
+/// - 当前值 <1200：**没跨线的部分不折，只有超出 1200 的部分折半**
+///   → `(1200 − current) + (shown − (1200 − current)) × 2`。
+///
+/// 第二种是跨线回合的正解：T33 速 1191、帧 16 → 实际 9 + 7×2 = 23（本仓算 23）。
+/// 直接把跨线回合当「shown × 2」会翻倍，当「shown」会少一半。
+#[must_use]
+pub fn restore_displayed_gain(current: i32, shown: i32) -> i32 {
+    if current >= DISPLAY_HALF_FROM_STATUS {
+        return shown * 2;
+    }
+    let room = DISPLAY_HALF_FROM_STATUS - current;
+    if shown > room {
+        room + (shown - room) * 2
+    } else {
+        shown
+    }
+}
 
 /// 「铁心的挑战者」：生野狄杜斯系马娘（106301 / 106302）的生涯赛比赛加成
 ///
@@ -267,6 +301,25 @@ impl MatsuriGame {
         race_grades: &[i32],
         data: Arc<MatsuriData>,
     ) -> Result<Self> {
+        let base = BaseGame::new(
+            uma_id,
+            deck_ids,
+            inherit,
+            // 剧本 15 专属上限（1200 以上不减半口径）；`consts` 只是通用兜底默认值
+            data.limits.five_status_limit_base,
+            race_grades,
+        )?;
+        let mut game = Self::assemble(base, data)?;
+        game.init_persons()?;
+        Ok(game)
+    }
+
+    /// 静态装配：把**与底座无关**的剧本零件（稽古表 / 発表会行 / 编成种类）装到既有底座上
+    ///
+    /// 建局与在线还原共用：底座一个来自 `BaseGame::new`，一个来自帧（`to_base_game`），
+    /// 但两份静态零件完全一致，抽出来避免两处漂移。**不建人头**（`init_persons` 由调用方
+    /// 决定时序：建局必须建，还原建完即被帧覆盖）。
+    pub(crate) fn assemble(base: BaseGame, data: Arc<MatsuriData>) -> Result<Self> {
         let keiko_table = build_keiko_table(&data.training.keiko.junior);
         let keiko_classic_table = build_keiko_table(&data.training.keiko.classic);
         // 発表会累计行按（场次, 结果）预解析：读取只查表，不重复扫全表
@@ -282,14 +335,7 @@ impl MatsuriGame {
             }
         }
         let mut game = Self {
-            base: BaseGame::new(
-                uma_id,
-                deck_ids,
-                inherit,
-                // 剧本 15 专属上限（1200 以上不减半口径）；`consts` 只是通用兜底默认值
-                data.limits.five_status_limit_base,
-                race_grades,
-            )?,
+            base,
             persons: Vec::new(),
             stage: Stage::Begin,
             strategy: None,
@@ -320,7 +366,6 @@ impl MatsuriGame {
             config: crate::MatsuriConfig::default(),
         };
         game.deck_kinds_ge5 = game.compute_deck_kinds_ge5();
-        game.init_persons()?;
         Ok(game)
     }
 

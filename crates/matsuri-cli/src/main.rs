@@ -11,6 +11,7 @@
 mod explain;
 mod logging;
 mod manual;
+mod online;
 mod panel;
 
 use std::process::ExitCode;
@@ -29,15 +30,29 @@ use umasim::trainer::RandomTrainer;
 ///
 /// 建仓时把引擎 `gamedata/` 的六张静态表与 `ai_config.toml` 拷入 `data/`，之后拷仓即跑。
 /// 引擎覆盖层约定保留：工作目录放同名 `ai_config.toml` / `matsuri_config.toml` 存在才合并。
-const DATA_ROOT: &str = "data";
+pub(crate) const DATA_ROOT: &str = "data";
 
 fn main() -> ExitCode {
-    match run() {
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    match dispatch(&argv) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("错误: {err:#}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// 顶层分流：`--version` / `online` 子命令 / 离线跑局（原有用法不变）
+fn dispatch(argv: &[String]) -> Result<()> {
+    if argv.iter().any(|arg| arg == "--version" || arg == "-V") {
+        println!("matsuri {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+    match argv.first().map(String::as_str) {
+        Some("online") => online::run(&argv[1..]),
+        // 兼容原有用法：`matsuri [训练员]`（缺省 matsuri）
+        _ => run(),
     }
 }
 

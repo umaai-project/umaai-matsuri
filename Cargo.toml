@@ -30,6 +30,7 @@ umaai-cli = { path = "../umaai_next/crates/umaai-cli" }
 # 本仓内部 crate（有消费者时再登记下一个）
 matsuri-core = { path = "crates/matsuri-core" }
 matsuri-sim = { path = "crates/matsuri-sim" }
+matsuri-ai = { path = "crates/matsuri-ai" }
 
 anyhow = "1.0.104"
 # 日志门面（诊断 `diag!` 的运行时出口；与引擎同版本；`std` 特性供入口层装箱日志器）

@@ -14,7 +14,7 @@ use rand::Rng;
 use rand::seq::IndexedRandom;
 use umaai_core::gamedata::{ActionValue, EventData};
 use umaai_core::{Data, Ill};
-use umasim::game::{FriendOutState, Game, Person, sample_bucket};
+use umasim::game::{FriendOutState, Game, sample_bucket};
 
 use super::{MatsuriGame, PersonOrigin};
 use crate::diag;

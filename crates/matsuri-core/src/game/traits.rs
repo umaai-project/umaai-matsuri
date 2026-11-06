@@ -8,7 +8,7 @@ use anyhow::{Result, anyhow};
 use rand::Rng;
 use rand::rngs::StdRng;
 use umaai_core::gamedata::{ActionValue, EventData};
-use umaai_core::{AttributeArray, Ill};
+use umaai_core::{Array6, AttributeArray, Ill};
 use umasim::game::{
     CardTrainingEffect, Game, Person, PersonType, StageId, SupportCard, Trainer,
     TrainingBasicTable, TrainingValueSource, Uma,
@@ -17,6 +17,7 @@ use umasim::search::FlatSearchGame;
 
 use super::advice::ParticipantAdvice;
 use super::person::{MatsuriPerson, PersonOrigin};
+use super::train::TrainingUpper;
 use super::{Action, EventRecord, MatsuriGame, Stage};
 use crate::MAX_TURN;
 use crate::data::CheckPointResult;
@@ -469,25 +470,82 @@ impl Game for MatsuriGame {
 
 impl MatsuriGame {
     /// [`Game::calc_training_value`] 的 advice 复用版（同一次预览 / 结算只算一次参与教诲）
+    /// 把剧本上层并入引擎下层（五维 / PT / 体力 / 干劲）
+    ///
+    /// **不做 1200 半减**：真机帧里的 `training` 是**表示値**（1200 以上按 `ReviseOver1200`
+    /// 折半显示），实际增量就是本函数算出的未折半值——折半只影响「展示 / 验算时与帧比对」，
+    /// 由验算层还原（见 `matsuri-ai::online::verify_training`）。
+    pub(crate) fn merge_upper(
+        &self,
+        lower: &ActionValue,
+        upper: &TrainingUpper,
+        keiko: bool,
+    ) -> ActionValue {
+        let _ = keiko;
+        let mut value = lower.clone();
+        for axis in 0..5 {
+            // `keiko_flat` 已并入 `upper.status`（见 `training_upper_with`），此处不再重加
+            value.status_pt[axis] += upper.status[axis];
+        }
+        value.status_pt[5] += upper.skill_pt;
+        value.vital = upper.vital;
+        value.motivation += upper.motivation;
+        value
+    }
+
     pub(crate) fn calc_training_value_inner(
         &self,
         buffs: &CardTrainingEffect,
         train: usize,
         advice: &ParticipantAdvice,
     ) -> Result<ActionValue> {
-        let mut value = self.default_calc_training_value(buffs, train)?;
+        let mut lower = self.default_calc_training_value(buffs, train)?;
+        self.clip_lower_gain(&mut lower);
         let keiko = self.keiko_settling.get();
-        let upper = self.training_upper_with(train, &value, keiko, advice);
-        for status in 0..5 {
-            value.status_pt[status] += upper.status[status];
-            if keiko {
-                value.status_pt[status] += upper.keiko_flat;
+        let upper = self.training_upper_with(train, &lower, keiko, advice);
+        let mut value = self.merge_upper(&lower, &upper, keiko);
+        value.status_pt = self.clip_to_status_limit(&value.status_pt);
+        Ok(value)
+    }
+
+    /// 下层（`lower`）单次增益上限：`rules.training_upper_cap`（本剧本 100）
+    ///
+    /// 真机证据：速位稽古的 `lower` 在乘子积 4.5–5.7 之间变化，帧值却恒为 50（表示値，
+    /// 即实际 100）—— 说明**下层被 100 卡住**；未到 100 的回合（T36/T37/T39 的实际 ≈98）
+    /// 帧才是 49。其余训练位的 `lower` 都在 100 以下，所以从来不受影响。
+    ///
+    /// 顺序很重要：**先裁下层，再算上层**（上层是按 `lower` 的倍数算的）。
+    /// 若反过来先算上层再裁下层，速位会多出 20 左右（T40 帧 114 / 旧算法 132）。
+    pub(crate) fn clip_lower_gain(&self, lower: &mut ActionValue) {
+        let cap = self.data.rules.training_upper_cap;
+        // 六位都裁（含 PT）：旧实现（`umaai-rs-ref` 的拉面 / 温泉两个剧本）是
+        // `for i in 0..6 { status_pt[i] = status_pt[i].min(100) }`，注释写的也是
+        // 「剧本规则：下层不超过 100」，PT 并未豁免。
+        for slot in lower.status_pt.iter_mut() {
+            if *slot > cap {
+                *slot = cap;
             }
         }
-        value.status_pt[5] += upper.skill_pt;
-        value.vital = upper.vital;
-        value.motivation += upper.motivation;
-        Ok(value)
+    }
+
+    /// 按「属性上限剩余量」逐轴裁剪训练增益（**单次训练上限**）
+    ///
+    /// 真机：属性练到上限前一回合，帧给出的增量正好等于 `上限 − 当前值`（例 6310 T60 耐
+    /// 2366 / 上限 2506 → 帧 140；T76 同形）。不裁剪会把「还能涨多少」估高一个量级，
+    /// 让 AI 在已经满的属性上继续堆训练。
+    ///
+    /// PT（`status_pt[5]`）、体力、干劲不在裁剪范围内。
+    pub(crate) fn clip_to_status_limit(&self, status_pt: &Array6) -> Array6 {
+        let mut out = *status_pt;
+        for (axis, slot) in out.iter_mut().take(5).enumerate() {
+            let current = self.uma().five_status[axis];
+            let limit = self.uma().five_status_limit[axis];
+            let room = (limit - current).max(0);
+            if *slot > room {
+                *slot = room;
+            }
+        }
+        out
     }
 
     /// [`Game::calc_training_failure_rate`] 的 advice 复用版

@@ -129,7 +129,9 @@ pub struct CampState {
 const FORCED_REST_TURNS: &[(u32, i32)] = &[(1093, 65)];
 
 /// 本回合是否因马娘特殊事件改为强制休息（分类不变，只覆盖实际动作）
-fn is_forced_rest_turn(chara_id: u32, turn: i32) -> bool {
+///
+/// 在线还原也要用它重算 `forced_rest`（帧不带该分类），故对 crate 可见。
+pub(crate) fn is_forced_rest_turn(chara_id: u32, turn: i32) -> bool {
     FORCED_REST_TURNS.contains(&(chara_id, turn))
 }
 

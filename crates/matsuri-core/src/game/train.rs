@@ -39,6 +39,91 @@ pub(crate) struct TrainingUpper {
     pub motivation: i32,
 }
 
+/// 训练预览的分层结果（[`MatsuriGame::preview_training_layers`]）
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrainingLayers {
+    /// 引擎下层（**未含**剧本上层）
+    pub lower: ActionValue,
+    /// 剧本上层（已折算成与 `lower` 同量纲：五维含稽古 flat、`status_pt[5]` 为 PT）
+    pub upper: ActionValue,
+    /// 合计（= 下层 + 上层；与 [`MatsuriGame::preview_training`] 同值）
+    pub total: ActionValue,
+    /// 稽古「全基础 +N」flat 量（已计入 `upper` 与 `total`；独立留档便于排查）
+    pub keiko_flat: i32,
+    /// 失败率（%）
+    pub failure_rate: f32,
+    /// 闪彩（友情训练）人数
+    pub shining: usize,
+    /// 被「属性上限剩余量」裁掉的量（逐轴；0 = 没到上限）
+    pub clip: [i32; 5],
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrainingBreakdown {
+    /// 下层输入：基础表行（`[速,耐,力,根,智,PT,体力]`，未乘任何加成）
+    pub basic_row: [i32; 7],
+    /// 下层**未裁**值（六位；与裁后对照可看出 `training_upper_cap` 截掉了多少）
+    pub lower_raw: [i32; 6],
+    /// 下层裁后值（六位）
+    pub lower_clipped: [i32; 6],
+    /// 下层输入：五维成长率（已达标的属性）
+    pub status_bonus: [i32; 6],
+    /// 下层输入：副属性加成（卡羁绊等，逐轴加到基础值上）
+    pub bonus: [i32; 6],
+    /// 下层输入：参与人数（决定「每多 1 人 +5%」）
+    pub person_count: i32,
+    /// 下层输入：卡友情合计 %（多人乘算后的值）
+    pub youqing: f32,
+    /// 下层输入：训练效果 %
+    pub xunlian: i32,
+    /// 下层输入：干劲效果 %
+    pub ganjing: i32,
+    /// 干劲档位（1–5）
+    pub motivation: i32,
+    /// 上层乘子：発表会友情 %
+    pub friendship_presentation: i32,
+    /// 上层乘子：協力教え友情 %
+    pub friendship_cooperate: i32,
+    /// 上层乘子：演目 Lv 友情 %（仅稽古）
+    pub friendship_act: i32,
+    /// 上层乘子：稽古教诲友情 %（仅稽古）
+    pub friendship_keiko: i32,
+    /// 上层乘子：训练效果合计 %（非友情训练效果 + 助力支撑 + 稽古效果）
+    pub training_effect: i32,
+    /// 上层乘子：主获得合计 %
+    pub main_gain: i32,
+    /// 上层乘子：副获得 %
+    pub sub_gain: i32,
+    /// 上层上限（基础 + 特化 + 演目）
+    pub status_cap: i32,
+    /// PT 上层上限（基础 + 演目 `sp_limit`；**不吃特化 `status_limit`**，见 `training_upper_with`）
+    pub sp_cap: i32,
+    /// PT 上层未裁增益（`min` 之前）
+    pub sp_gain_raw: i32,
+    /// 稽古「全基础 +N」
+    pub keiko_flat: i32,
+    /// 下层体力消耗降低 %
+    pub vital_cost_drop: f32,
+    /// 上层体力消耗降低 %（仅稽古）
+    pub keiko_vital_cost_drop: i32,
+}
+
+impl TrainingLayers {
+    /// 把上层折成与下层同量纲：五维加稽古 flat、PT 落 `status_pt[5]`
+    fn upper_value(upper: &TrainingUpper, keiko: bool) -> ActionValue {
+        let mut value = ActionValue::default();
+        let _ = keiko;
+        for axis in 0..5 {
+            // `keiko_flat` 已并入 `upper.status`（见 `training_upper_with`），此处不再重加
+            value.status_pt[axis] = upper.status[axis];
+        }
+        value.status_pt[5] = upper.skill_pt;
+        value.vital = upper.vital;
+        value.motivation = upper.motivation;
+        value
+    }
+}
+
 /// 训练标签（诊断用；`Display` 只在日志打开时求值，避免每次结算一次 `String` 分配）
 pub(crate) struct TrainingLabel {
     /// 是否稽古
@@ -149,6 +234,160 @@ impl MatsuriGame {
             advice,
             shining,
         ))
+    }
+
+    /// 训练预览的**乘子快照**（只读诊断，不参与决策）
+    ///
+    /// 与 [`Self::preview_training_layers`] 同一套取值口径，只是把上层每个乘子单独摊开，
+    /// 便于对着真机帧反解「是人数 / 卡友情 / 剧本友情 / 训练效果 哪一个偏了」。
+    pub fn training_breakdown(&self, train: usize, keiko: bool) -> Result<TrainingBreakdown> {
+        if train >= 5 {
+            return Err(anyhow::anyhow!("普通训练下标越界: {train}（训练位 0–4）"));
+        }
+        let _quiet = umaai_core::diag::DiagGuard::suppress();
+        let _guard = self.keiko_settling.scoped(keiko);
+        let advice = self.participant_advice(train);
+        let effect = advice.effect;
+        let buffs = self.calc_training_buff(train)?;
+        let table = umasim::game::TrainingValueSource::training_basic_table(self);
+        let rows = table
+            .get(train)
+            .ok_or_else(|| anyhow::anyhow!("训练类型错误: {train}"))?;
+        let level = self.train_level(train).clamp(1, rows.len()) - 1;
+        let mut basic_row = [0i32; 7];
+        basic_row.copy_from_slice(&rows[level][..7.min(rows[level].len())]);
+        let b = &self.uma().five_status_bonus;
+        let status_bonus = [b[0], b[1], b[2], b[3], b[4], 0];
+
+        let presentation = self.presentation_bonus();
+        let five_types = self.deck_has_five_types();
+        let friend_training = self.shining_count(train) > 0;
+        let act = self.act_of_train(train);
+        let act_effect = keiko.then(|| self.act_effect(act));
+
+        let mut friendship_presentation = 0;
+        let mut friendship_cooperate = 0;
+        let mut friendship_act = 0;
+        let mut friendship_keiko = 0;
+        if friend_training {
+            friendship_presentation = presentation.friendship;
+            friendship_cooperate = effect.cooperate_friendship;
+            if let Some(act) = act_effect {
+                friendship_act = act.friendship;
+                friendship_keiko = effect.keiko_friendship;
+            }
+        }
+        let mut training_effect = 0;
+        if !friend_training {
+            training_effect += effect.non_friend_training_effect;
+        }
+        if self.assist_support_left > 0 {
+            training_effect += self.data.rules.assist_support.effect;
+        }
+        if keiko {
+            training_effect += effect.keiko_training_effect;
+        }
+        let mut main_gain = effect.main_gain;
+        if keiko {
+            main_gain += effect.keiko_main_bonus;
+        }
+        let mut status_cap = self.data.rules.training_upper_cap + effect.status_limit;
+        let mut keiko_flat = 0;
+        if let Some(act) = act_effect {
+            keiko_flat = act.all_status_bonus;
+            if five_types {
+                status_cap += act.status_limit;
+            }
+        }
+
+        let lower_raw = self.default_calc_training_value(&buffs, train)?;
+        let mut lower_clipped = lower_raw.clone();
+        self.clip_lower_gain(&mut lower_clipped);
+        // PT（`status_pt[5]`）走独立上限：基础 +（稽古且 5 种卡：演目 sp_limit）。
+        // **不吃特化 `status_limit`**：601 的文案是「基础属性上限」，只加五维上限；
+        // 真机 6309 T72 帧 PT 上层恰被裁到 220 = 100 + 演目 sp_limit(120)，
+        // 把特化 25 也加进去会得 245（Δ25）。
+        let mut sp_cap = self.data.rules.training_upper_cap;
+        let mut sp_training = 0;
+        if let Some(act) = act_effect {
+            if five_types {
+                sp_training = act.sp_training;
+                sp_cap += act.sp_limit;
+            }
+        }
+        let sp_base = lower_clipped.status_pt[5];
+        let friend_pct = 100
+            + friendship_presentation
+            + friendship_cooperate
+            + friendship_act
+            + friendship_keiko;
+        let sp_gain_raw = if sp_base > 0 {
+            let rate1 = 100 + training_effect + sp_training;
+            (i64::from(sp_base) * i64::from(friend_pct) * i64::from(rate1) / 10_000) as i32
+                - sp_base
+        } else {
+            0
+        };
+        Ok(TrainingBreakdown {
+            basic_row,
+            lower_raw: lower_raw.status_pt,
+            lower_clipped: lower_clipped.status_pt,
+            status_bonus,
+            bonus: buffs.bonus,
+            person_count: self.count_training_persons(train) as i32,
+            youqing: buffs.youqing,
+            xunlian: buffs.xunlian,
+            ganjing: buffs.ganjing,
+            motivation: self.uma().motivation,
+            friendship_presentation,
+            friendship_cooperate,
+            friendship_act,
+            friendship_keiko,
+            training_effect,
+            main_gain,
+            sub_gain: effect.dual_sub_gain,
+            status_cap,
+            sp_cap,
+            sp_gain_raw,
+            keiko_flat,
+            vital_cost_drop: buffs.vital_cost_drop,
+            keiko_vital_cost_drop: effect.keiko_vital_cost_drop,
+        })
+    }
+
+    /// 训练预览的**分层**视图（下层 / 上层 / 合计）：在线验算与公式排查用
+    ///
+    /// 协议把训练值拆成「游戏下层 `lower` + 剧本上层 `upper`」两段（`baseGame.training`），
+    /// 只有把本仓的两层也分开，才能判断偏差出在哪一层：下层错 = 引擎公式 / 人头加成，
+    /// 上层错 = 発表会 / 教え / 演目 Lv / 稽古 flat。
+    pub fn preview_training_layers(&self, train: usize, keiko: bool) -> Result<TrainingLayers> {
+        if train >= 5 {
+            return Err(anyhow::anyhow!("普通训练下标越界: {train}（训练位 0–4）"));
+        }
+        let _quiet = umaai_core::diag::DiagGuard::suppress();
+        let _guard = self.keiko_settling.scoped(keiko);
+        let advice = self.participant_advice(train);
+        let buffs = self.calc_training_buff(train)?;
+        let mut lower = self.default_calc_training_value(&buffs, train)?;
+        self.clip_lower_gain(&mut lower);
+        let upper = self.training_upper_with(train, &lower, keiko, &advice);
+        let mut total = self.merge_upper(&lower, &upper, keiko);
+        // 单次训练上限：超过「属性上限 − 当前值」的部分会被游戏裁掉
+        let clipped = self.clip_to_status_limit(&total.status_pt);
+        let mut clip = [0i32; 5];
+        for (axis, slot) in clip.iter_mut().enumerate() {
+            *slot = total.status_pt[axis] - clipped[axis];
+        }
+        total.status_pt = clipped;
+        Ok(TrainingLayers {
+            lower,
+            upper: TrainingLayers::upper_value(&upper, keiko),
+            total,
+            keiko_flat: upper.keiko_flat,
+            failure_rate: self.calc_training_failure_rate_inner(&buffs, train, &advice)?,
+            shining: self.shining_count(train),
+            clip,
+        })
     }
 
     /// 动作的剧本资源预览：演目槽 / 演目 Lv 差值（正 = 增加，负 = 排练成功清槽）
@@ -430,7 +669,11 @@ impl MatsuriGame {
         let mut sp_training = 0;
         // 上层上限：基础上限 + 特化 status_limit +（稽古且 5 种卡：演目 Lv status_limit）
         let mut status_cap = self.data.rules.training_upper_cap + advice.status_limit;
-        let mut sp_cap = self.data.rules.training_upper_cap + advice.status_limit;
+        // PT 上限与属性上限分账：只吃基础上限 +（稽古且 5 种卡：演目 Lv sp_limit）。
+        // 特化 `status_limit` 不进 PT 上限——601 文案「基础属性上限」只加五维；
+        // 真机 6309 T72 帧 PT 上层被裁到 220 = 100 + 演目 sp_limit(120)，
+        // 连特化 25 一起加会得 245（Δ25）。拉面剧本同样 `pt_limit` 与 `status_limit` 分账。
+        let mut sp_cap = self.data.rules.training_upper_cap;
         let mut keiko_flat = 0;
         if let Some(effect) = act_effect {
             keiko_flat = effect.all_status_bonus;
@@ -446,9 +689,12 @@ impl MatsuriGame {
             ..Default::default()
         };
         let friend_pct = 100 + friendship;
+        let flat = if keiko { keiko_flat } else { 0 };
         for axis in 0..5 {
             let base = lower.status_pt[axis];
+            // 基础值为 0 的轴也吃稽古 flat（同样受上层上限约束）
             if base <= 0 {
+                upper.status[axis] = flat.min(status_cap).max(0);
                 continue;
             }
             let (rate1, rate2, cap) = if axis == train {
@@ -459,7 +705,10 @@ impl MatsuriGame {
             let real =
                 (i64::from(base) * i64::from(friend_pct) * i64::from(rate1) * i64::from(rate2)
                     / 1_000_000) as i32;
-            let gain = (real - base).min(cap).max(0);
+            // `keiko_flat`（稽古「全基础 +N」）**在上层上限之内**：真机帧里主属性顶到
+            // `status_cap` 时，flat 已被算进那 100 里（6310 T74 帧上层 200 = cap，
+            // 旧写法 `min(gain, cap) + flat` 会给 205）。
+            let gain = (real - base + flat).min(cap).max(0);
             upper.status[axis] = gain;
         }
         // SP：不吃副获得；吃 SP 训练效果 + SP 上限
@@ -874,7 +1123,8 @@ mod tests {
         let upper = game.training_upper(0, &lower_value(16, 9, -25), true);
         assert_eq!(upper.keiko_flat, 10, "稽古全基础 +10（全五维 flat）");
         // 演目 Lv1 友情 2%：16 × 1.02 = 16.32 → 16，增量为 0；SP 吃 sp_training（5 种卡 → 20%）
-        assert_eq!(upper.status[0], 0);
+        // flat 已并入上层（受上层上限约束），所以速轴是 `0 + 10`
+        assert_eq!(upper.status[0], 10, "稽古 flat 10 并入上层");
         assert_eq!(
             upper.skill_pt, 2,
             "SP 训练效果：9 × 1.02 × 1.2 = 11 → 增量 2"
