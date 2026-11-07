@@ -8,6 +8,8 @@
 //! - bench parts --turn 32 --iters 2000            Distribute / 事件管线单点 ns/op
 //! - bench flat --turn 32 --rollouts 2048 --threads 24  平铺线程池 rollout（并行上限对照）
 //! - bench prof <子命令> [原参数] --freq 997 --out SVG  pprof 火焰图 + 自耗时 TopN（需 `--features profile`）
+//! - bench ... --matsuri-config <完整配置>  测卡 / 扫参专用：显式载入完整
+//!   `matsuri_config.toml`（含 `[decks.*]` 变体），不读仓内默认层；玩家 CLI 不暴露该入口
 //!
 //! 测量纪律：双方同一 Release 构建、同一数据 / 配置；耗时只声明本机当轮。
 //! 日志不装 logger，避免把诊断格式化的成本算进测量。
@@ -89,7 +91,12 @@ struct Env {
 }
 
 impl Env {
-    fn load() -> Result<Self> {
+    /// 载入数据与配置。
+    ///
+    /// `--matsuri-config` 是**测卡 / 扫参专用**入口：给了就读显式完整配置，
+    /// 不走仓内默认层。玩家终端 / online 不暴露这个入口，`[decks.*]` 的玩家覆盖
+    /// 限制仍由 `MatsuriConfigOverlay` 保持。
+    fn load(args: &[String]) -> Result<Self> {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(Path::parent)
@@ -100,8 +107,12 @@ impl Env {
         let engine =
             umaai::Config::load_with_overlay_file(&data_root, ".").context("载入引擎配置失败")?;
         let data = Arc::new(MatsuriData::load(&data_root).context("载入剧本数据失败")?);
-        let config =
-            MatsuriConfig::load_with_overlay_file(&data_root, ".").context("载入剧本配置失败")?;
+        let config = match parse_arg(args, "--matsuri-config") {
+            Some(path) => MatsuriConfig::load(&path, None)
+                .with_context(|| format!("载入剧本配置失败: {path}"))?,
+            None => MatsuriConfig::load_with_overlay_file(&data_root, ".")
+                .context("载入剧本配置失败")?,
+        };
         let comp = matsuri_core::deck_comp(&engine.sim.cards).context("卡组构成解析失败")?;
         let config = config.for_deck(comp);
         Ok(Self {
@@ -389,7 +400,7 @@ fn main() -> Result<()> {
     umaai_core::diag::set_enabled(false);
     let args: Vec<String> = std::env::args().collect();
     let command = args.get(1).map(String::as_str).unwrap_or("game");
-    let mut env = Env::load()?;
+    let mut env = Env::load(&args)?;
     // 显式卡组档（扫参变体）：缺省按 comp 自动匹配
     if let Some(name) = parse_arg(&args, "--deck-profile") {
         env.config = env.config.for_profile(&name)?;

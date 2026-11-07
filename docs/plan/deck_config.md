@@ -207,3 +207,10 @@ pub struct DeckTable {
   外部 `Matsuri_Workbench` 是独立旧 checkout，lab 分支的 `[trainer]` 带 `status_halve_*` /
   `friend_outing_*` 等主仓没有的字段；纯文本迁移会产出主仓无法解析的配置，因此未改归档文件。
   lab 侧需先 rebase 到新仓，再按本方案改模板 / 用 `--deck-profile` 选档。
+
+## 10. 后续定卡与扫参（2026-11-07）
+
+- 四套 build 的定卡、speed 换卡与重录基准、`fusion` / `advice` / 手写旋钮的扫描顺序见
+  [`deck_param_scan.md`](deck_param_scan.md)。
+- 玩家 CLI / online 仍不做 `[decks.*]` 覆盖；测卡 / 扫参工具新增测试专用
+  `--matsuri-config <完整配置>`（直接 `MatsuriConfig::load(path, None)`），不接线到玩家侧。

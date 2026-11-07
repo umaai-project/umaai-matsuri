@@ -26,7 +26,7 @@ use matsuri_ai::{
     resolve_live_root,
 };
 use matsuri_core::{MatsuriConfig, MatsuriData, SearchCandidate};
-use umaai::{Config, FrameKind, LuckAttach};
+use umaai::{Config, DecisionRecord, FrameKind, LuckAttach};
 use umaai_cli::render::term;
 use umaai_core::Data;
 
@@ -34,74 +34,27 @@ use crate::logging;
 use crate::panel::{BoardPanel, paint};
 
 /// 在线档参数
-#[derive(Debug, Default)]
+#[derive(Debug, Default, clap::Args)]
 pub struct Args {
-    /// 真机游戏根目录（含 `.portable`）
+    /// 真机游戏根目录（含 `.portable`）；缺省读 MATSURI_ROOT，再缺省当前目录
+    #[arg(long, value_name = "DIR")]
     pub root: Option<PathBuf>,
-    /// 回放目录（给了就不挂真机监听）
+    /// 回放目录（逐帧 JSON）；给了就不挂真机监听
+    #[arg(long, value_name = "DIR")]
     pub replay: Option<PathBuf>,
-    /// 训练员（`matsuri` 手写 / `search` 搜索）
+    /// 训练员：`matsuri` 手写 / `search` 搜索；缺省按 `[search].search_n` 决定
+    #[arg(long, value_name = "TRAINER")]
     pub trainer: Option<String>,
-    /// 逐行 JSON 输出
+    /// stdout 每行一条 JSON（日志与面板走 stderr）
+    #[arg(long)]
     pub json: bool,
-    /// 输出训练验算表
+    /// 附训练验算表（帧真值 vs 还原态预览）
+    #[arg(long = "verify-training")]
     pub verify: bool,
 }
 
-/// 解析 `online` 之后的参数（手写解析，不引 clap）
-pub fn parse(argv: &[String]) -> Result<Args> {
-    let mut args = Args::default();
-    let mut iter = argv.iter();
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            "--root" => {
-                args.root = Some(PathBuf::from(
-                    iter.next().ok_or_else(|| anyhow!("--root 缺少路径"))?,
-                ));
-            }
-            "--replay" => {
-                args.replay = Some(PathBuf::from(
-                    iter.next().ok_or_else(|| anyhow!("--replay 缺少目录"))?,
-                ));
-            }
-            "--trainer" => {
-                args.trainer = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--trainer 缺少取值"))?
-                        .clone(),
-                );
-            }
-            "--json" => args.json = true,
-            "--verify-training" => args.verify = true,
-            "--help" | "-h" => {
-                println!("{}", usage());
-                std::process::exit(0);
-            }
-            other => {
-                return Err(anyhow!("online 子命令不认识参数：{other}\n\n{}", usage()));
-            }
-        }
-    }
-    Ok(args)
-}
-
-/// 用法文本
-#[must_use]
-pub fn usage() -> String {
-    "用法: matsuri online [--root <游戏根目录>] [--replay <帧目录>] [--trainer matsuri|search] [--json] [--verify-training]\n\
-     \n  --root            真机游戏根目录（含 .portable）；缺省读 MATSURI_ROOT，再缺省当前目录\n  \
-     --replay          回放目录（game{id}_turn{n}.json + game{id}_finalScore.json）；给了就不挂真机监听\n  \
-     --trainer         训练员：matsuri（手写） / search（搜索）；缺省按配置 [search].search_n 决定（0 = 手写，>0 = 搜索）\n  \
-     --json            stdout 每行一条 JSON（日志与面板走 stderr）\n  \
-     --verify-training 附训练验算表（帧真值 vs 还原态预览，G13）\n\
-     \n配置与环境：默认层 data/ai_config.toml + data/matsuri_config.toml，工作目录同名覆盖层；\n\
-     MATSURI_SEARCH_N / MATSURI_SEARCH_RADICAL 可临时覆盖搜索预算与激进度。"
-        .to_string()
-}
-
 /// 跑在线档
-pub fn run(argv: &[String]) -> Result<()> {
-    let args = parse(argv)?;
+pub fn run(args: Args) -> Result<()> {
     // 配置两份同名不同位：默认层在数据根、覆盖层在当前目录（与离线档同约定）
     let mut cfg = Config::load_with_overlay_file(crate::DATA_ROOT, ".").context("载入配置失败")?;
     logging::init_logger(&cfg.output.log_level).context("初始化日志器失败")?;
@@ -288,6 +241,14 @@ fn render_decision(stdout: &mut impl Write, output: &OnlineTurnOutput, color: bo
     if let Some(luck) = &record.luck {
         render_luck(stdout, output.turn, luck, color)?;
     }
+    if let Some(fusion) = record
+        .extra
+        .as_ref()
+        .and_then(|extra| extra.get("fusion"))
+        .and_then(|fusion| fusion.as_str())
+    {
+        writeln!(stdout, "[回合 {} 融合]{}", output.turn, fusion)?;
+    }
     let kind = decision_kind_label(&record.kind);
     let top = "41;93";
     if let Some(summary) = &output.summary
@@ -301,12 +262,17 @@ fn render_decision(stdout: &mut impl Write, output: &OnlineTurnOutput, color: bo
         else {
             return Ok(());
         };
+        let top_delta = chosen.score - summary.baseline;
         writeln!(
             stdout,
             "[回合 {} {}]{}",
             output.turn,
             kind,
-            paint(&format!("首选：{}", chosen.description), Some(top), color)
+            paint(
+                &format!("首选：{} {top_delta:+.0}", chosen.description),
+                Some(top),
+                color
+            )
         )?;
         let mut rest: Vec<&SearchCandidate> = summary
             .candidates
@@ -314,22 +280,27 @@ fn render_decision(stdout: &mut impl Write, output: &OnlineTurnOutput, color: bo
             .filter(|candidate| candidate.index != chosen.index)
             .collect();
         rest.sort_by(|a, b| b.score.total_cmp(&a.score));
-        for (position, candidate) in rest
-            .iter()
-            .take(DECISION_TOP_N.saturating_sub(1))
-            .enumerate()
-        {
+        // 同一有效布局（801 硬约束后）只展示一次，避免同分方案占满 Top N
+        let mut seen = std::collections::HashSet::new();
+        seen.insert(chosen.description.clone());
+        let mut rank = 2;
+        for candidate in rest {
+            if rank > DECISION_TOP_N || !seen.insert(candidate.description.clone()) {
+                continue;
+            }
             let diff = candidate.score - summary.baseline;
             let code =
                 candidate_color(chosen.score, candidate.score, resolution(chosen, candidate));
             let line = format!(
                 "#{}: {} {diff:+.0} ({})",
-                position + 2,
+                rank,
                 candidate.description,
                 terminal_delta(candidate, chosen)
             );
             writeln!(stdout, "{}", paint(&line, Some(code), color))?;
+            rank += 1;
         }
+        render_preset_diff(stdout, output.turn, record, color)?;
         return Ok(());
     }
     // 手写档 / 无搜索分：只报首选，不伪造候选分
@@ -339,6 +310,32 @@ fn render_decision(stdout: &mut impl Write, output: &OnlineTurnOutput, color: bo
         output.turn,
         kind,
         paint(&format!("首选：{}", record.action_desc), Some(top), color)
+    )?;
+    render_preset_diff(stdout, output.turn, record, color)?;
+    Ok(())
+}
+
+/// 预设差异行：与 `AdvicePreset` 对比；一致时明确标出可自动选择
+fn render_preset_diff(
+    stdout: &mut impl Write,
+    turn: i32,
+    record: &DecisionRecord,
+    color: bool,
+) -> Result<()> {
+    let Some(diff) = record
+        .extra
+        .as_ref()
+        .and_then(|extra| extra.get("preset_diff"))
+    else {
+        return Ok(());
+    };
+    let Some(text) = diff.get("text").and_then(|text| text.as_str()) else {
+        return Ok(());
+    };
+    writeln!(
+        stdout,
+        "[回合 {turn} 预设]{}",
+        paint(text, Some("90"), color)
     )?;
     Ok(())
 }

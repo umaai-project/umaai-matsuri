@@ -4,7 +4,8 @@
 //!
 //! | 帧形态 | 走向 | 原因 |
 //! |---|---|---|
-//! | `source == special`（`playing_state = 49/51`） | 跳过 | 発表会 / 本番的结算中间态，没有可选动作 |
+//! | `source == special` + `playing_state = 51` + 教诲窗口 | 教诲分配 | T2/T11/T23/T35/T47/T59；按窗口去重 |
+//! | 其余 `source == special`（`playing_state = 49/51`） | 跳过 | 発表会 / 本番的结算中间态，没有可选动作 |
 //! | 有「多选项待选事件」 | 事件决策 | 事件由服务器挂起，等玩家选（结局 / 抽签等） |
 //! | `isAfterTraining = true`（→ `AfterTrain`） | 跳过 | 动作已执行，剩余事件已结算完 |
 //! | 预览非零 + 分布全空（T0 载入快照） | 跳过 | 帧自相矛盾，等 `command` 帧 |
@@ -27,6 +28,8 @@ use crate::output::{TrainingDeviation, TrainingReport};
 pub enum Route {
     /// 训练 / 比赛决策
     Train,
+    /// 教诲分配决策（窗口下标 0–5）
+    Advice(usize),
     /// 事件选项决策
     Event,
     /// 不需要决策（附原因）
@@ -36,8 +39,13 @@ pub enum Route {
 /// 定路由
 #[must_use]
 pub fn route(game: &MatsuriGame, frame: &ParsedFrame) -> Route {
-    // 结算中间态：`special` 帧没有可选动作（発表会 / 本番 / 合宿结算）
+    // `special` 帧：ps=51 且落在教诲窗口 = 分配决策；其余是発表会 / 本番 / 合宿结算中间态
     if frame.source() == "special" {
+        if frame.status.playing_state == 51
+            && let Some(window) = game.plan.advice_window
+        {
+            return Route::Advice(window);
+        }
         return Route::Skip("结算中间态（source=special）");
     }
     if pending_event(game).is_some() {
@@ -157,6 +165,64 @@ pub fn train_record(
         }
     }
     Ok(record)
+}
+
+/// 教诲分配决策记录：候选为分配方案（搜索档取搜索摘要的 16 个剪枝候选）
+#[must_use]
+pub fn advice_record(
+    game: &MatsuriGame,
+    actions: &[Action],
+    action_index: usize,
+    summary: Option<&matsuri_core::SearchSummary>,
+    fusion: Option<&str>,
+) -> DecisionRecord {
+    let describe = |index: usize| match actions.get(index) {
+        Some(Action::AssignAdvice(assign)) => {
+            assign.describe(&game.advice.slots, &game.advice.fused)
+        }
+        Some(action) => action.decision_label(),
+        None => format!("#{index}"),
+    };
+    let mut record = DecisionRecord::action_only("advice", describe(action_index));
+    record.candidates = actions
+        .iter()
+        .enumerate()
+        .map(|(index, _)| Candidate {
+            description: describe(index),
+            score: None,
+            n: 0,
+        })
+        .collect();
+    record.action_index = action_index;
+    if let Some(summary) = summary {
+        record.candidates = summary
+            .candidates
+            .iter()
+            .map(|candidate| Candidate {
+                description: candidate.description.clone(),
+                score: Some(candidate.score),
+                n: candidate.n,
+            })
+            .collect();
+        record.action_index = summary
+            .candidates
+            .iter()
+            .position(|candidate| candidate.index == summary.chosen)
+            .unwrap_or(0);
+        record.action_desc = summary.candidates.get(record.action_index).map_or_else(
+            || describe(summary.chosen),
+            |candidate| candidate.description.clone(),
+        );
+    }
+    let mut extra = serde_json::json!({
+        "reason": "教诲分配：候选搜索",
+        "advice_window": game.plan.advice_window,
+    });
+    if let Some(fusion) = fusion {
+        extra["fusion"] = serde_json::json!(fusion);
+    }
+    record.extra = Some(extra);
+    record
 }
 
 /// 事件决策记录：候选 = 选项组序号（协议没有选项名，用「选项 n」+ 事件名）

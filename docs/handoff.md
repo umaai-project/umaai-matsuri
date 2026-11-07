@@ -71,7 +71,7 @@
 - 机制：`mechanism.md` §5.5（`[pre]` 三个取值与心情盾默认 2 层）。
 - 性能：`perf_profiling.md` §13（第四轮优化与剖面）；本轮预算与分辨率结论记在 README 现状段。
 
-## 7. 在线 CLI 决策输出（2026-11-07 已实施；玩家预设取消）
+## 7. 在线 CLI 决策输出（2026-11-07 已实施；玩家可配预设取消）
 
 > 分层不变：决策 / 路由 / 帧监听在 `matsuri-ai`，CLI 只做薄层渲染。
 
@@ -80,19 +80,28 @@
 
    ```text
    [回合 32 运气]本局：+1300, 本轮: +150
-   [回合 32 训练]首选：速训练
+   [回合 32 训练]首选：速训练 +500
    #2: 智训练 +88 (速-4 耐-1 力+1 根-2 智-2 PT-10)
    ```
 
-   `#N` 的分数差 = 该候选终局期望分 − 本决策基线（候选按样本数加权，与运气分同口径）；
-   括号内是相对首选的终局五维 / PT 差。Top N 暂定 5（`DECISION_TOP_N`）。
+   首选行与 `#N` 同口径：分数差 = 该候选终局期望分 − 本决策基线（候选按样本数加权，与运气分同口径）；
+   有效布局相同的候选只展示一次；
+   括号内是相对首选的终局五维 / PT 差。同分候选的数值相同，搜索只取一个代表。Top N 暂定 5
+   （`DECISION_TOP_N`）。
 2. **JSON 命名**：`action_desc` / `candidate_descriptions` 已改为可读动作名（`速训练` / `飞悬稽古` /
    `比赛` / `友人出行`），`decision_kind` 保持 `train/race/event/advice`；命名接口在 `matsuri-core`
-   （`Action::decision_label`、`AdviceAssignment::describe`，教诲映射不带 id）。
-3. **玩家 advice/fusion 预设：取消**（user 2026-11-07）。不提供 `[advice].preset`、不做预设差异高亮；
+   （`Action::decision_label`、`AdviceAssignment::describe`，教诲映射左侧用速/耐/力/根/智，不带 id）。
+3. **玩家 advice/fusion 预设：取消可配**（user 2026-11-07）。不提供 `[advice].preset`；
    `MatsuriConfig` 的 `[decks.*]`（含 fusion / advice）只由引擎内部使用，玩家侧不覆盖。
-4. **在线教诲路由**：仍未接 `Route::Advice`（`special` 帧继续跳过）；后续单独做，输出只显示 AI 完整映射，
-   不显示玩家预设。
+   显示层保留只读对比：以引擎 `AdvicePreset` 为基线，先映射到融合后 id，再输出
+   `[回合 x 预设]与预设一致` 或 `差异 N 槽...`；只读展示，不写回配置。
+4. **在线教诲路由**：已接 `Route::Advice`（`special && ps=51 && advice_window`，按窗口去重）；
+   T23/T47 先按引擎 `[decks.*.fusion]` 融合，再枚举全排列并按 801 硬约束去重（T47/T59 为 24 个有效布局），
+   T2 五槽全 0 补初始槽；融合窗口在教诲行前输出固定的 `[回合 x 融合]` 行（如
+   `体力→协助 灵感→不屈 助力→兼修`），避免漏掉固定决策；输出只显示
+   AI 完整映射，并输出 `[回合 x 预设]` 差异行。映射取 `401+801` 硬约束后的**有效布局**，
+   同一有效布局只展示一次；
+   rollout 侧清掉 `advice_window`，跳过 End 阶段的手写教诲再处理。
 5. **运气分**：复用引擎 `LuckScorer` / `LuckScoreTracker`，只统计搜索终局分；`T(n)=Σ(score×n)/Σn`；
    只在 `train` / `race` 主行动推进；显示 `raw + (77−turn)×bonus`，`bonus` 取
    `ai_config [record].luck_turn_bonus`。CLI 本局分按 <0 红 / <500 黄 / <1500 绿 / ≥1500 亮绿分段，

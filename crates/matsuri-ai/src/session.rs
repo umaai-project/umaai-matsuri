@@ -17,6 +17,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow};
+use matsuri_core::game::advice::advice_display_name;
 use matsuri_core::game::restore::RestoreInput;
 use matsuri_core::{
     Action, MAX_TURN, MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer,
@@ -105,6 +106,8 @@ pub struct OnlineSession {
     prev_levels: Option<Array5>,
     /// 本回合是否已给过训练决策
     last_train_turn: Option<i32>,
+    /// 已给过教诲决策的窗口下标（同一窗口的 special 帧去重）
+    last_advice_window: Option<usize>,
     /// 是否输出训练验算表
     verify: bool,
     /// 运气分跟踪器（只在搜索档主行动决策上推进）
@@ -153,6 +156,7 @@ impl OnlineSession {
             seen: HashSet::new(),
             prev_levels: None,
             last_train_turn: None,
+            last_advice_window: None,
             verify,
             luck: LuckScorer::new(cfg.record.luck_turn_bonus),
         })
@@ -275,6 +279,208 @@ impl OnlineSession {
                     game,
                     actions: Vec::new(),
                     candidate_scores: Vec::new(),
+                    summary,
+                }
+            }
+            Route::Advice(window) => {
+                if self.last_advice_window == Some(window) {
+                    return Ok(OnlineTurnOutput {
+                        turn,
+                        epoch: frame.epoch_key(),
+                        scenario,
+                        frame_digest: frame.digest,
+                        kind: TurnKind::Skipped,
+                        record: None,
+                        skip_reason: Some("本窗口已给出教诲决策".to_string()),
+                        notes: notes.clone(),
+                        view,
+                        search_backed: false,
+                        verify,
+                        game,
+                        actions: Vec::new(),
+                        candidate_scores: Vec::new(),
+                        summary: None,
+                    });
+                }
+                let mut game = game;
+                if !game.advice.acquired || game.advice.slots == [0; 5] {
+                    if window != 0 {
+                        return Ok(OnlineTurnOutput {
+                            turn,
+                            epoch: frame.epoch_key(),
+                            scenario,
+                            frame_digest: frame.digest,
+                            kind: TurnKind::Skipped,
+                            record: None,
+                            skip_reason: Some("教诲尚未授予，跳过分配".to_string()),
+                            notes: notes.clone(),
+                            view: game.view(),
+                            search_backed: false,
+                            verify,
+                            game,
+                            actions: Vec::new(),
+                            candidate_scores: Vec::new(),
+                            summary: None,
+                        });
+                    }
+                    game.advice.acquired = true;
+                    game.advice.slots = [101, 201, 301, 401, 501];
+                    game.advice.fused = [0; 5];
+                }
+                // T23 / T47 先按引擎配置融合，再从融合后的槽位枚举 120 候选；
+                // T47 时 year2 的融合已存在，不能只看 fused 是否全 0
+                if game.is_fusion_window(window) {
+                    let pairs = if window == 2 {
+                        &self.config.deck.fusion.year2
+                    } else {
+                        &self.config.deck.fusion.year3
+                    };
+                    let already_fused = pairs
+                        .iter()
+                        .all(|pair| game.advice.fused.contains(&pair.target));
+                    if !already_fused {
+                        game.apply_fusion_pairs(pairs)?;
+                    }
+                }
+                let actions = game.advice_actions();
+                if actions.is_empty() {
+                    return Ok(OnlineTurnOutput {
+                        turn,
+                        epoch: frame.epoch_key(),
+                        scenario,
+                        frame_digest: frame.digest,
+                        kind: TurnKind::Skipped,
+                        record: None,
+                        skip_reason: Some("教诲分配候选为空".to_string()),
+                        notes: notes.clone(),
+                        view: game.view(),
+                        search_backed: false,
+                        verify,
+                        game,
+                        actions,
+                        candidate_scores: Vec::new(),
+                        summary: None,
+                    });
+                }
+                let mut rng = self.decision_rng(turn);
+                // 搜索从「本次分配之后」继续：清掉窗口标记，避免 End 阶段再次融合 / 分配
+                let mut search_game = game.clone();
+                search_game.plan.advice_window = None;
+                let index =
+                    self.trainer
+                        .as_dyn()
+                        .select_action(&search_game, &actions, &mut rng)?;
+                let summary = match &self.trainer {
+                    TrainerChoice::Search(trainer) => trainer.last_search(),
+                    TrainerChoice::Hand(_) => None,
+                };
+                let search_backed = summary.is_some();
+                let candidate_scores = summary.as_ref().map_or_else(Vec::new, |summary| {
+                    summary
+                        .candidates
+                        .iter()
+                        .map(|candidate| (candidate.index, candidate.score))
+                        .collect()
+                });
+                let fusion = if game.is_fusion_window(window) {
+                    let pairs = if window == 2 {
+                        &self.config.deck.fusion.year2
+                    } else {
+                        &self.config.deck.fusion.year3
+                    };
+                    Some(
+                        pairs
+                            .iter()
+                            .map(|pair| {
+                                format!(
+                                    "{}→{}",
+                                    advice_display_name(pair.base),
+                                    advice_display_name(pair.target)
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    )
+                } else {
+                    None
+                };
+                let preset_diff = game.preset_advice_ids(window).map(|preset| {
+                    let chosen_ids = match actions.get(index) {
+                        Some(Action::AssignAdvice(assign)) => game.effective_advice_ids(assign),
+                        _ => [0; 5],
+                    };
+                    let axes = ["速", "耐", "力", "根", "智"];
+                    let changed: Vec<(usize, i32, i32)> = (0..5)
+                        .filter(|act| chosen_ids[*act] != preset[*act])
+                        .map(|act| (act, preset[act], chosen_ids[act]))
+                        .collect();
+                    let text = if changed.is_empty() {
+                        "与预设一致".to_string()
+                    } else if changed.len() <= 2 {
+                        format!(
+                            "差异 {} 槽：{}",
+                            changed.len(),
+                            changed
+                                .iter()
+                                .map(|(act, old, new)| format!(
+                                    "{} {}→{}",
+                                    axes[*act],
+                                    advice_display_name(*old),
+                                    advice_display_name(*new)
+                                ))
+                                .collect::<Vec<_>>()
+                                .join(" · ")
+                        )
+                    } else {
+                        format!(
+                            "差异 {}/5 槽：{}",
+                            changed.len(),
+                            changed
+                                .iter()
+                                .map(|(act, _, _)| axes[*act])
+                                .collect::<Vec<_>>()
+                                .join("、")
+                        )
+                    };
+                    serde_json::json!({
+                        "match": changed.is_empty(),
+                        "changed": changed.len(),
+                        "axes": changed.iter().map(|(act, _, _)| axes[*act]).collect::<Vec<_>>(),
+                        "text": text,
+                    })
+                });
+                let mut record = online::advice_record(
+                    &game,
+                    &actions,
+                    index,
+                    summary.as_ref(),
+                    fusion.as_deref(),
+                );
+                if let Some(diff) = preset_diff
+                    && let Some(extra) = record
+                        .extra
+                        .as_mut()
+                        .and_then(|extra| extra.as_object_mut())
+                {
+                    extra.insert("preset_diff".to_string(), diff);
+                }
+                let view = game.view();
+                self.last_advice_window = Some(window);
+                OnlineTurnOutput {
+                    turn,
+                    epoch: frame.epoch_key(),
+                    scenario,
+                    frame_digest: frame.digest,
+                    kind: TurnKind::Decision,
+                    record: Some(record),
+                    skip_reason: None,
+                    notes: notes.clone(),
+                    view,
+                    search_backed,
+                    verify,
+                    game,
+                    actions,
+                    candidate_scores,
                     summary,
                 }
             }
@@ -490,6 +696,7 @@ impl OnlineSession {
         self.seen.clear();
         self.prev_levels = None;
         self.last_train_turn = None;
+        self.last_advice_window = None;
     }
 
     /// 本帧的决策随机流（按 `(master, turn)` 派生：同帧可复现，不跨帧位移）

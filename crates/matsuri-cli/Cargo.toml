@@ -19,6 +19,7 @@ umaai-core.workspace = true
 umasim.workspace = true
 umaai.workspace = true
 umaai-cli.workspace = true
+clap.workspace = true
 anyhow.workspace = true
 log.workspace = true
 rand.workspace = true

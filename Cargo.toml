@@ -26,6 +26,7 @@ umaai-core = { path = "../umaai_next/crates/umaai-core" }
 umasim = { path = "../umaai_next/crates/umasim" }
 umaai = { path = "../umaai_next/crates/umaai" }
 umaai-cli = { path = "../umaai_next/crates/umaai-cli" }
+clap = { version = "4.6", features = ["derive"] }
 
 # 本仓内部 crate（有消费者时再登记下一个）
 matsuri-core = { path = "crates/matsuri-core" }

@@ -326,13 +326,13 @@ impl MatsuriSearchTrainer {
         let picked = out.best_action_idx;
         let chosen = map[picked];
         let mean = out.action_results[picked].weighted_mean(out.radical_factor);
-        let slots = game.advice.slots;
-        let fused = game.advice.fused;
         self.set_last(Self::summary_of(
             &out,
             |position| map[position],
             |index| match &actions[index] {
-                Action::AssignAdvice(assign) => assign.describe(&slots, &fused),
+                Action::AssignAdvice(assign) => {
+                    assign.describe(&game.advice.slots, &game.advice.fused)
+                }
                 other => other.decision_label(),
             },
             chosen,

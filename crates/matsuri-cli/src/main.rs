@@ -15,6 +15,8 @@ mod online;
 mod panel;
 
 use std::process::ExitCode;
+
+use clap::{Parser, Subcommand};
 use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow};
@@ -32,27 +34,53 @@ use umasim::trainer::RandomTrainer;
 /// 引擎覆盖层约定保留：工作目录放同名 `ai_config.toml` / `matsuri_config.toml` 存在才合并。
 pub(crate) const DATA_ROOT: &str = "data";
 
+/// 顶层 CLI
+#[derive(Debug, Parser)]
+#[command(
+    name = "matsuri",
+    version,
+    about = "骏大祭剧本训练员（离线跑局 / 在线帧决策）",
+    propagate_version = true,
+    subcommand_precedence_over_arg = true
+)]
+struct Cli {
+    /// 训练员：matsuri（默认） / random / manual
+    #[arg(value_name = "TRAINER", value_parser = ["matsuri", "random", "manual"])]
+    trainer: Option<String>,
+    /// 显式卡组档（[decks.*] 名字；离线扫参用）；缺省按实际卡组 comp 匹配
+    #[arg(long, value_name = "NAME")]
+    deck_profile: Option<String>,
+    /// 手写档每回合打印面板 + 候选打分表（搜索档不支持）
+    #[arg(long)]
+    explain: bool,
+    /// 子命令：online 真机帧 / 回放逐帧决策
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+/// 子命令
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// 真机帧 / 回放逐帧决策
+    #[command(
+        after_help = "配置与环境：默认层 data/ai_config.toml + data/matsuri_config.toml，\
+                            工作目录同名覆盖层；MATSURI_SEARCH_N / MATSURI_SEARCH_RADICAL 可临时覆盖搜索预算与激进度。"
+    )]
+    Online(online::Args),
+}
+
 fn main() -> ExitCode {
-    let argv: Vec<String> = std::env::args().skip(1).collect();
-    match dispatch(&argv) {
+    let cli = Cli::parse();
+    let result = match cli.command {
+        Some(Command::Online(args)) => online::run(args),
+        None => run(cli.trainer.as_deref(), cli.deck_profile, cli.explain),
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("错误: {err:#}");
             ExitCode::FAILURE
         }
-    }
-}
-
-/// 顶层分流：`--version` / `online` 子命令 / 离线跑局（原有用法不变）
-fn dispatch(argv: &[String]) -> Result<()> {
-    if argv.iter().any(|arg| arg == "--version" || arg == "-V") {
-        println!("matsuri {}", env!("CARGO_PKG_VERSION"));
-        return Ok(());
-    }
-    match argv.first().map(String::as_str) {
-        Some("online") => online::run(&argv[1..]),
-        // 兼容原有用法：`matsuri [训练员]`（缺省 matsuri）
-        _ => run(),
     }
 }
 
@@ -74,24 +102,10 @@ where
 }
 
 /// 装配一局并跑到底（数据根为代码级配置；命令行只选训练员）
-fn run() -> Result<()> {
-    let argv: Vec<String> = std::env::args().collect();
-    // 训练员：matsuri（样例策略，默认）/ random（引擎随机基线）/ manual（机制核对面板）
-    let trainer_name = argv
-        .get(1)
-        .filter(|arg| !arg.starts_with("--"))
-        .cloned()
-        .unwrap_or_else(|| "matsuri".to_string());
-    // 卡组档：显式 `--deck-profile <name>`；缺省按实际卡组 comp 自动匹配
-    let deck_profile = argv
-        .iter()
-        .position(|arg| arg == "--deck-profile")
-        .and_then(|index| argv.get(index + 1))
-        .cloned();
-
+fn run(trainer: Option<&str>, deck_profile: Option<String>, explain_flag: bool) -> Result<()> {
+    let trainer_name = trainer.unwrap_or("matsuri");
     // explain：手写档每回合打印与 manual 共用面板 + 候选打分表（默认关；不改任何数值）
-    let explain = argv.iter().any(|arg| arg == "--explain")
-        || std::env::var("MATSURI_EXPLAIN").is_ok_and(|value| value != "0");
+    let explain = explain_flag || std::env::var("MATSURI_EXPLAIN").is_ok_and(|value| value != "0");
 
     // 配置两份同名不同位：默认层在数据根、覆盖层在当前目录（与引擎约定一致）
     let cfg = Config::load_with_overlay_file(DATA_ROOT, ".").context("载入配置失败")?;
@@ -127,7 +141,7 @@ fn run() -> Result<()> {
     }
     // 规则主种子由 Runner 注入（`cfg.sim.seed`）：引擎两轴与剧本策略轴都按它派生
     let mut runner = Runner::new(&cfg, &mut fe)?;
-    match trainer_name.as_str() {
+    match trainer_name {
         "matsuri" => {
             // 搜索预算归剧本配置 `[search].search_n`（每候选 rollout 次数；默认 8192，0 = 手写档）；
             // 引擎 `[search]` 只提供内核参数（UCB / 激进度 / max_depth）。

@@ -5,6 +5,8 @@
 //! - `cardtest build --comp all --pick panel --out decks/panel.csv` 按构成码装配卡组
 //! - `cardtest build --comp 21101 --pick measured --topk 6 --games 400` 逐槽实测贪婪
 //! - `cardtest run --decks decks/panel.csv --games 1000 --seed 80000` 同种子配对跑测
+//! - `cardtest ... --matsuri-config <完整配置>` 测卡 / 扫参专用：显式载入完整
+//!   `matsuri_config.toml`（含 `[decks.*]` 变体），不读仓内默认层；玩家 CLI 不暴露该入口
 //!
 //! 口径：卡组 = 5 训练位 + SSR 吾妻（满破）；构成码 5 位 = 速 / 耐 / 力 / 根 / 智张数；
 //! `idrank = card_id * 10 + 4`；卡组顺序固定「类型 0→4 升序 + 友人最后」（与默认层同序）。
@@ -64,7 +66,12 @@ struct Env {
 }
 
 impl Env {
-    fn load() -> Result<Self> {
+    /// 载入数据与配置。
+    ///
+    /// `--matsuri-config` 是**测卡 / 扫参专用**入口：给了就读显式完整配置，
+    /// 不走仓内默认层。玩家终端 / online 不暴露这个入口，`[decks.*]` 的玩家覆盖
+    /// 限制仍由 `MatsuriConfigOverlay` 保持。
+    fn load(args: &[String]) -> Result<Self> {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(Path::parent)
@@ -74,8 +81,12 @@ impl Env {
         let engine =
             umaai::Config::load_with_overlay_file(&data_root, ".").context("载入引擎配置失败")?;
         let data = Arc::new(MatsuriData::load(&data_root).context("载入剧本数据失败")?);
-        let mut config =
-            MatsuriConfig::load_with_overlay_file(&data_root, ".").context("载入剧本配置失败")?;
+        let mut config = match parse_arg(args, "--matsuri-config") {
+            Some(path) => MatsuriConfig::load(&path, None)
+                .with_context(|| format!("载入剧本配置失败: {path}"))?,
+            None => MatsuriConfig::load_with_overlay_file(&data_root, ".")
+                .context("载入剧本配置失败")?,
+        };
         // 本工具只测手写档：默认层已开搜索，这里就地关掉
         if config.search.search_n != 0 {
             eprintln!(
@@ -621,7 +632,7 @@ fn main() -> Result<()> {
     umaai_core::diag::set_enabled(false);
     let args: Vec<String> = std::env::args().collect();
     let command = args.get(1).map(String::as_str).unwrap_or("pool");
-    let mut env = Env::load()?;
+    let mut env = Env::load(&args)?;
     apply_fixture(&mut env, &args)?;
     match command {
         "pool" => cmd_pool(&env, &args),
