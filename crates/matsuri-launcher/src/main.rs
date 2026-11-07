@@ -1,16 +1,67 @@
-//! 发布启动器 `matsuri-ai`：菜单、子进程装配、小黑板通道只读体检。
+//! 发布启动器 `matsuri-ai`：菜单、子进程装配、小黑板启动与通道只读体检。
 //!
-//! 只做三件事：解析工作目录与游戏根、按选项启动 `bin/matsuri.exe`、收尾停留。
+//! 只做四件事：解析工作目录与游戏根、按选项启动 `bin/matsuri.exe`、
+//! 另开控制台窗口拉起同目录小黑板（URA）、收尾停留。
 //! 不改核心 CLI、不写任何文件、不落日志。
 //!
 //! 两条数据路径勿混：`data/` 由核心 CLI 的 `DATA_ROOT="data"` 按子进程 cwd 解析；
 //! 真机帧由 `--root` 指向的游戏根拼 `.portable/PluginData/SendGameStatusPlugin`。
+//!
+//! 小黑板是 Terminal.Gui 常驻 TUI（stdin / stdout 被重定向即报错退出），
+//! 必须用 `CREATE_NEW_CONSOLE` 独立窗口启动，否则菜单与在线模式互相占屏。
 
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::{Duration, SystemTime};
+
+use inquire::Select;
+
+/// 菜单项：TTY 下由 inquire 渲染，非 TTY 下按 `key()` 编号打印
+const ITEMS: [Item; 4] = [Item::Online, Item::Blackboard, Item::Check, Item::Quit];
+
+/// 菜单选项（枚举化，避免标签 / 索引 / 编号三处各写一遍而失步）
+#[derive(Clone, Copy)]
+enum Item {
+    /// 在线模式：长驻监听真机帧
+    Online,
+    /// 另开窗口拉起同目录小黑板
+    Blackboard,
+    /// 小黑板通道只读体检
+    Check,
+    /// 退出启动器
+    Quit,
+}
+
+impl Item {
+    /// 菜单显示文本
+    fn label(self) -> &'static str {
+        match self {
+            Item::Online => "在线模式（默认，回车）",
+            Item::Blackboard => "启动小黑板",
+            Item::Check => "检查小黑板连接",
+            Item::Quit => "退出",
+        }
+    }
+
+    /// 非 TTY 兜底编号（末项为 0，与 `q` 等价）
+    fn key(self) -> &'static str {
+        match self {
+            Item::Online => "1",
+            Item::Blackboard => "2",
+            Item::Check => "3",
+            Item::Quit => "0",
+        }
+    }
+}
+
+/// 头部信息：标题分隔线长度（列）
+const SEPARATOR_COLS: usize = 46;
+/// 头部信息：标签列显示宽度（4 个全角字 + 2 列间隔）
+const LABEL_COLS: usize = 10;
+/// 小黑板可执行文件主名（与 `matsuri-ai.exe` 同目录，扩展名由 `platform_exe` 补）
+const BLACKBOARD_EXE: &str = "UmamusumeResponseAnalyzer";
 
 /// 游戏根下的 `.portable` 目录名（与引擎 `channel.rs` 约定一致）
 const PORTABLE_DIR: &str = ".portable";
@@ -25,50 +76,130 @@ const FINAL_SCORE_SUFFIX: &str = "_finalScore.json";
 /// 通道「近期活跃」的判定窗口（秒）
 const FRESH_SECS: u64 = 120;
 
-/// 本 crate 的错误类型（零依赖，不引第三方 error 库）
+/// 本 crate 的错误类型（不引第三方 error 库）
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// 启动器解析出的全部路径（固定结构，避免裸元组）
 struct Paths {
     /// 安装根：exe 所在目录，也是子进程 cwd（`data/` 在此）
     install_dir: PathBuf,
-    /// 启动时的当前目录
-    launch_cwd: PathBuf,
     /// 核心 CLI 可执行文件
     core_exe: PathBuf,
+    /// 小黑板可执行文件（同目录，缺失时启动项报错）
+    ura_exe: PathBuf,
     /// `--root` 指向的游戏根，找不到为 `None`
     game_root: Option<PathBuf>,
 }
 
-/// Windows 控制台 UTF-8 设置（非 Windows 为空实现，保 Linux CI 四门）
+/// Windows 控制台 UTF-8 代码页 / 窗口标题 / VT 转义（非 Windows 走空实现，保 Linux CI 四门）
 #[cfg(windows)]
 mod console {
     #[link(name = "kernel32")]
     unsafe extern "system" {
         fn SetConsoleCP(code: u32) -> i32;
         fn SetConsoleOutputCP(code: u32) -> i32;
+        fn SetConsoleTitleW(title: *const u16) -> i32;
+        fn GetStdHandle(std: u32) -> isize;
+        fn GetConsoleMode(handle: isize, mode: *mut u32) -> i32;
+        fn SetConsoleMode(handle: isize, mode: u32) -> i32;
     }
 
-    /// 把输入 / 输出代码页切到 UTF-8，避免中文乱码
-    pub fn setup() {
+    /// 标准输出句柄编号（`(DWORD)-11`）
+    const STD_OUTPUT_HANDLE: u32 = 0u32.wrapping_sub(11);
+    /// 启用 VT 转义序列（Windows 10 起支持）
+    const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0x0004;
+
+    /// 切 UTF-8 代码页并尝试开启 VT 上色；返回 VT 是否可用
+    pub fn setup() -> bool {
         const CP_UTF8: u32 = 65001;
-        // SAFETY: 两个 Win32 调用只改控制台代码页，无指针与生命周期约束。
+        // SAFETY: 三个调用只改控制台自身状态，无指针与生命周期约束。
         unsafe {
             let _ = SetConsoleCP(CP_UTF8);
             let _ = SetConsoleOutputCP(CP_UTF8);
+            let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+            let mut mode = 0u32;
+            GetConsoleMode(handle, &mut mode) != 0
+                && SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0
+        }
+    }
+
+    /// 设置控制台窗口标题，避免标题栏显示成 exe 路径
+    pub fn set_title(title: &str) {
+        let wide: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
+        // SAFETY: `wide` 以 0 结尾且在本调用期间有效。
+        unsafe {
+            let _ = SetConsoleTitleW(wide.as_ptr());
         }
     }
 }
 
-/// 非 Windows 不需要设置代码页
+/// 非 Windows：标题为空实现，上色只在真终端里开（避免重定向输出混入转义）
 #[cfg(not(windows))]
 mod console {
+    use std::io::IsTerminal;
+
+    /// 空实现；VT 能力按「是否真终端」判定
+    pub fn setup() -> bool {
+        std::io::stdout().is_terminal()
+    }
+
     /// 空实现
-    pub fn setup() {}
+    pub fn set_title(_title: &str) {}
 }
 
+/// 终端上色：VT 不可用时全部退化为原文，老 conhost 不出转义残留
+struct Paint {
+    /// 是否允许写 SGR 序列
+    vt: bool,
+}
+
+impl Paint {
+    /// 按控制台能力构造
+    fn new(vt: bool) -> Self {
+        Self { vt }
+    }
+
+    /// 用 SGR 代码包裹文本；不可用时原样返回
+    fn with(&self, sgr: &str, text: &str) -> String {
+        if self.vt {
+            format!("\u{1b}[{sgr}m{text}\u{1b}[0m")
+        } else {
+            text.to_string()
+        }
+    }
+
+    /// 标题粗体
+    fn bold(&self, text: &str) -> String {
+        self.with("1", text)
+    }
+
+    /// 分隔线等弱化元素
+    fn dim(&self, text: &str) -> String {
+        self.with("2", text)
+    }
+
+    /// 就绪状态点
+    fn green(&self, text: &str) -> String {
+        self.with("32", text)
+    }
+
+    /// 缺失 / 失败状态点
+    fn red(&self, text: &str) -> String {
+        self.with("31", text)
+    }
+
+    /// 半就绪状态点（程序在位但插件目录缺失等）
+    fn yellow(&self, text: &str) -> String {
+        self.with("33", text)
+    }
+}
+
+/// 启动器入口：控制台能力准备 → 路径解析 → 菜单循环
 fn main() -> ExitCode {
-    console::setup();
+    let paint = Paint::new(console::setup());
+    let launcher_ver = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
+    console::set_title(&format!("骏大祭 AI v{launcher_ver}"));
+
     let paths = match resolve_paths() {
         Ok(paths) => paths,
         Err(err) => {
@@ -77,7 +208,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    menu_loop(&paths)
+    menu_loop(&paths, &paint)
 }
 
 /// 解析安装根、启动时 cwd、核心 exe 与游戏根
@@ -89,11 +220,12 @@ fn resolve_paths() -> Result<Paths> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "取不到启动器所在目录"))?;
     let launch_cwd = std::env::current_dir()?;
     let core_exe = install_dir.join("bin").join(platform_exe("matsuri"));
+    let ura_exe = install_dir.join(platform_exe(BLACKBOARD_EXE));
     let game_root = find_game_root(&launch_cwd, &install_dir);
     Ok(Paths {
         install_dir,
-        launch_cwd,
         core_exe,
+        ura_exe,
         game_root,
     })
 }
@@ -141,67 +273,151 @@ fn core_version(paths: &Paths) -> String {
     }
 }
 
-/// 主菜单循环：四行只读信息 + 在线 / 体检 / 退出
-fn menu_loop(paths: &Paths) -> ExitCode {
-    let launcher_ver = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
+/// 主菜单循环：头部只读信息 + 在线 / 小黑板 / 体检 / 退出
+fn menu_loop(paths: &Paths, paint: &Paint) -> ExitCode {
     let core_ver = core_version(paths);
-    let root_text = match &paths.game_root {
-        Some(root) => root.display().to_string(),
-        None => "未找到（需要含 .portable 的目录）".to_string(),
-    };
-    let channel_ok = paths
-        .game_root
-        .as_deref()
-        .is_some_and(|root| plugin_dir(root).is_dir());
     loop {
-        println!();
-        println!("骏大祭 AI");
-        println!(
-            "  工作目录  {}  （子进程 cwd，data/ 在此）",
-            paths.install_dir.display()
-        );
-        println!(
-            "  启动时目录  {}  （游戏根默认取它）",
-            paths.launch_cwd.display()
-        );
-        println!("  游戏根    {root_text}  （--root）");
-        println!(
-            "  小黑板    {}",
-            if channel_ok {
-                "插件目录已就绪"
-            } else {
-                "插件目录未找到"
-            }
-        );
-        println!("  版本      启动器 {launcher_ver} / {core_ver}");
-        println!();
-        println!("  1. 在线模式（默认，回车）");
-        println!("  2. 检查小黑板连接");
-        println!("  0. 退出");
-        print!("请选择：");
-        let _ = io::stdout().flush();
-        let mut line = String::new();
-        // EOF（0 字节）必须和「用户按回车」区分开：管道 / 重定向时不能当默认在线，否则空转。
-        match io::stdin().read_line(&mut line) {
-            Ok(0) => return ExitCode::SUCCESS,
-            Ok(_) => {}
-            Err(_) => return ExitCode::FAILURE,
-        }
-        match line.trim().to_ascii_lowercase().as_str() {
-            "" | "1" => {
+        print_header(paths, paint, &core_ver);
+        let Some(item) = choose() else {
+            return ExitCode::SUCCESS;
+        };
+        match item {
+            Item::Online => {
                 if let Err(err) = run_online(paths) {
                     eprintln!("在线模式：{err}");
                 }
                 pause("按回车返回菜单…");
             }
-            "2" => {
+            Item::Blackboard => {
+                if let Err(err) = run_blackboard(paths) {
+                    eprintln!("小黑板：{err}");
+                    pause("按回车返回菜单…");
+                }
+            }
+            Item::Check => {
                 if let Err(err) = check_channel(paths) {
                     eprintln!("体检：{err}");
                 }
                 pause("按回车返回菜单…");
             }
-            "0" | "q" => return ExitCode::SUCCESS,
-            _ => println!("无此选项，请输入 1 / 2 / 0。"),
+            Item::Quit => return ExitCode::SUCCESS,
+        }
+    }
+}
+
+/// 头部信息：标题 + 分隔线 + 四行只读状态（标签列按显示宽度对齐）
+fn print_header(paths: &Paths, paint: &Paint, core_ver: &str) {
+    let launcher_ver = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
+    let ura_ok = paths.ura_exe.is_file();
+    let plugin_ok = paths
+        .game_root
+        .as_deref()
+        .is_some_and(|root| plugin_dir(root).is_dir());
+    println!();
+    println!(
+        "{}",
+        paint.bold(&format!("骏大祭 AI · 駿大祭編 · v{launcher_ver}"))
+    );
+    println!("{}", paint.dim(&"─".repeat(SEPARATOR_COLS)));
+    info_row("安装目录", &paths.install_dir.display().to_string());
+    info_row(
+        "游戏根",
+        &match &paths.game_root {
+            Some(root) => root.display().to_string(),
+            None => paint.red("未找到（需要含 .portable 的游戏根）"),
+        },
+    );
+    let (dot, text) = match (ura_ok, plugin_ok) {
+        (true, true) => (paint.green("●"), "程序在位 · 插件目录就绪"),
+        (true, false) => (paint.yellow("●"), "程序在位 · 插件目录未找到"),
+        (false, true) => (paint.red("○"), "程序缺失 · 插件目录就绪"),
+        (false, false) => (paint.red("○"), "程序缺失 · 插件目录未找到"),
+    };
+    info_row("小黑板", &format!("{dot} {text}"));
+    let core_exe_name = paths
+        .core_exe
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    info_row(
+        "核心程序",
+        &if paths.core_exe.is_file() {
+            format!("{} bin/{core_exe_name} · {core_ver}", paint.green("●"))
+        } else {
+            format!("{} bin/{core_exe_name} 缺失", paint.red("○"))
+        },
+    );
+    println!();
+}
+
+/// 头部信息行：标签按显示宽度补齐到 `LABEL_COLS` 列
+fn info_row(label: &str, value: &str) {
+    let pad = LABEL_COLS.saturating_sub(display_width(label));
+    println!("{label}{}{value}", " ".repeat(pad));
+}
+
+/// 终端显示宽度：全角 / 宽字符按 2 列计，只用于头部标签对齐
+fn display_width(text: &str) -> usize {
+    text.chars().map(|ch| if is_wide(ch) { 2 } else { 1 }).sum()
+}
+
+/// 是否宽字符（CJK / 假名 / 全角标点 / 常用 emoji）
+fn is_wide(ch: char) -> bool {
+    matches!(
+        ch as u32,
+        0x1100..=0x115F
+            | 0x2E80..=0x303E
+            | 0x3041..=0x33FF
+            | 0x3400..=0x4DBF
+            | 0x4E00..=0x9FFF
+            | 0xA000..=0xA4CF
+            | 0xAC00..=0xD7A3
+            | 0xF900..=0xFAFF
+            | 0xFE30..=0xFE6F
+            | 0xFF00..=0xFF60
+            | 0xFFE0..=0xFFE6
+            | 0x1F300..=0x1F64F
+            | 0x1F900..=0x1F9FF
+            | 0x20000..=0x3FFFD
+    )
+}
+
+/// 读取一次菜单选择；`None` 表示结束程序
+fn choose() -> Option<Item> {
+    if !io::stdin().is_terminal() {
+        return choose_plain();
+    }
+    let labels: Vec<&str> = ITEMS.iter().map(|item| item.label()).collect();
+    match Select::new("请选择", labels).prompt() {
+        Ok(choice) => ITEMS.iter().copied().find(|item| item.label() == choice),
+        // 取消（ESC / Ctrl+C）、非 TTY 或其它 inquire 错误一律退出，不空转。
+        Err(_) => None,
+    }
+}
+
+/// 非 TTY（管道 / 重定向）兜底：编号输入，供脚本调用与自动化验证
+fn choose_plain() -> Option<Item> {
+    loop {
+        for item in ITEMS {
+            println!("  {}. {}", item.key(), item.label());
+        }
+        print!("请选择：");
+        let _ = io::stdout().flush();
+        let mut line = String::new();
+        // EOF（0 字节）必须和「用户按回车」区分开，否则管道场景会无限循环。
+        match io::stdin().read_line(&mut line) {
+            Ok(0) | Err(_) => return None,
+            Ok(_) => {}
+        }
+        match line.trim().to_ascii_lowercase().as_str() {
+            "" => return Some(Item::Online),
+            "q" => return Some(Item::Quit),
+            key => {
+                if let Some(item) = ITEMS.iter().copied().find(|item| item.key() == key) {
+                    return Some(item);
+                }
+                println!("无此选项，请输入 1 / 2 / 3 / 0。");
+            }
         }
     }
 }
@@ -247,6 +463,48 @@ fn run_online(paths: &Paths) -> Result<()> {
     Ok(())
 }
 
+/// 小黑板：同目录 URA 另开控制台窗口拉起，不等待（它要与在线模式同时常驻）
+fn run_blackboard(paths: &Paths) -> Result<()> {
+    let exe = &paths.ura_exe;
+    if !exe.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "小黑板程序不存在：{}（发布包应与 matsuri-ai.exe 放在同一目录）",
+                exe.display()
+            ),
+        )
+        .into());
+    }
+    spawn_detached(exe, &paths.install_dir)?;
+    println!();
+    println!("已在新窗口启动小黑板：{}", exe.display());
+    println!("  1. 在该窗口点「启动」，确认监听地址与端口（默认 4693）");
+    println!("  2. 回到本窗口选「在线模式」，再打开游戏");
+    println!("  3. 结束小黑板用 Ctrl+C");
+    println!("（工作目录沿用小黑板自身设置：exe 旁有 .portable 即便携模式）");
+    Ok(())
+}
+
+/// 独立控制台启动：TUI 抢占终端，且父进程不能等它退出
+#[cfg(windows)]
+fn spawn_detached(exe: &Path, dir: &Path) -> io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    /// 新开一个控制台窗口（不继承本进程的 stdin / stdout）
+    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+    Command::new(exe)
+        .current_dir(dir)
+        .creation_flags(CREATE_NEW_CONSOLE)
+        .spawn()
+        .map(|_| ())
+}
+
+/// 非 Windows 无控制台窗口概念，只能普通启动（不等待）
+#[cfg(not(windows))]
+fn spawn_detached(exe: &Path, dir: &Path) -> io::Result<()> {
+    Command::new(exe).current_dir(dir).spawn().map(|_| ())
+}
+
 /// 通道体检：只读检查插件目录与白名单帧新鲜度，不启动子进程、不写文件
 fn check_channel(paths: &Paths) -> Result<()> {
     let root = paths
@@ -273,10 +531,10 @@ fn check_channel(paths: &Paths) -> Result<()> {
         println!("（白名单：thisTurn.json 与 game{{id}}_finalScore.json）");
         return Ok(());
     }
-    frames.sort_by(|a, b| b.1.cmp(&a.1));
+    frames.sort_by_key(|frame| std::cmp::Reverse(frame.1));
     let (name, latest) = frames
         .first()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "帧列表为空"))?;
+        .ok_or_else(|| io::Error::other("帧列表为空"))?;
     let age = match SystemTime::now().duration_since(*latest) {
         Ok(duration) => duration,
         Err(_) => Duration::ZERO,

@@ -106,9 +106,9 @@ pub fn run(args: Args) -> Result<()> {
     };
     let replay = source.is_replay();
 
-    // 面板：JSON 模式一律关色（stdout 只允许 JSON）
+    // 面板：JSON 模式一律关色（stdout 只允许 JSON）；在线档用精简档（不显示演目分配表）
     let color = term::use_color(args.json);
-    let panel = BoardPanel::new(color);
+    let panel = BoardPanel::new(color).compact();
     let mut stdout = std::io::stdout();
     if args.json {
         // 启动握手：消费者据此判断「进程已就绪、开始接收帧」
@@ -150,6 +150,7 @@ pub fn run(args: Args) -> Result<()> {
                     // 搜索前先显示还原后的局面（JSON 模式不渲染面板）
                     if !args.json {
                         write!(stdout, "{}", panel.render(game, actions, None)?)?;
+                        write!(stdout, "{}", search_banner(color))?;
                         stdout.flush()?;
                     }
                     Ok(())
@@ -190,6 +191,15 @@ pub fn run(args: Args) -> Result<()> {
         return Err(anyhow!("回放有 {errors} 帧处理失败"));
     }
     Ok(())
+}
+
+/// 搜索开始前的分隔线与提示（面板之后、决策之前）
+fn search_banner(color: bool) -> String {
+    format!(
+        "{}\n{}\n",
+        paint(&"─".repeat(36), Some("90"), color),
+        paint("AI计算中…", Some("96"), color)
+    )
 }
 
 /// 渲染一帧的输出

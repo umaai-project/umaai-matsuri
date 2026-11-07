@@ -8,10 +8,13 @@
 //! 跨帧状态只有三样（都必须逐帧传回）：
 //!
 //! 1. `prev_levels`：上一帧的有效训练等级（`G12` 基准）；
-//! 2. `seen`：已处理帧的内容摘要（`G7` 幂等）；
-//! 3. `last_train_turn`：本回合是否已给过训练决策（同回合多帧不重复报）。
+//! 2. `seen`：已处理帧的内容摘要（`G7` 幂等，同内容只决策一次）；
+//! 3. `luck_turn` / `luck_attach`：运气分只按回合推进一次（同回合重复决策复用快照）。
 //!
 //! 三者都按**局号**（`single_mode_chara_id`）隔离：换局自动清空。
+//!
+//! **同回合允许多次决策**：真机上玩家可能反复进出同一状态（选完又取消、重进训练屏），
+//! 每来一张新帧就重新决策并重新输出，不做「本回合已给过」去重。
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -25,7 +28,7 @@ use matsuri_core::{
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-use umaai::{BaseParams, FrameOutcome, LuckScorer};
+use umaai::{BaseParams, FrameOutcome, LuckAttach, LuckScorer};
 use umaai_core::rng::{StreamTag, derive_seed};
 use umaai_core::{Array5, Array6, Data};
 use umasim::game::{Game, SupportCard, Trainer};
@@ -104,10 +107,10 @@ pub struct OnlineSession {
     seen: HashSet<u64>,
     /// 上一帧有效训练等级（`G12` 基准）
     prev_levels: Option<Array5>,
-    /// 本回合是否已给过训练决策
-    last_train_turn: Option<i32>,
-    /// 已给过教诲决策的窗口下标（同一窗口的 special 帧去重）
-    last_advice_window: Option<usize>,
+    /// 最近一次推进运气分的回合（同回合重复决策不再推进跟踪器）
+    luck_turn: Option<i32>,
+    /// 本回合的运气分快照（同上，重复决策时复用）
+    luck_attach: Option<LuckAttach>,
     /// 是否输出训练验算表
     verify: bool,
     /// 运气分跟踪器（只在搜索档主行动决策上推进）
@@ -155,8 +158,8 @@ impl OnlineSession {
             epoch: None,
             seen: HashSet::new(),
             prev_levels: None,
-            last_train_turn: None,
-            last_advice_window: None,
+            luck_turn: None,
+            luck_attach: None,
             verify,
             luck: LuckScorer::new(cfg.record.luck_turn_bonus),
         })
@@ -283,25 +286,6 @@ impl OnlineSession {
                 }
             }
             Route::Advice(window) => {
-                if self.last_advice_window == Some(window) {
-                    return Ok(OnlineTurnOutput {
-                        turn,
-                        epoch: frame.epoch_key(),
-                        scenario,
-                        frame_digest: frame.digest,
-                        kind: TurnKind::Skipped,
-                        record: None,
-                        skip_reason: Some("本窗口已给出教诲决策".to_string()),
-                        notes: notes.clone(),
-                        view,
-                        search_backed: false,
-                        verify,
-                        game,
-                        actions: Vec::new(),
-                        candidate_scores: Vec::new(),
-                        summary: None,
-                    });
-                }
                 let mut game = game;
                 if !game.advice.acquired || game.advice.slots == [0; 5] {
                     if window != 0 {
@@ -465,7 +449,6 @@ impl OnlineSession {
                     extra.insert("preset_diff".to_string(), diff);
                 }
                 let view = game.view();
-                self.last_advice_window = Some(window);
                 OnlineTurnOutput {
                     turn,
                     epoch: frame.epoch_key(),
@@ -485,110 +468,95 @@ impl OnlineSession {
                 }
             }
             Route::Train => {
-                // 同回合已经给过训练决策 → 不再重复报（真机同回合可能先出 event 帧再出 command 帧）
-                if self.last_train_turn == Some(turn) {
-                    OnlineTurnOutput {
-                        turn,
-                        epoch: frame.epoch_key(),
-                        scenario,
-                        frame_digest: frame.digest,
-                        kind: TurnKind::Skipped,
-                        record: None,
-                        skip_reason: Some("本回合已给出训练决策".to_string()),
-                        notes: notes.clone(),
-                        view,
-                        search_backed: false,
-                        verify,
-                        game,
-                        actions: Vec::new(),
-                        candidate_scores: Vec::new(),
-                        summary: None,
+                // 同回合允许多次决策：每张新帧都重算（玩家可能反复进出同一训练屏）
+                let actions = game.list_actions()?;
+                before_search(&game, &actions)?;
+                let mut rng = self.decision_rng(turn);
+                let index = self
+                    .trainer
+                    .as_dyn()
+                    .select_action(&game, &actions, &mut rng)?;
+                // 手写档：解释与实际决策同源（`explain_action` 内部走同一个 `choose_action`）；
+                // 搜索档：把最近一次搜索的候选均分 / 样本数带进记录（fallback 时保持无分）
+                let (mut record, candidate_scores, search_backed, summary) = match &self.trainer {
+                    TrainerChoice::Hand(trainer) => {
+                        let explain = trainer.explain_action(&game, &actions)?;
+                        let scores = explain.candidates.clone();
+                        let record = online::train_record(
+                            &game,
+                            &actions,
+                            index,
+                            Some(online::TrainExplanation {
+                                candidates: explain.candidates.as_slice(),
+                                counts: None,
+                                chosen: explain.chosen,
+                                reason: explain.reason.clone(),
+                            }),
+                        )?;
+                        // 手写档的候选分只给面板看；JSON 仍是 `score = 0`（无搜索分）
+                        (record, scores, false, None)
                     }
-                } else {
-                    let actions = game.list_actions()?;
-                    before_search(&game, &actions)?;
-                    let mut rng = self.decision_rng(turn);
-                    let index = self
-                        .trainer
-                        .as_dyn()
-                        .select_action(&game, &actions, &mut rng)?;
-                    // 手写档：解释与实际决策同源（`explain_action` 内部走同一个 `choose_action`）；
-                    // 搜索档：把最近一次搜索的候选均分 / 样本数带进记录（fallback 时保持无分）
-                    let (mut record, candidate_scores, search_backed, summary) = match &self.trainer
-                    {
-                        TrainerChoice::Hand(trainer) => {
-                            let explain = trainer.explain_action(&game, &actions)?;
-                            let scores = explain.candidates.clone();
+                    TrainerChoice::Search(trainer) => match trainer.last_search() {
+                        Some(summary) => {
+                            let candidates: Vec<(usize, f64)> = summary
+                                .candidates
+                                .iter()
+                                .map(|candidate| (candidate.index, candidate.score))
+                                .collect();
+                            let counts: Vec<u32> = summary
+                                .candidates
+                                .iter()
+                                .map(|candidate| candidate.n)
+                                .collect();
                             let record = online::train_record(
                                 &game,
                                 &actions,
                                 index,
                                 Some(online::TrainExplanation {
-                                    candidates: explain.candidates.as_slice(),
-                                    counts: None,
-                                    chosen: explain.chosen,
-                                    reason: explain.reason.clone(),
+                                    candidates: candidates.as_slice(),
+                                    counts: Some(counts.as_slice()),
+                                    chosen: index,
+                                    reason: "搜索：候选排名加权均分最高".to_string(),
                                 }),
                             )?;
-                            // 手写档的候选分只给面板看；JSON 仍是 `score = 0`（无搜索分）
-                            (record, scores, false, None)
+                            (record, candidates, true, Some(summary))
                         }
-                        TrainerChoice::Search(trainer) => match trainer.last_search() {
-                            Some(summary) => {
-                                let candidates: Vec<(usize, f64)> = summary
-                                    .candidates
-                                    .iter()
-                                    .map(|candidate| (candidate.index, candidate.score))
-                                    .collect();
-                                let counts: Vec<u32> = summary
-                                    .candidates
-                                    .iter()
-                                    .map(|candidate| candidate.n)
-                                    .collect();
-                                let record = online::train_record(
-                                    &game,
-                                    &actions,
-                                    index,
-                                    Some(online::TrainExplanation {
-                                        candidates: candidates.as_slice(),
-                                        counts: Some(counts.as_slice()),
-                                        chosen: index,
-                                        reason: "搜索：候选排名加权均分最高".to_string(),
-                                    }),
-                                )?;
-                                (record, candidates, true, Some(summary))
-                            }
-                            None => (
-                                online::train_record(&game, &actions, index, None)?,
-                                Vec::new(),
-                                false,
-                                None,
-                            ),
-                        },
-                    };
-                    // 运气分只统计搜索终局分，且只在主行动（训练 / 比赛）上推进
-                    if search_backed {
+                        None => (
+                            online::train_record(&game, &actions, index, None)?,
+                            Vec::new(),
+                            false,
+                            None,
+                        ),
+                    },
+                };
+                // 运气分只统计搜索终局分，且只在主行动（训练 / 比赛）上推进；
+                // 同回合重复决策复用本回合快照，免得把基线抖动记进「本轮」
+                if search_backed {
+                    if self.luck_turn == Some(turn) {
+                        record.luck = self.luck_attach.clone();
+                    } else {
                         self.luck
                             .attach(&mut record, frame.epoch_key(), turn, MAX_TURN);
+                        self.luck_attach = record.luck.clone();
+                        self.luck_turn = Some(turn);
                     }
-                    self.last_train_turn = Some(turn);
-                    OnlineTurnOutput {
-                        turn,
-                        epoch: frame.epoch_key(),
-                        scenario,
-                        frame_digest: frame.digest,
-                        kind: TurnKind::Decision,
-                        record: Some(record),
-                        skip_reason: None,
-                        notes: notes.clone(),
-                        view,
-                        search_backed,
-                        verify,
-                        game,
-                        actions,
-                        candidate_scores,
-                        summary,
-                    }
+                }
+                OnlineTurnOutput {
+                    turn,
+                    epoch: frame.epoch_key(),
+                    scenario,
+                    frame_digest: frame.digest,
+                    kind: TurnKind::Decision,
+                    record: Some(record),
+                    skip_reason: None,
+                    notes: notes.clone(),
+                    view,
+                    search_backed,
+                    verify,
+                    game,
+                    actions,
+                    candidate_scores,
+                    summary,
                 }
             }
         };
@@ -654,11 +622,13 @@ impl OnlineSession {
     fn restore(&mut self, frame: &ParsedFrame) -> Result<(MatsuriGame, Vec<String>)> {
         let params = self.params();
         let FrameOutcome { game: base, notes } = frame.status.to_base_game(&params)?;
-        // 入口阶段：动作已执行 → `AfterTrain`；否则 `Train`（绝不进 `Begin` / `Distribute`）
-        let stage = if frame.is_after_training() {
-            Stage::AfterTrain
-        } else {
+        // 入口阶段：本帧带决策面（人头已落位或预览非零）就按 `Train` 还原。
+        // 真机 `isAfterTraining` 会「粘」在后续帧上（6311 T7 两帧都为 true，其中 `turn7_2`
+        // 是完整训练屏），只看它会把可决策回合误判成 `AfterTrain` 而整天不给建议。
+        let stage = if has_decision_surface(frame) || !frame.is_after_training() {
             Stage::Train
+        } else {
+            Stage::AfterTrain
         };
         let mut game = MatsuriGame::restore(
             RestoreInput {
@@ -695,8 +665,8 @@ impl OnlineSession {
         self.epoch = Some(epoch);
         self.seen.clear();
         self.prev_levels = None;
-        self.last_train_turn = None;
-        self.last_advice_window = None;
+        self.luck_turn = None;
+        self.luck_attach = None;
     }
 
     /// 本帧的决策随机流（按 `(master, turn)` 派生：同帧可复现，不跨帧位移）
@@ -718,6 +688,24 @@ impl OnlineSession {
             friend_first_event: FRIEND_FIRST_EVENT,
         }
     }
+}
+
+/// 本帧是否带决策面：有人头落位（`>= 0`，`-1` 是占位）或任一训练预览非零
+///
+/// 事件帧 / 结算中间帧两者皆空；载入快照只有预览没有分布——后者仍算有面，
+/// 由 [`online::stale_snapshot`] 单独拦下。
+fn has_decision_surface(frame: &ParsedFrame) -> bool {
+    let placed = frame
+        .status
+        .person_distribution
+        .iter()
+        .flatten()
+        .any(|cell| *cell >= 0);
+    placed
+        || frame
+            .training
+            .values()
+            .any(|row| row.total().iter().any(|value| *value != 0))
 }
 
 /// 确保静态数据已初始化（宿主忘记 `Data::init` 时给出可读报错）

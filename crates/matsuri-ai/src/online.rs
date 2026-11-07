@@ -4,12 +4,15 @@
 //!
 //! | 帧形态 | 走向 | 原因 |
 //! |---|---|---|
-//! | `source == special` + `playing_state = 51` + 教诲窗口 | 教诲分配 | T2/T11/T23/T35/T47/T59；按窗口去重 |
+//! | `source == special` + `playing_state = 51` + 教诲窗口 | 教诲分配 | T2/T11/T23/T35/T47/T59；重复进入同一窗口重新分配 |
 //! | 其余 `source == special`（`playing_state = 49/51`） | 跳过 | 発表会 / 本番的结算中间态，没有可选动作 |
 //! | 有「多选项待选事件」 | 事件决策 | 事件由服务器挂起，等玩家选（结局 / 抽签等） |
-//! | `isAfterTraining = true`（→ `AfterTrain`） | 跳过 | 动作已执行，剩余事件已结算完 |
+//! | 阶段不是 `Train` | 跳过 | 动作已执行且本帧没有训练入口（见 `session::restore` 的阶段定档） |
 //! | 预览非零 + 分布全空（T0 载入快照） | 跳过 | 帧自相矛盾，等 `command` 帧 |
 //! | 其余（→ `Train`） | 训练 / 比赛决策 | 决策点 |
+//!
+//! **同回合多帧都决策**：玩家可能反复进出同一状态，不做「本回合已给过」去重。
+//! 只有内容完全相同的重复帧（`G7` 摘要幂等）不再重复算。
 //!
 //! 「多选项」口径照抄引擎 `Session::run_events`：`player_select && choices.len() > 1`
 //! 才算需要决策——单选项事件只是一个结果，不问。
@@ -51,11 +54,10 @@ pub fn route(game: &MatsuriGame, frame: &ParsedFrame) -> Route {
     if pending_event(game).is_some() {
         return Route::Event;
     }
-    if frame.is_after_training() {
-        return Route::Skip("动作已执行且无待选事件（isAfterTraining）");
-    }
+    // 阶段由还原侧按「有无决策面」定档：带训练入口的帧一律是 `Train`，
+    // 走到这里只剩动作已执行、没有入口的帧（事件已结算完）
     if game.stage != Stage::Train {
-        return Route::Skip("还原阶段不是决策点");
+        return Route::Skip("动作已执行且本帧无训练入口（等下一帧）");
     }
     // 过期快照（T0 载入帧）：预览说有人、分布说没人——帧自相矛盾，
     // 训练决策会建立在「人数恒 0」的还原态上；等下一张 `command` 帧即可

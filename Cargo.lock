@@ -921,6 +921,9 @@ dependencies = [
 [[package]]
 name = "matsuri-launcher"
 version = "0.1.0"
+dependencies = [
+ "inquire",
+]
 
 [[package]]
 name = "matsuri-sim"

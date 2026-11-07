@@ -13,7 +13,7 @@ workspace 六 crate：
 | `matsuri-ai` | 在线帧解析、一帧一决策会话、路由与输出 DTO |
 | `matsuri-cli` | 终端入口：离线跑局、在线帧 / 回放、手动核对、面板与日志 |
 | `matsuri-tools` | 外围测量：`bench` / `sweep` / `cardtest` 与诊断工具 |
-| `matsuri-launcher` | Windows 发布启动器 `matsuri-ai`（菜单 / 子进程装配 / 通道体检；std-only 零依赖） |
+| `matsuri-launcher` | Windows 发布启动器 `matsuri-ai`（菜单 / 子进程装配 / 通道体检；交互选择用 `inquire`，不依赖业务 crate） |
 
 - 引擎以 path 引用 `../umaai_next` 的 `umaai-core` / `umasim` / `umaai`；不 fork 引擎、不在引擎仓加剧本 crate。
 - 数据根为 `data/`：引擎静态表 + `scenario_matsuri.json` + 默认层 `matsuri_config.toml` / `ai_config.toml`。
@@ -29,10 +29,15 @@ workspace 六 crate：
 - **搜索**：`[search].search_n` 为每候选 rollout 数（默认 **8192**，`0` = 手写档）；Train / 教诲 / 事件分开关；
   教诲候选按 801 硬约束去重后再剪枝 / 搜索。
 - **在线决策**：`matsuri online` 支持真机帧监听与回放；输出局面面板、运气分、融合固定决策、Top 5 候选、
-  教诲完整映射与 `AdvicePreset` 差异；在线教诲路由按窗口去重，搜索侧跳过 End 阶段的重复教诲处理。
+  教诲完整映射与 `AdvicePreset` 差异；**同回合每张新帧都重新决策**（只有内容完全相同的重复帧按摘要跳过），
+  面板在搜索前打「AI计算中…」；在线档用精简面板（不显示演目分配表 / 配色图例 / 追加稽古说明，
+  手动核对与 `explain` 仍是完整档）；搜索侧跳过 End 阶段的重复教诲处理。
 - **CLI**：`matsuri` / `matsuri online` 已迁移 clap，提供 `--help` / `--version`；`matsuri-tools` 仍用手写解析。
-- **发布**：Windows 启动器基础版已实现（`crates/matsuri-launcher`，bin `matsuri-ai`）：
-  菜单只保留在线模式与小黑板通道体检，工作目录 / 游戏根 / 版本只读显示；不写配置、不落日志。
+- **发布**：Windows 启动器已实现（`crates/matsuri-launcher`，bin `matsuri-ai`）：
+  菜单为在线模式（默认）/ 启动小黑板 / 通道体检 / 退出；小黑板取同目录 `UmamusumeResponseAnalyzer.exe`，
+  用 `CREATE_NEW_CONSOLE` 另开窗口拉起（URA 是 Terminal.Gui TUI，与在线模式需同时常驻）。
+  头部为标题 + 分隔线 + 四行只读信息（安装目录 / 游戏根 / 小黑板 / 核心程序，标签按显示宽度对齐、
+  状态点按文件在位染色）；不写配置、不落日志。
   发布包为 `matsuri-ai.exe` + `bin/matsuri.exe` + `data/`，打包与附加资源见
   `scripts/package_launcher.py`、`dist/extra/`；完整版计划与差异见
   [`docs/plan/release_launcher.md`](docs/plan/release_launcher.md) §0。

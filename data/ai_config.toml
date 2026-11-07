@@ -89,8 +89,9 @@ luck_turn_bonus = 70
 # ---------- output ----------
 
 [output]
-# 日志级别（由入口层初始化日志器时消费）
-log_level = "info"
+# 日志级别（由入口层初始化日志器时消费；可用: off / error / warn / info / debug / trace）
+# 生产默认 `warn`：只报异常，不刷诊断流水
+log_level = "warn"
 
 # ---------- presets ----------
 

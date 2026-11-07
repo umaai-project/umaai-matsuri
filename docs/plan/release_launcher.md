@@ -1,7 +1,7 @@
 # 发布启动器（`matsuri-ai`）计划
 
-> 状态：**基础版已实现**（2026-11-07）。本文保留完整版形态与边界，作为后续阶段参考；
-> 基础版与本文的差异见 §0，**以 §0 为实现现状**。
+> 状态：**基础版已实现**（2026-11-07）；同日补「启动小黑板」与头部信息改版。本文保留完整版形态与边界，
+> 作为后续阶段参考；基础版与本文的差异见 §0，**以 §0 为实现现状**。
 > 决策（2026-11-07）：启动器名 `matsuri-ai`；其他二进制放 `bin/`；发布只考虑 Windows；
 > 更新工具暂不做；不做 GUI；**核心 CLI 不改**。
 
@@ -11,18 +11,24 @@
 
 | 项 | 本文完整版 | 基础版实现 |
 |---|---|---|
-| 菜单 | 6 项（在线 / 离线 / 日志 / 设置 / 版本 / 退出） | 在线（默认）/ 检查小黑板连接 / 退出；另只读显示工作目录、启动时目录、游戏根、小黑板状态、版本 |
+| 菜单 | 6 项（在线 / 离线 / 日志 / 设置 / 版本 / 退出） | 4 项：在线（默认）/ 启动小黑板 / 检查小黑板连接 / 退出 |
+| 头部 | 未规定 | 标题 + 分隔线 + 四行只读信息（安装目录 / 游戏根 / 小黑板 / 核心程序）；标签按显示宽度对齐，状态点按文件在位染色，VT 不可用自动退纯文本；控制台窗口标题设为 `骏大祭 AI v<版本>` |
+| 小黑板启动 | 无（由用户手工开 URA） | 取同目录 `UmamusumeResponseAnalyzer.exe`，`CREATE_NEW_CONSOLE` 另开窗口，不等待；仅打印三步引导，不代点「启动」、不改 URA 配置 |
 | 离线 | 3 档 + 进阶、帧回放 | 整个砍掉，后续另议 |
 | 配置 | `data/config.toml` + 设置菜单 | 不做；游戏根默认取启动时 cwd，无插件目录回退安装根；不写入任何文件 |
 | 日志 | `logs/` + `launcher.log` | 不做 |
-| 打包 | 后续阶段 | `scripts/package_launcher.py` 已落地：`matsuri-ai.exe` + `bin/matsuri.exe` + `data/`，附加资源递归取自 `dist/extra/`（保留空目录），可选 zip |
+| 打包 | 后续阶段 | `scripts/package_launcher.py` 已落地：`matsuri-ai.exe` + `bin/matsuri.exe` + `data/`，附加资源递归取自 `dist/extra/`（保留空目录），缺失 URA 时给告警，可选 zip |
 | 通道体检 | 无 | 独立只读模式：查插件目录与白名单帧 mtime，120 s 四档结论；不启动子进程、不解析帧内容 |
+
+小黑板为何必须另开窗口：URA 是 Terminal.Gui 常驻 TUI，`Program.cs` 检测到 stdin / stdout
+被重定向即报错退出；而同窗口启动会占死启动器菜单，导致无法再进「在线模式」——两者必须同时在跑。
+URA 自身的便携判定是 `exe 旁 .portable 目录`，与启动器传入的 cwd 无关，故不代设工作目录。
 
 不变：名称 `matsuri-ai.exe`、仅 Windows、不做 GUI / 更新工具、**核心 CLI 不改**、
 子进程 cwd 固定为安装根（`DATA_ROOT = "data"` 相对 cwd）、`--root` 指向游戏根、
 错误与退出后 `pause` 防闪退。
 
-实现落点：`crates/matsuri-launcher/`（std-only 零依赖）、`scripts/package_launcher.py`、
+实现落点：`crates/matsuri-launcher/`（交互选择用 `inquire`，不依赖本仓业务 crate）、`scripts/package_launcher.py`、
 根 `Cargo.toml` 第 6 个 member、`.gitignore` 的 `/dist/`。
 
 ## 1. 目标与边界

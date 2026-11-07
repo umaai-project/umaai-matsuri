@@ -1,7 +1,7 @@
-# 发布启动器：菜单 / 子进程装配 / 小黑板通道只读体检
+# 发布启动器：菜单 / 子进程装配 / 小黑板启动与通道只读体检
 #
-# std-only 零依赖，只出 bin `matsuri-ai`；决策逻辑全在核心 CLI，本 crate 不碰业务。
-# 命名避开 `matsuri-ai` 库 crate（见 docs/plan/release_launcher.md）。
+# 交互选择用 inquire（非 TTY 调用有编号输入兜底）；不依赖本仓业务 crate，
+# 决策逻辑全在核心 CLI。命名避开 `matsuri-ai` 库 crate（见 docs/plan/release_launcher.md）。
 [package]
 name = "matsuri-launcher"
 version.workspace = true
@@ -13,3 +13,4 @@ name = "matsuri-ai"
 path = "src/main.rs"
 
 [dependencies]
+inquire = "0.9.4"

@@ -105,6 +105,12 @@ def collect(release_dir: Path, out: Path, extra: Path) -> list[str]:
             f"共 {total / 1024 / 1024:.1f} MB"
         )
 
+    if extra.is_dir() and not (extra / exe_name("UmamusumeResponseAnalyzer")).is_file():
+        messages.append(
+            "提示：附加资源缺少 UmamusumeResponseAnalyzer.exe，"
+            "启动器「启动小黑板」将提示程序缺失"
+        )
+
     expected = {launcher.name, "bin", "data", *extra_names}
     messages += [
         f"警告：输出目录存在非白名单条目（未删除）：{path.relative_to(out)}"

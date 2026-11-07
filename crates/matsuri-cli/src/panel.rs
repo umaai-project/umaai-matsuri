@@ -575,10 +575,12 @@ pub struct BoardPanel {
     last_advice: Cell<Option<([i32; 5], [i32; 5])>>,
     /// 是否着色（手动档固定 false；explain / 终端按需）
     color: bool,
+    /// 精简档（在线档：不显示演目分配表 / 配色图例 / 追加稽古与剧本起始说明）
+    compact: bool,
 }
 
 impl BoardPanel {
-    /// 新建面板
+    /// 新建面板（完整信息：手动核对与 explain 用）
     pub fn new(color: bool) -> Self {
         Self {
             last: Cell::new(None),
@@ -586,7 +588,15 @@ impl BoardPanel {
             last_advice_window: Cell::new(None),
             last_advice: Cell::new(None),
             color,
+            compact: false,
         }
+    }
+
+    /// 切成精简档（在线档：面板只保留回合 / 数值 / 训练 / 动作）
+    #[must_use]
+    pub fn compact(mut self) -> Self {
+        self.compact = true;
+        self
     }
 
     /// 本回合类型标签（目标赛 / 発表会 / 合宿 / 教诲窗口 / 强制休息 / URA …）
@@ -946,38 +956,43 @@ impl BoardPanel {
     }
 
     /// 剧本资源：演目表（槽 / Lv / 教诲→転成 / 担当人物）+ 発表会·永久 buff·资源状态
+    ///
+    /// 精简档（在线档）不显示演目表与剧本起始说明，只保留発表会与资源两行。
     fn write_resources(&self, view: &MatsuriView, out: &mut String, color: bool) {
         let res = &view.resources;
         let need = view.schedule.next_check_point;
-        let need_level = need.map(|need| need.need_act_level);
         out.push_str("【剧本资源】\n");
-        if !view.turn.scenario_started {
-            let note = format!(
-                "（剧本机制自 T{SCENARIO_START_TURN} 开始：0–1 回合无担当分配，训练等不获取演目资源）"
-            );
-            let _ = writeln!(out, "  {}", paint(&note, Some(ANSI_GRAY), color));
+        if !self.compact {
+            if !view.turn.scenario_started {
+                let note = format!(
+                    "（剧本机制自 T{SCENARIO_START_TURN} 开始：0–1 回合无担当分配，训练等不获取演目资源）"
+                );
+                let _ = writeln!(out, "  {}", paint(&note, Some(ANSI_GRAY), color));
+            }
+            let need_level = need.map(|need| need.need_act_level);
+            let mut grid = Grid::new(["演目", "槽", "Lv", "教诲 → 転成", "担当"]);
+            for act in 0..5 {
+                let train = res.act_trains.get(act).copied().unwrap_or(act);
+                let name = format!(
+                    "{}({})",
+                    act_short(act),
+                    AXIS_NAMES.get(train).copied().unwrap_or("?")
+                );
+                let slot = gauge_text(res.act_gauge[act], res.act_gauge_max, color);
+                let level =
+                    act_level_text(res.act_level[act], res.act_level_max, need_level, color);
+                let advice = advice_cell(
+                    res.advice_slots[act],
+                    res.advice_fused[act],
+                    res.kensan_pending,
+                    color,
+                );
+                let members = act_members(view, act, color);
+                grid.push([name, slot, level, advice, members]);
+            }
+            out.push_str(&grid.render(term::resolve_width(None)));
+            out.push('\n');
         }
-        let mut grid = Grid::new(["演目", "槽", "Lv", "教诲 → 転成", "担当"]);
-        for act in 0..5 {
-            let train = res.act_trains.get(act).copied().unwrap_or(act);
-            let name = format!(
-                "{}({})",
-                act_short(act),
-                AXIS_NAMES.get(train).copied().unwrap_or("?")
-            );
-            let slot = gauge_text(res.act_gauge[act], res.act_gauge_max, color);
-            let level = act_level_text(res.act_level[act], res.act_level_max, need_level, color);
-            let advice = advice_cell(
-                res.advice_slots[act],
-                res.advice_fused[act],
-                res.kensan_pending,
-                color,
-            );
-            let members = act_members(view, act, color);
-            grid.push([name, slot, level, advice, members]);
-        }
-        out.push_str(&grid.render(term::resolve_width(None)));
-        out.push('\n');
         // 発表会 / 本番结果、下次考核门槛
         let results: Vec<String> = res
             .check_points
@@ -1059,8 +1074,12 @@ impl BoardPanel {
             extras.push(paint(&text, Some(ANSI_BRIGHT_CYAN), color));
         }
         // 追加稽古：本回合掷中且存在可触发列 → 亮黄提示（训练表列标题另标紫「追加稽古」）
-        // 比赛回合等必然无训练位时掷中注定作废，不提示，避免「显示可触发却没有目标」
-        if res.kensan_pending && Self::kensan_columns(view).iter().any(|marked| *marked) {
+        // 比赛回合等必然无训练位时掷中注定作废，不提示，避免「显示可触发却没有目标」；
+        // 精简档（在线档）不写这句解释，只留训练表列标题的紫色标记
+        if !self.compact
+            && res.kensan_pending
+            && Self::kensan_columns(view).iter().any(|marked| *marked)
+        {
             extras.push(paint("可触发追加稽古", Some(ANSI_BRIGHT_YELLOW), color));
         }
         if res.train_level_bonus.iter().any(|bonus| *bonus != 0) {
@@ -1135,8 +1154,8 @@ impl BoardPanel {
         out.push_str("【训练】\n");
         out.push_str(&grid.render(term::resolve_width(None)));
         out.push('\n');
-        // 人物配色图例（只列本局存在的教诲来源；研鑽改标列标题，不再给人物着色）
-        let legend: Vec<String> = if view.resources.assist_act.is_some() {
+        // 人物配色图例（只列本局存在的教诲来源；研鑽改标列标题，不再给人物着色）；精简档不显示
+        let legend: Vec<String> = if !self.compact && view.resources.assist_act.is_some() {
             vec![paint("黄=助力担当（稽古触发）", Some(ANSI_YELLOW), color)]
         } else {
             Vec::new()

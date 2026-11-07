@@ -8,6 +8,8 @@ fn search_mode_runs_full_game() {
     let output = Command::new(env!("CARGO_BIN_EXE_matsuri"))
         .arg("matsuri")
         .env("MATSURI_SEARCH_N", "1")
+        // 生产默认日志级别是 `warn`，本用例要校验搜索摘要日志 → 临时提到 info
+        .env("MATSURI_LOG_LEVEL", "info")
         .current_dir(root)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

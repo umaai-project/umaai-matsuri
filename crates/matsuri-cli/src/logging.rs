@@ -34,7 +34,10 @@ impl log::Log for StderrLogger {
 }
 
 /// 按级别名装日志器（级别名非法即报错，与配置层严格口径一致）
+///
+/// 环境变量 `MATSURI_LOG_LEVEL` 覆盖配置值——生产默认 `warn`，现场排障时临时提到 `info`。
 pub fn init_logger(level_name: &str) -> Result<()> {
+    let level_name = std::env::var("MATSURI_LOG_LEVEL").unwrap_or_else(|_| level_name.to_string());
     let filter = match level_name.to_ascii_lowercase().as_str() {
         "off" => log::LevelFilter::Off,
         "error" => log::LevelFilter::Error,
