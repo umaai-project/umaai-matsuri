@@ -352,13 +352,7 @@ impl MatsuriGame {
         let Some(source) = (0..5).find(|act| self.advice.fused[*act] == 801) else {
             return;
         };
-        let counts: [usize; 5] = std::array::from_fn(|act| {
-            self.persons
-                .iter()
-                .filter(|person| person.act == Some(act))
-                .count()
-        });
-        let Some(target) = (0..5).max_by_key(|act| (counts[*act], usize::MAX - *act)) else {
+        let Some(target) = self.advice_constraint_target() else {
             return;
         };
         if target != source {
@@ -368,6 +362,19 @@ impl MatsuriGame {
                 self.turn()
             );
         }
+    }
+
+    /// 401+801 硬约束的目标演目：担当人数最多者（并列取下标小者）
+    ///
+    /// 抽出来给局部模拟复用（[`Self::effective_assignment`]），避免每次重扫人头。
+    fn advice_constraint_target(&self) -> Option<usize> {
+        let counts: [usize; 5] = std::array::from_fn(|act| {
+            self.persons
+                .iter()
+                .filter(|person| person.act == Some(act))
+                .count()
+        });
+        (0..5).max_by_key(|act| (counts[*act], usize::MAX - *act))
     }
 
     /// 交换两个演目的教诲槽（槽内容 = base + fused 成对移动）
@@ -384,24 +391,50 @@ impl MatsuriGame {
         let mut raw = Vec::with_capacity(120);
         let mut order = [0usize, 1, 2, 3, 4];
         permute(&mut order, 0, &mut raw);
+        // 801 目标演目与本候选无关，整轮只算一次
+        let target = self.advice_constraint_target();
         let mut seen = std::collections::HashSet::with_capacity(raw.len());
         raw.into_iter()
-            .filter_map(|assign| self.effective_assignment(assign))
+            .filter_map(|assign| self.effective_assignment(assign, target))
             .filter(|assign| seen.insert(assign.0))
             .collect()
     }
 
     /// 原始排列应用一次分配（含硬约束）后的有效排列：`有效[act] = 源槽下标`
-    fn effective_assignment(&self, assign: AdviceAssignment) -> Option<AdviceAssignment> {
-        let before_slots = self.advice.slots;
-        let before_fused = self.advice.fused;
-        let mut applied = self.clone();
-        applied.apply_assignment(&assign).ok()?;
+    ///
+    /// 只对教诲两排做**局部模拟**：早期版本每个候选 `self.clone()` 整局，120 个候选
+    /// × 数千 rollout 把机制成本抬高十几倍（`bench allocs` 单回合 End 段 600+ 次分配）。
+    fn effective_assignment(
+        &self,
+        assign: AdviceAssignment,
+        target: Option<usize>,
+    ) -> Option<AdviceAssignment> {
+        let mut seen = [false; 5];
+        for source in assign.slots() {
+            if source >= 5 || std::mem::replace(&mut seen[source], true) {
+                return None;
+            }
+        }
+        let slots = self.advice.slots;
+        let fused = self.advice.fused;
+        let mut placed_slots = [0i32; 5];
+        let mut placed_fused = [0i32; 5];
+        for (act, source) in assign.slots().into_iter().enumerate() {
+            placed_slots[act] = slots[source];
+            placed_fused[act] = fused[source];
+        }
+        // 硬约束同 [`Self::enforce_advice_constraints`]：801 换到担当最多的演目
+        if let Some(source) = (0..5).find(|act| placed_fused[*act] == 801)
+            && let Some(target) = target
+            && target != source
+        {
+            placed_slots.swap(source, target);
+            placed_fused.swap(source, target);
+        }
         let mut out = [0u8; 5];
         for act in 0..5 {
             let source = (0..5).find(|source| {
-                before_slots[*source] == applied.advice.slots[act]
-                    && before_fused[*source] == applied.advice.fused[act]
+                slots[*source] == placed_slots[act] && fused[*source] == placed_fused[act]
             })?;
             out[act] = source as u8;
         }

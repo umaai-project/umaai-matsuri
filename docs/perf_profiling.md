@@ -537,3 +537,47 @@ RAYON_NUM_THREADS=24 ./target/release/bench prof game --games 1 --seed 61444 \
 perf stat -e task-clock,cycles,instructions,cache-references,cache-misses,context-switches \
   ./target/release/bench flat --turn 32 --rollouts 120000 --threads 16
 ```
+
+## 14. 第五轮（2026-11-07 夜）：教诲候选整局克隆回归与修复
+
+**现象**：`cargo run --release --bin matsuri -- matsuri` 一回合从秒级退化到十几秒；真机在线也同步变慢。
+
+**定位**（同一台机器、同一引擎 HEAD，逐提交建 worktree 对照；`bench root --turn 32 --search-n 1024`）：
+
+| 版本 | 单次 rollout | 其中机制（空训练员） |
+|---|---:|---:|
+| `57c646d`（11-05 性能快照） | 285 μs | 122 μs |
+| `5570633`（11-06） | 187 μs | 61 μs |
+| `a393018`（11-07，慢化前最后一点） | 194 μs | 65 μs |
+| `309692e`（11-07，未修） | 1577 μs | **1361 μs** |
+| 修复后（本节） | 214 μs | **70 μs** |
+
+**元凶**：`dcaabdb`（在线教诲路由）为 801 硬约束去重引入的
+`assignment_candidates → effective_assignment`，**每个候选 `self.clone()` 整局**：
+一次枚举 120 个候选 = 120 次整局克隆（约 2.8 μs/次）。每次 rollout 要跨 T35 / T47 / T59
+三个教诲窗口，搜索剪枝侧也在调 `advice_actions()`，机制成本因此被抬高约 20 倍。
+
+**分配证据**（`bench allocs --turn 32`）：
+
+| 指标 | 修前 | 修后 | 11-05 基线 |
+|---|---:|---:|---:|
+| 单次 rollout 分配数 | 31,019 | **1,019** | 2,085 |
+| 单次 rollout 分配字节 | 2.65 MB | **56 KB** | 85.5 KB |
+| End 段分配 / 回合 | 652 | 4.5 | — |
+| 24 线程并行吞吐 | 2.4× | 恢复正常 | 12.6× |
+
+并行倍率塌到 2.4× 也是同一原因（堆锁竞争）；「4 个单线程进程」能线性扩展，说明不是全局锁。
+
+**修法**：`effective_assignment` 改为**只在教诲两排（`slots` / `fused`）上局部模拟**——
+校验排列 → 按排列重排两排 → 套用同一硬约束（801 与「担当最多」演目交换；目标演目抽成
+`advice_constraint_target` 供两处复用）→ 回算源槽下标。不再克隆局面。
+
+**等价性**：`bench root` 8 个候选均值与修前逐位相同（cand 4–7 =
+97734.8 / 97779.2 / 97751.5 / 97868.8）、`best_indices` 仍 `[2]`；
+`bench game --search-n 1024` 终局 88545 / PT 12255 不变；`cargo test --workspace --release` 全绿。
+
+**端到端**：整局 N=1024 **185.7 s → 9.94 s（18.7×）**；默认 N=8192 **26.2 s**（87532 / 11716）。
+
+> 教训：候选枚举里出现 `self.clone()` 就是红线——整局克隆 2.8 μs 单看很便宜，
+> 乘上「120 候选 × 数千 rollout × 每局数个窗口」就是数量级的坑。新增候选枚举前先看
+> `bench allocs` 的单回合分配数（正常应在个位数）。
