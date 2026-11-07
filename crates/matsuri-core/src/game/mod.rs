@@ -272,7 +272,7 @@ pub struct MatsuriGame {
     pub kensan_pending: bool,
     /// 発表会大成功「全训练 Lv+1」累计（独立于设施计数，不参与「每 N 次 +1」）
     pub train_level_bonus: Array5,
-    /// 剧本专属配置（融合预设等；默认层 = 仓内 `matsuri_config.toml`）
+    /// 剧本配置（全局 `[pre]` / `[search]` + 本次跑局的卡组参数；默认层 = 仓内 `matsuri_config.toml`）
     pub config: crate::MatsuriConfig,
 }
 

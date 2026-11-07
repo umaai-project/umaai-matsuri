@@ -78,7 +78,6 @@ impl TrainerChoice {
             Self::Search(trainer) => trainer.as_ref(),
         }
     }
-
 }
 
 /// 在线会话：装配一次、逐帧喂入

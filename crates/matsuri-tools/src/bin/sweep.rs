@@ -70,6 +70,8 @@ impl Env {
         let data = Arc::new(MatsuriData::load(&data_root).context("载入剧本数据失败")?);
         let mut config =
             MatsuriConfig::load_with_overlay_file(&data_root, ".").context("载入剧本配置失败")?;
+        let comp = matsuri_core::deck_comp(&engine.sim.cards).context("卡组构成解析失败")?;
+        config = config.for_deck(comp);
         // 本工具只测手写档：默认层已开搜索，这里就地关掉
         if config.search.search_n != 0 {
             eprintln!(

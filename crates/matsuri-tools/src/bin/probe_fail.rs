@@ -54,6 +54,8 @@ impl Env {
         let data = Arc::new(MatsuriData::load(&data_root).context("载入剧本数据失败")?);
         let config =
             MatsuriConfig::load_with_overlay_file(&data_root, ".").context("载入剧本配置失败")?;
+        let comp = matsuri_core::deck_comp(&engine.sim.cards).context("卡组构成解析失败")?;
+        let config = config.for_deck(comp);
         Ok(Self {
             engine,
             data,
@@ -178,7 +180,7 @@ fn main() -> Result<()> {
     let trainer =
         MatsuriSearchTrainer::new(config.clone(), env.engine.search.clone().with_search_n(n))?;
     let mut cfg = env.engine.search.clone().with_search_n(n);
-    cfg.pt_favor_rate = config.trainer.pt_favor_rate;
+    cfg.pt_favor_rate = config.deck.trainer.pt_favor_rate;
     let search = FlatSearch::<MatsuriGame>::new(cfg)
         .with_rollout_trainer(matsuri_core::MatsuriTrainer::new(config.clone()))
         .with_parallel(false);

@@ -474,11 +474,20 @@ fn run_deck(
     env: &Env,
     deck: &[u32],
     config: &MatsuriConfig,
+    profile: Option<&str>,
     games: usize,
     seed: u64,
     threads: usize,
 ) -> Result<Vec<(Observation, Counts)>> {
     let engine = env.engine_with(deck);
+    let config = match profile {
+        Some(name) if config.decks.resolve_name(name).is_some() => config.for_profile(name)?,
+        _ => {
+            let comp = matsuri_core::deck_comp(deck).context("卡组构成解析失败")?;
+            config.for_deck(comp)
+        }
+    };
+    let config = &config;
     let next = AtomicUsize::new(0);
     let slots: Mutex<Vec<Option<(Observation, Counts)>>> = Mutex::new(vec![None; games]);
     std::thread::scope(|scope| -> Result<()> {
@@ -851,7 +860,7 @@ fn greedy_deck(
             .collect();
         ensure!(!candidates.is_empty(), "第 {slot} 槽没有可用候选");
 
-        let mut base_scores = run_deck(env, &deck, &env.config, games, seed, threads)?
+        let mut base_scores = run_deck(env, &deck, &env.config, None, games, seed, threads)?
             .iter()
             .map(|(obs, _)| f64::from(obs.score))
             .collect::<Vec<_>>();
@@ -874,7 +883,7 @@ fn greedy_deck(
             }
             let mut trial = deck.clone();
             trial[slot] = candidate.idrank;
-            let scores = run_deck(env, &trial, &env.config, games, seed, threads)?
+            let scores = run_deck(env, &trial, &env.config, None, games, seed, threads)?
                 .iter()
                 .map(|(obs, _)| f64::from(obs.score))
                 .collect::<Vec<_>>();
@@ -998,7 +1007,15 @@ fn cmd_run(env: &Env, args: &[String]) -> Result<()> {
     let mut runs: Vec<DeckRun> = Vec::new();
     for line in lines {
         let report = validate_deck(env, &line.deck)?;
-        let observations = run_deck(env, &line.deck, &env.config, games, seed, threads)?;
+        let observations = run_deck(
+            env,
+            &line.deck,
+            &env.config,
+            Some(&line.name),
+            games,
+            seed,
+            threads,
+        )?;
         let mut deck_run = DeckRun {
             name: line.name,
             comp: line.comp,

@@ -31,7 +31,8 @@
 - **搜索理想测试**（单 seed，Train-only、`radical=0.0`，旧预设口径）：普通 100101 + 小切 / 盾×2
   手写 **82807 / LG10** → 4096 **85184 / LG14（+2377）**；狄杜斯 106301 → **85384 → 86955**
   （+1571，铁心后五维近上限，边际更小）。
-- **默认档**：`data/matsuri_config.toml` = 冠军档 `ga-r2`（`pt_favor_rate=1.7271`，`search_n=8192`）；
+- **默认档**：`data/matsuri_config.toml` 的 `[decks.default]` = 冠军档 `ga-r2`
+  （`pt_favor_rate=1.7271`，`search_n=8192`；卡组参数按 `[decks.*]` 分档，未匹配卡组走 default）；
   默认测试马娘 **105902**（目白多伯，2026-11-05 全马娘扫测定档）；手写档用 `MATSURI_SEARCH_N=0`
   或工作目录覆盖层关闭。局外状态默认不注入（`[pre] qie = "none"`、`positive_thinking = 0`）；理想测试档用
   `bench --qie xiaoqie --shield 2` 覆盖，`--uma` 可换马娘。
@@ -45,8 +46,8 @@
   搜索档 10 局的均分标准误约 ±483 / ±155；跑满 100 局可把标准误压到 ±150 / ±50。
   默认开局预设为 `extra_count = [10,10,120,140,0,100]`（100101 扫参结果，见
   [docs/mechanism.md](docs/mechanism.md) §5.6，未按新默认马娘重扫）。
-- **验收**：workspace **225 通过 + 2 手动档**（1024 整局复现、教诲微基准，均 `#[ignore]`）；
-  `fmt --check` / `check` / `clippy -D warnings` / `test` 四门绿。
+- **验收**：workspace **258 通过 + 2 手动档**（1024 整局复现、教诲微基准，均 `#[ignore]`）；
+  `fmt --check` / `check` / `test` 三门绿（clippy 只在 Windows 侧跑）。
 - **性能**：四轮 O0–O4 优化，配对测量与复现见 [`docs/perf_profiling.md`](docs/perf_profiling.md)：
   第一轮（预览零克隆 / 教诲查表 / 原因惰性化）整局 N=1024 55.7 s → 24.7 s；第二轮
   （诊断载荷惰性化 / rollout 静默事件明细 / 事件队列去深拷贝 / 参与教诲去重）同轮配对
@@ -78,7 +79,8 @@
 | `crates/matsuri-core/src/game/action.rs` | `Action` + `Display` + `ActionEnum` + 比赛 / 休息 / 出行 / 治病结算入口（含演目槽入账） |
 | `crates/matsuri-core/src/game/traits.rs` | 契约 impl（`Game` / `TrainingValueSource` / `FlatSearchGame`，含分布 / 得意率 / 训练值 / 失败率 / 终局覆写） |
 | `crates/matsuri-core/src/data.rs` | 剧本资产 schema / 载入 / 校验（`scenario_matsuri.json`：`scenario_events` / `event_extras`；稽古两档 / 规则常量） |
-| `crates/matsuri-core/src/config.rs` | 剧本配置段（融合预设 / `[pre]` 育成前状态 / `[search]` 作用面与预算 / `[trainer]` 旋钮 + 覆盖层） |
+| `crates/matsuri-core/src/config.rs` | 全局配置段（`[pre]` 育成前状态 / `[search]` 作用面与预算 + 覆盖层）；卡组参数在 `deck_config.rs` |
+| `crates/matsuri-core/src/deck_config.rs` | 卡组参数 `[decks.*]`：`DeckParams`（融合 / 教诲落位 / 训练员）、`DeckTable`（default + comp / 名字索引）、深合并、`variant`、`deck_comp` / `for_deck` |
 | `crates/matsuri-core/src/trainer.rs` | 手写训练员 `MatsuriTrainer`（守门链 + 打分表 + 教诲分配价值矩阵 + 事件选项） |
 | `crates/matsuri-core/src/search.rs` | FlatSearch 搜索训练员 `MatsuriSearchTrainer`（Train / 教诲 / 事件三路 + 事件队列续跑 + 叶估接口） |
 | `crates/matsuri-cli/src/main.rs` | 终端前端：bin `matsuri`（跑局；`matsuri` / `random` / `manual` 训练员选择；`--explain` / `MATSURI_EXPLAIN` 开手写档决策解释） |
@@ -90,7 +92,7 @@
 | `crates/matsuri-ai` | 在线决策核心（lib）：帧信封解析 / 终局帧门禁 / 真机与回放帧源 / 一帧一决策会话 / 路由与训练验算 / JSON DTO |
 | `crates/matsuri-tools` | 外围工具与**全部测量入口**：`bench`（整局 / 决策分段 / rollout 分布 / 固定根 / 阶段拆分 / 分配计数 / 平铺并行对照 / 剖面）、`sweep`（开局预设 / 全马娘扫测）、`baseline`（按 `baselines/` 复跑并判定）、`audit_search` / `probe_fail`（固定根分辨率审计 / rollout 失败定位）、`cardtest`（测卡：卡池榜 / 卡组装配 / 多卡组同种子配对跑测）；复盘待补 |
 | `crates/matsuri-tools/src/bin/cardtest.rs` | 测卡工具：`pool`（卡池榜：面板分 / 得意率 / 羁绊 / 链接钉位 / 剔除项）、`build`（构成码 5 位 + `panel` / `measured` 装配，`--with-default` 带仓内默认参照臂）、`run`（多卡组同种子配对，出对比表 + 评分归因 + 决策分布 + 分辨率） |
-| `data/` | 引擎静态表 + 剧本资产 `scenario_matsuri.json` + 双配置默认层 |
+| `data/` | 引擎静态表 + 剧本资产 `scenario_matsuri.json` + 双配置默认层（`matsuri_config.toml` 的 `[pre]` / `[search]` / `[decks.*]`） |
 | `docs/` | 本仓文档骨架 |
 
 ## 文档
@@ -101,6 +103,7 @@
 | [`docs/plan/scenario_dev_plan.md`](docs/plan/scenario_dev_plan.md) | 开发计划：阶段状态 / 决策记录 / 待决事项 |
 | [`docs/plan/intake.md`](docs/plan/intake.md) | 接入包：情报位置 / 机制 / 数值 / 数据表 / 待确认 |
 | [`docs/plan/stubs.md`](docs/plan/stubs.md) | 数值占位登记（`STUB` / `TBD`） |
+| [`docs/plan/deck_config.md`](docs/plan/deck_config.md) | 卡组配置重构方案：`[decks.*]` schema / 类型分层 / 合并与匹配 / 迁移清单 |
 | [`docs/mechanism.md`](docs/mechanism.md) | 机制文档（公式 / 流程 / 实现落点） |
 | [`docs/glossary.md`](docs/glossary.md) | 术语单一事实源 + 口径决定记录 |
 | [`docs/tests_overview.md`](docs/tests_overview.md) | 测试一览 |
@@ -124,11 +127,11 @@ $env:MATSURI_SEARCH_N=0; cargo run --release --bin matsuri -- matsuri --explain 
 
 cargo fmt --all --check
 cargo check --workspace --all-targets --offline
-cargo clippy --workspace --all-targets --offline -- -D warnings
 cargo test --workspace --release --offline
+# clippy 只在 Windows 侧跑（Linux 下不在 NTFS 盘上跑）
 ```
 
-- `cargo check` / `clippy` / `test` 通过（**不改引擎任何一行**）。
+- `cargo check` / `test` 通过（**不改引擎任何一行**；clippy 在 Windows 侧另跑）。
 - 接入新剧本时引擎仓 `git diff` 为空——确需新能力时回引擎仓按「带默认实现、非破坏」加钩子。
 - 三条随机轴（局面 / 事件 / 策略）+ 决策流只喂 `Trainer`；阶段自持、对外只投影 `StageId`；
   同一 `master` 下两次运行 / 两支分支逐位一致。

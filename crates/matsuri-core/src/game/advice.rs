@@ -10,8 +10,8 @@
 use anyhow::{Result, bail};
 use umasim::game::Game;
 
-use crate::config::FusionPair;
 use crate::data::{AdviceEffect, FusionEffectKind};
+use crate::deck_config::FusionPair;
 use crate::diag;
 use crate::game::MatsuriGame;
 

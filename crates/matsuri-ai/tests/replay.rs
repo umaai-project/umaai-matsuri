@@ -15,9 +15,9 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use matsuri_ai::{FrameSource, OnlineSession, TrainerKind, TurnKind};
-use umaai::FrameKind;
 use matsuri_core::testing::data_dir;
 use matsuri_core::{MatsuriConfig, MatsuriData};
+use umaai::FrameKind;
 use umaai_core::Data;
 use umasim::game::Game;
 

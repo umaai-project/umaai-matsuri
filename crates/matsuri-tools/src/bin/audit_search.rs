@@ -47,6 +47,8 @@ impl Env {
         let data = Arc::new(MatsuriData::load(&data_root).context("载入剧本数据失败")?);
         let config =
             MatsuriConfig::load_with_overlay_file(&data_root, ".").context("载入剧本配置失败")?;
+        let comp = matsuri_core::deck_comp(&engine.sim.cards).context("卡组构成解析失败")?;
+        let config = config.for_deck(comp);
         Ok(Self {
             engine,
             data,
@@ -205,7 +207,7 @@ fn main() -> Result<()> {
     let env = Env::load()?;
     let config = env.config.clone();
     let engine = env.engine.search.clone();
-    let prod_pt = config.trainer.pt_favor_rate;
+    let prod_pt = config.deck.trainer.pt_favor_rate;
 
     println!(
         "# meta seed={seed} nt={seeds} ref_n={ref_n} ref_roots={ref_roots} prod_pt={prod_pt} ucb={} group={} cpuct={} exp_sd={}",

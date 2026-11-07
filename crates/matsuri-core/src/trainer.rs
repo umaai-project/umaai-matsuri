@@ -2,7 +2,7 @@
 //!
 //! 目标口径见 `value.rs`：官方评分（五维公式 + PT×折算率），PT 再乘配置的
 //! `pt_favor_rate`（`1.0` = 官方评分）。所有决策都是**确定性**的（不消耗决策随机流），
-//! 保证回放 / CRN / 基线可复现；策略旋钮全部来自 `MatsuriConfig.trainer`（可扫参）。
+//! 保证回放 / CRN / 基线可复现；策略旋钮全部来自 `MatsuriConfig.deck.trainer`（可扫参）。
 //!
 //! 决策面（引擎契约只给 `Trainer` 三个 hook，教诲分配由剧本在 `Begin` / `End` 主动询问）：
 //! - `select_action`：普通动作候选 → 守门链 + 打分表；教诲分配候选 → 价值矩阵择优；
@@ -89,7 +89,7 @@ impl MatsuriTrainer {
             .iter()
             .all(|action| matches!(action, Action::AssignAdvice(_)))
         {
-            let model = Model::new(game, &self.config.trainer)?;
+            let model = Model::new(game, &self.config.deck.trainer)?;
             // 单遍取最大：与「全量排序取首项」等价（并列取最小下标；方案分不含 NaN）
             let mut best_value = f64::NEG_INFINITY;
             let mut best = 0;
@@ -156,7 +156,7 @@ impl MatsuriTrainer {
                 .collect();
             if !training_actions.is_empty() {
                 // 合宿期间只从训练/稽古里选（进打分表但排除休息/比赛/出行）
-                let model = Model::new(game, &self.config.trainer)?;
+                let model = Model::new(game, &self.config.deck.trainer)?;
                 let mut best = training_actions[0];
                 let mut best_value = f64::NEG_INFINITY;
                 for &index in &training_actions {
@@ -262,7 +262,7 @@ impl MatsuriTrainer {
         }
 
         // 其余全部进入打分表（训练 / 稽古 / 休息 / 出行 / 比赛同权比较）
-        let model = Model::new(game, &self.config.trainer)?;
+        let model = Model::new(game, &self.config.deck.trainer)?;
         let mut best = 0;
         let mut best_value = f64::NEG_INFINITY;
         for (index, action) in actions.iter().enumerate() {
@@ -311,7 +311,7 @@ impl MatsuriTrainer {
         game: &MatsuriGame,
         actions: &[Action],
     ) -> Result<Vec<(usize, f64)>> {
-        let model = Model::new(game, &self.config.trainer)?;
+        let model = Model::new(game, &self.config.deck.trainer)?;
         if actions
             .first()
             .is_some_and(|action| matches!(action, Action::AssignAdvice(_)))
@@ -339,7 +339,7 @@ impl MatsuriTrainer {
         event: &EventData,
         choices: &[Vec<EventChoice>],
     ) -> Result<Vec<f64>> {
-        let model = Model::new(game, &self.config.trainer)?;
+        let model = Model::new(game, &self.config.deck.trainer)?;
         Ok(choices
             .iter()
             .enumerate()
@@ -353,7 +353,7 @@ impl MatsuriTrainer {
         game: &MatsuriGame,
         choices: &[Vec<EventChoice>],
     ) -> Result<Vec<f64>> {
-        let model = Model::new(game, &self.config.trainer)?;
+        let model = Model::new(game, &self.config.deck.trainer)?;
         Ok(choices
             .iter()
             .enumerate()
@@ -384,7 +384,7 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
         if choices.len() == 1 {
             return Ok(0);
         }
-        let model = Model::new(game, &self.config.trainer)?;
+        let model = Model::new(game, &self.config.deck.trainer)?;
         let mut best = 0;
         let mut best_value = f64::NEG_INFINITY;
         for (index, group) in choices.iter().enumerate() {
@@ -415,7 +415,7 @@ impl Trainer<MatsuriGame> for MatsuriTrainer {
         if choices.len() == 1 {
             return Ok(0);
         }
-        let model = Model::new(game, &self.config.trainer)?;
+        let model = Model::new(game, &self.config.deck.trainer)?;
         let mut best = 0;
         let mut best_value = f64::NEG_INFINITY;
         for (index, group) in choices.iter().enumerate() {

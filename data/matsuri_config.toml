@@ -1,40 +1,23 @@
-# 骏大祭剧本专属配置默认层（不进引擎配置；由宿主注入根目录，本文件是默认层）
+# 骏大祭剧本配置（`matsuri_config.toml`）
 #
-# 内容：融合（転成）预设 + 搜索档作用面 + 手写训练员策略旋钮。
-# 键严格报错（拼错必须被看见）；覆盖层与默认层同构：fusion 段字段可选、列表整段替换，
-# trainer / search 段给了就整段替换（不按字段合并）。
+# 两层：
+#   1. 全局运行设置：[pre]（局外切 / 心情盾）、[search]（搜索预算与作用面）
+#   2. 卡组参数：[decks.<name>]；[decks.default] 是完整默认档（原 speed_build / 21101），
+#      其他档只写差异，深合并到 default；variant = true 只用于扫参，必须按名字显式选。
+# 未匹配任何非 variant 档的 comp 自动走 default。
 #
 # 默认档 = lab 实验仓冠军档 `ga-r2`（2026-11-03 合并；留出 seeds 62100–62199 ×100 局 74051.7）：
 #   调参口径 = 玉藻十字 102102 + 卡组 A；迁移到仓内默认卡组实测 100 局 +9936.5（t=22.1）。
-# 追加 2026-11-03 的 `[trainer.overflow]` / `[trainer.endgame]` 扫描档：行为旋钮，评分中性。
-# 改这里必须同步 `config.rs` 的 `Default` 实现（`tests/data.rs::load_repo_config` 断言两者相等）。
+# 追加 2026-11-03 的 `[decks.default.trainer.overflow]` / `[decks.default.trainer.endgame]` 扫描档：行为旋钮，评分中性。
+# 改这里必须同步 `deck_config.rs` 的 `DeckParams::default()`（`tests/data.rs` 断言两者相等）。
 #
 # 融合校验：第 2 年（turn 23 结束）恰 2 组、第 3 年（turn 47 结束）恰 3 组；
 # base 只能用 101–501 且不重复（两年合计覆盖全部 5 个）；
 # year2 target 各用一次 601 / 701，year3 target 各用一次 801 / 901 / 1001。
+# 教诲落位写基础 id（101–501）：101 絆 / 201 得意率 / 301 ヒント / 401 助力 / 501 体力；
+# 転成后仍是同一槽，换融合方案不会让预设失效。
 
-[[fusion.year2]]
-base = 101
-target = 601
-
-[[fusion.year2]]
-base = 201
-target = 701
-
-# 第 3 年顺序 = 冠军档（「融合 #2」）：501→801 / 301→901 / 401→1001
-[[fusion.year3]]
-base = 501
-target = 801
-
-[[fusion.year3]]
-base = 301
-target = 901
-
-[[fusion.year3]]
-base = 401
-target = 1001
-
-# ---------- 育成前（局外）状态 ----------
+# ---------- 全局运行设置 ----------
 
 [pre]
 # 局外「切」状态：none / xiaoqie / qiezhe（默认不注入）
@@ -46,19 +29,44 @@ qie = "none"
 # 心情盾（ポジティブ思考）次数：抵消 N 次干劲下降（一次扣减只消耗 1 层）
 positive_thinking = 0
 
-# ---------- 搜索档作用面（FlatSearch；search_n = 0 时全部退化回手写档） ----------
-
+# 搜索档作用面（FlatSearch；search_n = 0 时全部退化回手写档）
 [search]
-# 每个候选的 rollout 次数（首组也取 `ai_config [search].search_group_size`）：0 = 手写档
+# 每个候选的 rollout 次数：0 = 手写档
 search_n = 8192
 # 三类决策是否走 FlatSearch
 train = true
 advice = true
 event = true
 
-# ---------- 手写训练员策略旋钮（默认档 = lab 冠军 ga-r2） ----------
+# ---------- 卡组参数 ----------
 
-[trainer]
+[decks.default]
+comp = [2, 1, 1, 0, 1]
+note = "速主默认档（原 speed_build / 21101）；未匹配卡组走这里"
+
+[decks.default.fusion]
+year2 = [
+    { base = 101, target = 601 },
+    { base = 201, target = 701 },
+]
+# 第 3 年顺序 = 冠军档（「融合 #2」）：501→801 / 301→901 / 401→1001
+year3 = [
+    { base = 501, target = 801 },
+    { base = 301, target = 901 },
+    { base = 401, target = 1001 },
+]
+
+# 教诲落位预设：每行顺序 = 速 / 耐 / 力 / 根 / 智；值 = 基础教诲 id
+[decks.default.advice]
+t2 = [201, 101, 501, 301, 401]
+t11 = [501, 301, 101, 201, 401]
+t23 = [101, 501, 401, 301, 201]
+t35 = [101, 301, 501, 401, 201]
+t47 = [501, 101, 401, 301, 201]
+t59 = [501, 401, 101, 301, 201]
+
+# 手写训练员策略旋钮（默认档 = lab 冠军 ga-r2）
+[decks.default.trainer]
 # 目标函数的 PT 偏好：1.0 = 官方评分；官方计分固定 ×2.0，此处只影响决策优先级
 pt_favor_rate = 1.7271
 # 体力低于此值进入「该休息了」区间（仍由打分表对比收益）
@@ -77,7 +85,7 @@ free_race_urgency = 1.0
 status_weights = [0.6465, 0.9881, 0.8387, 0.3, 2.6217]
 
 # 属性 / 资源 / 事件折算权重（单位 = 评分点）
-[trainer.weights]
+[decks.default.trainer.weights]
 vital = 1.4774
 motivation = 23.6572
 friendship = 0.5559
@@ -87,8 +95,8 @@ act_level = 12.9562
 checkpoint = 1105.0179
 fat = 108.4909
 
-# 教诲分配价值权重（特征系数）
-[trainer.advice]
+# 教诲分配价值权重（特征系数；注意与 [decks.default.advice] 的落位预设区分）
+[decks.default.trainer.advice]
 card = 1.4462
 npc = 0.4246
 train = 0.2
@@ -102,7 +110,7 @@ assist = 0.0
 route = 500.0
 
 # 动态权重层（相对剩余空间 / 时间价值 / 稽古节奏；全 0 = 关闭）
-[trainer.dynamic]
+[decks.default.trainer.dynamic]
 status_catchup = 1.3553
 act_catchup = 0.0
 vital_decay = 0.2879
@@ -110,14 +118,27 @@ vital_idle = 0.0
 keiko_tempo = 0.486
 
 # 溢出处理（按生效上限判定；全 0 = 关闭，扫描后定档）
-[trainer.overflow]
+[decks.default.trainer.overflow]
 margin = 0.02
 tilt = 0.5
 keep = 0.15
 
 # 第三年合宿结束～T71 的稽古兑现（只作用普通回合；全 0 = 关闭，URA 不参与）
-[trainer.endgame]
+[decks.default.trainer.endgame]
 keiko = 250.0
 scarcity = 1.0
 level = 80.0
 normal_penalty = 120.0
+
+# 标准构成占位档：首版只定义 comp / note，参数继承 default；后续扫参再补差异。
+[decks.stamina_build]
+comp = [1, 2, 1, 0, 1]
+note = "耐主；首版占位，参数继承 default"
+
+[decks.guts_build]
+comp = [2, 0, 1, 1, 1]
+note = "根主；首版占位，参数继承 default"
+
+[decks.wisdom_build]
+comp = [1, 1, 1, 0, 2]
+note = "智主；首版占位，参数继承 default"

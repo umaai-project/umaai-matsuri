@@ -16,7 +16,7 @@ use umaai_core::gamedata::{ActionValue, EventChoice, ExtraStatus, GameConstants}
 use umaai_core::{Data, Ill, UmaFlags};
 use umasim::game::{Game, Person, PersonType};
 
-use crate::config::{AdviceWeights, TrainerConfig, ValueWeights};
+use crate::deck_config::{AdviceWeights, TrainerConfig, ValueWeights};
 use crate::game::advice::{AdviceAssignment, AdviceSlotEffect};
 use crate::game::event::KENSAN_EVENT_ID;
 use crate::game::{Action, MatsuriGame, PersonOrigin};
@@ -47,21 +47,6 @@ const HIGH_VITAL_THRESHOLD: i32 = 70;
 const ACT_LEVEL_CAP: i32 = 10;
 /// 第三年合宿结束后的稽古兑现窗口末回合（本番后空窗期结束、URA 前）
 const ENDGAME_LAST_TURN: i32 = 71;
-
-/// 离线搜索蒸馏出的教诲落位先验
-///
-/// 行 = 教诲窗口（`data.advice_windows`，turn 2/11/23/35/47/59），列 = 演目（速/耐/力/根/智），
-/// 值 = 该演目上更优的**基础 buff id**（101 羁绊 / 201 得意率 / 301 提示 / 401 助力 / 501 体力减轻）。
-/// 用基础 id 而不是転成 id：転成 id 随 `[fusion]` 预设变，基础 id 是训练员真正在决策的东西。
-/// `advice.route` 取足够大时等价于硬钉位，取小值时只是打分表上的一项偏好。
-pub(crate) const ROUTE_PRIOR: [[i32; 5]; 6] = [
-    [201, 101, 501, 301, 401], // T2  序盘：体力减轻挂主轴速、羁绊给耐
-    [501, 301, 101, 201, 401], // T11
-    [101, 501, 401, 301, 201], // T23
-    [101, 301, 501, 401, 201], // T35
-    [501, 101, 401, 301, 201], // T47 收尾：分身（801←501）交给担当最多的演目
-    [501, 401, 101, 301, 201], // T59
-];
 
 /// 估算上下文（构造时一次算定，避免每次动作重复遍历人头）
 struct Context {
@@ -443,7 +428,7 @@ impl<'a> Model<'a> {
                 .game
                 .plan
                 .advice_window
-                .and_then(|window| ROUTE_PRIOR.get(window))
+                .and_then(|window| self.game.config.deck.advice.window(window))
         {
             for (slot_index, slot) in self.game.advice.slots.iter().enumerate().take(5) {
                 for (act, expected) in prior.iter().enumerate() {
@@ -1227,7 +1212,7 @@ mod tests {
         let mut game = crate::testing::sample_game_with_uma(102102);
         game.turn = 47;
         game.plan = game.derive_plan();
-        let model = Model::new(&game, &game.config.trainer).expect("模型");
+        let model = Model::new(&game, &game.config.deck.trainer).expect("模型");
         assert!(
             model.action_value(&Action::Race).is_finite(),
             "义务补足时自选赛应参与打分"
@@ -1237,7 +1222,7 @@ mod tests {
         let mut plain = crate::testing::sample_game_with_uma(100101);
         plain.turn = 47;
         plain.plan = plain.derive_plan();
-        let model = Model::new(&plain, &plain.config.trainer).expect("模型");
+        let model = Model::new(&plain, &plain.config.deck.trainer).expect("模型");
         assert!(
             model.action_value(&Action::Race).is_infinite(),
             "无义务 + self_race=false 时自选赛不参与比较"
@@ -1257,12 +1242,12 @@ mod tests {
             .expect("大胃王事件")
             .clone();
         game.uma_mut().vital = 90;
-        let model = Model::new(&game, &game.config.trainer).expect("模型");
+        let model = Model::new(&game, &game.config.deck.trainer).expect("模型");
         let high_small = model.event_choice_value(5010, 0, &event.choices[0]);
         let high_big = model.event_choice_value(5010, 1, &event.choices[1]);
         assert!(high_small > high_big, "体力充足时避免变胖风险");
         game.uma_mut().vital = 5;
-        let model = Model::new(&game, &game.config.trainer).expect("模型");
+        let model = Model::new(&game, &game.config.deck.trainer).expect("模型");
         let low_small = model.event_choice_value(5010, 0, &event.choices[0]);
         let low_big = model.event_choice_value(5010, 1, &event.choices[1]);
         assert!(low_big > low_small, "体力见底时吃大份");
@@ -1283,7 +1268,7 @@ mod tests {
             .expect("演目 0 应有担当");
         // 研鑽担当放在训练位 2（非它自己的演目位）
         game.base.distribution = vec![vec![], vec![], vec![person as i32], vec![], vec![]];
-        let model = Model::new(&game, &game.config.trainer).expect("模型");
+        let model = Model::new(&game, &game.config.deck.trainer).expect("模型");
         assert!(
             model.kensan_bonus(&Action::ActTrain(2)) > 0.0,
             "稽古训练位的参与者含研鑽担当 → 应兑现追加稽古"
@@ -1306,7 +1291,7 @@ mod tests {
         let mut game = sample_game();
         game.acquire_advice();
         game.advice.fused = [801, 0, 0, 0, 0];
-        let model = Model::new(&game, &game.config.trainer).expect("模型");
+        let model = Model::new(&game, &game.config.deck.trainer).expect("模型");
         let candidates = game.assignment_candidates();
         let best = candidates
             .iter()
@@ -1342,11 +1327,11 @@ mod tests {
     #[test]
     fn status_marginal_saturates_at_limit() {
         let mut game = sample_game();
-        let model = Model::new(&game, &game.config.trainer).expect("模型");
+        let model = Model::new(&game, &game.config.deck.trainer).expect("模型");
         assert!(model.status_gain(&[50, 0, 0, 0, 0]) > 0.0, "速度增量应有分");
         let limit = game.uma().five_status_limit[0];
         game.uma_mut().five_status[0] = limit;
-        let model = Model::new(&game, &game.config.trainer).expect("模型");
+        let model = Model::new(&game, &game.config.deck.trainer).expect("模型");
         assert_eq!(
             model.status_gain(&[50, 0, 0, 0, 0]),
             0.0,
@@ -1360,8 +1345,8 @@ mod tests {
         let mut game = sample_game();
         let limit = game.uma().five_status_limit[0];
         game.uma_mut().five_status[0] = limit;
-        let mut cfg = game.config.trainer.clone();
-        cfg.overflow = crate::config::OverflowConfig {
+        let mut cfg = game.config.deck.trainer.clone();
+        cfg.overflow = crate::deck_config::OverflowConfig {
             margin: 0.01,
             tilt: 0.5,
             keep: 0.0,
@@ -1375,7 +1360,7 @@ mod tests {
             model.ctx.overflow_factor
         );
 
-        cfg.overflow = crate::config::OverflowConfig::default();
+        cfg.overflow = crate::deck_config::OverflowConfig::default();
         let model = Model::new(&game, &cfg).expect("模型");
         assert_eq!(model.ctx.overflow_factor, [1.0; 5], "全 0 = 关闭");
     }
@@ -1385,8 +1370,8 @@ mod tests {
     fn overflow_keep_preserves_secondary_value_when_main_capped() {
         let mut game = sample_game();
         game.uma_mut().five_status[0] = game.uma().five_status_limit[0];
-        let mut cfg = game.config.trainer.clone();
-        cfg.overflow = crate::config::OverflowConfig {
+        let mut cfg = game.config.deck.trainer.clone();
+        cfg.overflow = crate::deck_config::OverflowConfig {
             margin: 0.0,
             tilt: 0.0,
             keep: 0.0,
@@ -1412,8 +1397,8 @@ mod tests {
         game.plan = game.derive_plan();
         game.acts.gauge = [5; 5];
         game.acts.level = [9; 5];
-        let mut cfg = game.config.trainer.clone();
-        cfg.endgame = crate::config::EndgameConfig {
+        let mut cfg = game.config.deck.trainer.clone();
+        cfg.endgame = crate::deck_config::EndgameConfig {
             keiko: 250.0,
             scarcity: 1.0,
             level: 80.0,
@@ -1453,8 +1438,8 @@ mod tests {
         game.turn = 72;
         game.plan = game.derive_plan();
         game.acts.gauge = [5; 5];
-        let mut cfg = game.config.trainer.clone();
-        cfg.endgame = crate::config::EndgameConfig {
+        let mut cfg = game.config.deck.trainer.clone();
+        cfg.endgame = crate::deck_config::EndgameConfig {
             keiko: 250.0,
             scarcity: 1.0,
             level: 80.0,
@@ -1475,7 +1460,7 @@ mod tests {
         game.plan.race = false;
         game.plan.ura_period = false;
         game.forced_rest = false;
-        let cfg = game.config.trainer.clone();
+        let cfg = game.config.deck.trainer.clone();
         let model = Model::new(&game, &cfg).expect("模型");
         assert!(!model.ctx.endgame, "合宿中不进入末段窗口");
 

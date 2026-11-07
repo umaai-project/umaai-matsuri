@@ -75,13 +75,22 @@ where
 
 /// 装配一局并跑到底（数据根为代码级配置；命令行只选训练员）
 fn run() -> Result<()> {
+    let argv: Vec<String> = std::env::args().collect();
     // 训练员：matsuri（样例策略，默认）/ random（引擎随机基线）/ manual（机制核对面板）
-    let trainer_name = std::env::args()
-        .nth(1)
+    let trainer_name = argv
+        .get(1)
+        .filter(|arg| !arg.starts_with("--"))
+        .cloned()
         .unwrap_or_else(|| "matsuri".to_string());
+    // 卡组档：显式 `--deck-profile <name>`；缺省按实际卡组 comp 自动匹配
+    let deck_profile = argv
+        .iter()
+        .position(|arg| arg == "--deck-profile")
+        .and_then(|index| argv.get(index + 1))
+        .cloned();
 
     // explain：手写档每回合打印与 manual 共用面板 + 候选打分表（默认关；不改任何数值）
-    let explain = std::env::args().any(|arg| arg == "--explain")
+    let explain = argv.iter().any(|arg| arg == "--explain")
         || std::env::var("MATSURI_EXPLAIN").is_ok_and(|value| value != "0");
 
     // 配置两份同名不同位：默认层在数据根、覆盖层在当前目录（与引擎约定一致）
@@ -92,6 +101,11 @@ fn run() -> Result<()> {
     let data = Arc::new(MatsuriData::load(DATA_ROOT).context("载入剧本数据失败")?);
     let mut matsuri_cfg =
         MatsuriConfig::load_with_overlay_file(DATA_ROOT, ".").context("载入剧本配置失败")?;
+    let comp = matsuri_core::deck_comp(&cfg.sim.cards).context("卡组构成解析失败")?;
+    matsuri_cfg = matsuri_cfg.for_deck(comp);
+    if let Some(name) = &deck_profile {
+        matsuri_cfg = matsuri_cfg.for_profile(name)?;
+    }
 
     let consts = &Data::get()?.consts;
     let mut out = std::io::stdout();

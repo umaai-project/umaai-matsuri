@@ -102,6 +102,8 @@ impl Env {
         let data = Arc::new(MatsuriData::load(&data_root).context("载入剧本数据失败")?);
         let config =
             MatsuriConfig::load_with_overlay_file(&data_root, ".").context("载入剧本配置失败")?;
+        let comp = matsuri_core::deck_comp(&engine.sim.cards).context("卡组构成解析失败")?;
+        let config = config.for_deck(comp);
         Ok(Self {
             root,
             engine,
@@ -388,6 +390,10 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let command = args.get(1).map(String::as_str).unwrap_or("game");
     let mut env = Env::load()?;
+    // 显式卡组档（扫参变体）：缺省按 comp 自动匹配
+    if let Some(name) = parse_arg(&args, "--deck-profile") {
+        env.config = env.config.for_profile(&name)?;
+    }
     // 理想测试固定条件：缺省取 data 默认层，命令行可覆盖（马娘 / 切状态 / 心情盾层数）
     apply_fixture(&mut env, &args)?;
     match command {
@@ -824,7 +830,7 @@ fn cmd_flat(env: &Env, args: &[String]) -> Result<()> {
     let (game, actions) = capture_root(env, &config, seed, turn)?;
     let game = Arc::new(game);
     let actions = Arc::new(actions);
-    let pt = config.trainer.pt_favor_rate;
+    let pt = config.deck.trainer.pt_favor_rate;
     let trainer = Arc::new(MatsuriTrainer::new(config));
     let per = total.div_ceil(threads);
     let started = Instant::now();
@@ -1182,7 +1188,7 @@ fn cmd_root(env: &Env, args: &[String]) -> Result<()> {
     let (game, actions) = capture_root(env, &config, seed, turn)?;
     // 与 MatsuriSearchTrainer::new 同口径：内核参数取引擎配置，预算与 PT 偏好取剧本配置
     let mut search_config = env.engine.search.clone().with_search_n(search_n);
-    search_config.pt_favor_rate = config.trainer.pt_favor_rate;
+    search_config.pt_favor_rate = config.deck.trainer.pt_favor_rate;
     println!(
         "# turn={turn} candidates={} search_n={search_n} ucb={} parallel={} threads={:?}",
         actions.len(),
@@ -1237,7 +1243,7 @@ fn cmd_root(env: &Env, args: &[String]) -> Result<()> {
         black_box(black_box(&game).fork_for_rollout(rollout_seed));
     });
     println!("fork_for_rollout       {fork_ns:10.1}");
-    let pt = config.trainer.pt_favor_rate;
+    let pt = config.deck.trainer.pt_favor_rate;
     let search = FlatSearch::<MatsuriGame>::new(search_config)
         .with_rollout_trainer(MatsuriTrainer::new(config));
     let rollout_ns = bench(50, || {

@@ -583,7 +583,7 @@
 | 根性 | 77329 → 78330（单调上升，最强） | 81456 → 82131（单调上升，最强） |
 | 智力 | 78114 → 76937（单调下降，最差） | 81961 → 81293（单调下降，最差） |
 
-- 训练员优先级：智力 2.62 最高、根性 0.3 最低（`[trainer].status_weights`）→ 智力本就会练满，
+- 训练员优先级：智力 2.62 最高、根性 0.3 最低（`[decks.default.trainer].status_weights`）→ 智力本就会练满，
   开局 / 继承再给会溢空；根性长期欠练，剧本因子边际最高，且顶到 14 轮上限 140。
 - 力量居中为正；速度在 106301 因「铁心」生涯赛五维 ×2.5 更早触顶，剧本因子给速度反而亏。
 - 蓝因子 = 开局 ×7 + 上限 ×5.33：速度训练量最大、最常触顶，抬上限可直接兑现 → 两马娘最优
@@ -617,11 +617,15 @@
 
 **融合：配置 + 可选覆盖，不进决策树**
 
-- 默认固定预设（可在线覆盖一次）：
+- 默认固定预设（`[decks.*.fusion]`；在线以帧内实际融合为准）：
   - year2：`101+601`（羁绊+特化）、`201+701`（得意率+研钻）；
   - year3：`501→801`（体力+协力）、`301→901`（Hint+不屈）、`401→1001`（助力+两道）。
 - turn 23 / 47 结束时先应用融合配置，再进入 5 槽分配；若在线覆盖，先 `apply_fusion_plan` 再分配。
 - 配置加载校验：year2 恰好 2 个基础槽、year3 必须是剩余 3 个、每个新教诲只用一次、不能重复融合。
+- **2026-11-07 配置归位**：融合 / 教诲落位 / 训练员旋钮统一放 `[decks.*]`；`[decks.default]`
+  是完整默认档（原 speed_build 参数），未匹配卡组走 default；`variant = true` 只用于扫参。
+  `settle.rs` 读 `config.deck.fusion`，`Model` 读 `config.deck.advice` / `config.deck.trainer`；
+  详见 [`plan/deck_config.md`](plan/deck_config.md)。
 
 **分配：每窗口独立，`5! = 120` 全枚举**
 
@@ -653,7 +657,7 @@
 **S5 落地状态（2026-11-01）**：用户拍板「**只落接口、不自动择优**」——`game/advice.rs` 已有
 `assignment_candidates()`（120 全排列）、`apply_assignment()`（校验排列 + 801 硬约束）、
 `apply_fusion_pairs()`（配置预设就地融合）；窗口默认行为 = 按照获顺序落位 / 保持现有排列 / 融合就地，
-**不做价值矩阵与 top-K 选择**；`FusionPlan` 由 `MatsuriConfig.fusion` 承担（已覆盖层校验）。
+**不做价值矩阵与 top-K 选择**；`FusionPlan` 由 `[decks.*.fusion]` 承担（载入时校验）。
 真策略（窗口改派 + 搜索根 top-K）留 S7。
 
 **S7 落地状态（2026-11-02）**：每个窗口把 120 个候选**合并为一次** `Action::AssignAdvice` 决策交
@@ -665,8 +669,8 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
 
 | 机制点 | 数据字段 | 阶段 / 动作 | 结算函数 | 测试 | 文档 |
 |---|---|---|---|---|---|
-| 手写训练员 | `MatsuriConfig [trainer]` | `Train` / `T2 Begin` / `End` | `trainer::select_action`（守门链 + 打分表 + 分配择优）/ `select_event_choice` | `trainer.rs` / `value.rs` 内联 + `handwritten_trainer_*` 机制集成 | §6 / §6.2 |
-| 融合配置 | 剧本配置 `fusion` | turn 23/47（`End`） | `settle_advice_window` / `apply_fusion_pairs`（S5） | `settle.rs` / `advice.rs` 内联 | §6.1 |
+| 手写训练员 | `[decks.*.trainer]` | `Train` / `T2 Begin` / `End` | `trainer::select_action`（守门链 + 打分表 + 分配择优）/ `select_event_choice` | `trainer.rs` / `value.rs` 内联 + `handwritten_trainer_*` 机制集成 | §6 / §6.2 |
+| 融合配置 | `[decks.*.fusion]` | turn 23/47（`End`） | `settle_advice_window` / `apply_fusion_pairs`（S5） | `settle.rs` / `advice.rs` 内联 | §6.1 |
 | 教诲分配 | 教诲槽账本（S3/S5） | `T2 Begin` + `End`（剧本结算后） | `decide_advice_assignment`（交 Trainer 择优，S7）/ `assignment_candidates` / `apply_assignment` | `advice.rs` / `value.rs` / `settle.rs` 内联 + `handwritten_trainer_covers_all_decision_points` | §6.1 / §6.2 |
 
 ### 6.2 手写训练员（S7，2026-11-02）
@@ -693,7 +697,7 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
    - 比赛：强制回合给保底；自选比赛由 `self_race` 开关控制（默认关），开时按等级事件期望 × 比赛加成估算；
      `freeRaces` 义务区间另加紧迫度软加分与硬保底（§6.5）；
    - 治疗：生病 / 不擅长时给保底，否则 0。
-5. 策略旋钮全部来自 `MatsuriConfig [trainer]`（见 `data/matsuri_config.toml`）；`value.rs` 内的公式常数
+5. 策略旋钮全部来自 `config.deck.trainer`（`[decks.*.trainer]`，见 `data/matsuri_config.toml`）；`value.rs` 内的公式常数
    （失败惩罚 / 闪彩分 / 追加稽古兑现分等）为内部参数，不散落魔法数。
 
 **溢出与末段稽古（2026-11-03 新增）**
@@ -792,7 +796,7 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
   义务区间不额外限制「只能在这里打」，区间外的额外赛也不计入义务场数。
 - **训练员**：
   - 紧迫度 `urgency = need / left`（`free_race_progress()` = 当前区间剩余需打场数 / 掩码内剩余可赛回合数，
-    封顶 1.0）；`race_value += [trainer].free_race_urgency × urgency × FORCED_RACE_BASE(500)`；
+    封顶 1.0）；`race_value += [decks.default.trainer].free_race_urgency × urgency × FORCED_RACE_BASE(500)`；
   - **硬保底**：`need ≥ left`（再不打赢不了）→ 守门⓪ 直接选「比赛」，优先于治病 / 合宿 / 友人截止 /
     体力危险 / 心情崩坏等其它守门，且**不受 `self_race=false` 限制**（义务补足与「额外多打」分开）；
   - `self_race=false` 时纯额外自由赛仍不参与比较（`race_value = −∞`）。
@@ -821,7 +825,7 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
     应用当前选项后，从 `event_queue` 的下一个事件继续（`event_cursor` 留在局面上），
     再跑后续 stage 到终局。
 - **搜索口径**：`MatsuriGame::search_score(pt_favor_rate)` = 技能 + PT×`pt_score_rate`×`pt_favor_rate`
-  + 五维公式；`pt_favor_rate` 取 `[trainer].pt_favor_rate`，与手写剪枝同一目标函数。
+  + 五维公式；`pt_favor_rate` 取 `[decks.default.trainer].pt_favor_rate`，与手写剪枝同一目标函数。
   失败分支（`career_failed`）按实际 `calc_score`，不加额外罚。
 - **排序与激进度**：中选下标用 `weighted_mean(radical_factor)`（`rank_ratio^rf` 加权）。
   `radical_factor_max = 0.0` 即普通均值；越大越偏高尾。理想测试（106301 + 小切 + 心情盾×2，

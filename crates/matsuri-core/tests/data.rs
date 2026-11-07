@@ -517,12 +517,22 @@ fn scenario_events_asset() -> Result<()> {
 #[test]
 fn load_repo_config() -> Result<()> {
     let cfg = MatsuriConfig::load(data_dir().join("matsuri_config.toml"), None)?;
-    assert_eq!(cfg, MatsuriConfig::default());
-    assert_eq!(cfg.fusion.year2.len(), 2);
-    assert_eq!(cfg.fusion.year3.len(), 3);
+    let default = MatsuriConfig::default();
+    assert_eq!(cfg.pre, default.pre);
+    assert_eq!(cfg.search, default.search);
+    assert_eq!(cfg.deck, default.deck, "载入后 deck 预置为 [decks.default]");
+    assert_eq!(
+        cfg.decks.default_params(),
+        default.decks.default_params(),
+        "[decks.default] 必须与内置兜底一致"
+    );
+    assert!(cfg.decks.resolve_name("stamina_build").is_some());
+    assert_eq!(cfg.decks.default_params().fusion.year2.len(), 2);
+    assert_eq!(cfg.decks.default_params().fusion.year3.len(), 3);
     println!(
         "配置载入成功：year2 {:?} / year3 {:?}",
-        cfg.fusion.year2, cfg.fusion.year3
+        cfg.decks.default_params().fusion.year2,
+        cfg.decks.default_params().fusion.year3
     );
     Ok(())
 }

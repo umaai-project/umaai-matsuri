@@ -12,7 +12,7 @@
 
 | crate | 测试面 | 现状 |
 |---|---|---|
-| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成）+ `tests/diag.rs`（诊断守门）+ `tests/search.rs`（搜索档） | 内联单测 **157** 个（含 1 个 `#[ignore]` 微基准）+ L2 数据层 **15** 个 + 机制集成 **36** 个 + 诊断 **1** 个 + 搜索 **4** 个（另 1 个 1024 手动 `#[ignore]`） |
+| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成）+ `tests/diag.rs`（诊断守门）+ `tests/search.rs`（搜索档） | 内联单测 **164** 个（含 1 个 `#[ignore]` 微基准）+ L2 数据层 **16** 个 + 机制集成 **36** 个 + 诊断 **1** 个 + 搜索 **4** 个（另 1 个 1024 手动 `#[ignore]`） |
 | `matsuri-sim` | `tests/baseline.rs`（固定种子基线） | 待补 |
 | `matsuri-cli` | 内联（呈现件纯函数）+ `tests/manual_smoke.rs` + `tests/explain_smoke.rs` + `tests/search_smoke.rs` | 内联 **7** 个 + 冒烟 **3** 个（manual / explain / search）；基线待补 |
 | `matsuri-ai` | 内联 8 + `tests/replay.rs` 2 + `tests/w2.rs` 3（诊断）+ `tests/layers.rs` 1（诊断） | 帧解析 / 终局帧门禁 / 回放顺序与局末终局帧 / 一帧一决策 / 训练验算与偏差拆解 |
@@ -23,7 +23,8 @@
 | 文件 | 用例 | 守门内容 |
 |---|---|---|
 | `core/src/data.rs` | `parse_repo_data_ok` / `unknown_field_rejected` / `bad_row_width_rejected` / `wrong_act_count_rejected` / `act_effects_regression_rejected` / `advice_level_count_rejected` / `advice_kind_mismatch_rejected` / `fusion_kind_mismatch_rejected` / `check_point_buff_regression_rejected` / `reward_schedule_order_rejected` / `career_end_reward_with_schedule_rejected` / `keiko_classic_row_count_rejected` / `schedule_order_rejected` / `camp_settlement_point_rejected` / `limits_order_rejected` | 资产解析 / 未知字段 / 行宽 / 演目与教诲 id 对齐 / 等级表单调 / 场次顺序 / 合宿结算点 / 稽古两档行数 |
-| `core/src/config.rs` | `parse_repo_default` / `unknown_key_rejected` / `overlay_replaces_year2_only` / `duplicate_base_rejected` / `wrong_target_rejected` / `wrong_count_rejected` / `trainer_overlay_requires_full_section` / `trainer_overlay_replaces_whole_section` / `trainer_bad_values_rejected` / `search_scope_overlay_and_unknown_key` | 默认层 / 覆盖层 / 未知键 / 融合配对校验（2+3、base 不重复、target 年份内唯一）/ **`[trainer]` 段整段替换与范围校验** / **`[search]` 整段替换与未知键** |
+| `core/src/config.rs` | `parse_repo_default` / `unknown_key_rejected` / `overlay_replaces_pre_and_search` / `deck_overlay_rejected` / `search_scope_overlay_and_unknown_key` / `for_deck_falls_back_to_default` | 默认层与 `[decks.default]` 同值 / 覆盖层只接受 `[pre]` / `[search]` / 未知键 / 卡组档不受覆盖层影响 / 未匹配 comp 回落 default |
+| `core/src/deck_config.rs` | `default_matches_builtin` / `patch_deep_merges_trainer_and_advice` / `variant_is_explicit_only` / `duplicate_non_variant_comp_rejected` / `missing_default_rejected` / `bad_advice_permutation_rejected` / `unknown_trainer_key_rejected` | `[decks.default]` 与 `DeckParams::default()` 逐字段一致；trainer 逐字段 / advice 分窗口 / fusion 分段深合并；`variant` 只显式可选；同 comp 非 variant 重复 / 缺 default / 教诲非排列 / 训练员未知键均报错 |
 | `core/src/game/roster.rs` | `card_assign_five_speed` / `card_assign_link_pins_and_dispatches` / `card_assign_reference_deck_shape` / `guest_balance_follows_min_persons` | 担当分配五步流水线：memo 三条真机算例（5 速 / 智大和+3速+2毅 / 参考卡组形状）、余额 NPC 落点与并列规则 |
 | `core/src/game/stage.rs` | `next_chain` / `stage_ids_are_stable` / `camp_starts_only_at_window_start` / `camp_basic_window` / `camp_race_turn_extends` / `camp_race_at_window_start_extends` / `camp_forced_rest_turn_extends` / `camp_consecutive_races_keep_extending` / `camp_rest_version_only_in_original_window` / `check_point_index_matches_schedule` / `advice_window_index_matches` / `ura_race_turns` / `ura_boundaries_and_interlude` | 五阶段链 / 阶段号稳定；合宿窗口起点、基础 4 回合、比赛 / 强制休息顺延、连续顺延、合宿版休息只限原窗口；発表会 / 教诲窗口；**URA 边界：68–71 空窗期 / 72–77 URA 回合 / 73·75·77 决赛** |
 | `core/src/trainer.rs` | `trainer_prefers_heal_when_bad_trainer` / `explain_action_reports_candidates_and_reason` | 手写训练员守门链：不擅长优先治病；解释 API 与决策同源 |

@@ -100,7 +100,7 @@ impl MatsuriSearchTrainer {
             bail!("叶子估值器接口已预留，截断搜索未接；max_depth 必须为 0");
         }
         search.search_n = config.search.search_n;
-        search.pt_favor_rate = config.trainer.pt_favor_rate;
+        search.pt_favor_rate = config.deck.trainer.pt_favor_rate;
         let pt_favor_rate = search.pt_favor_rate;
         let scope = config.search.clone();
         let fallback = MatsuriTrainer::new(config.clone());

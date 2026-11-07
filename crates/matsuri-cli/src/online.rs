@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! matsuri online [--root <游戏根目录>] [--replay <帧目录>] [--trainer matsuri|search]
-//!                [--json] [--verify-training]
+//!                [--deck-profile <档名>] [--json] [--verify-training]
 //! ```
 //!
 //! - `--root` 缺省读 `MATSURI_ROOT`，再缺省用当前目录（要求含 `.portable`）
@@ -42,6 +42,8 @@ pub struct Args {
     pub replay: Option<PathBuf>,
     /// 训练员（`matsuri` 手写 / `search` 搜索）
     pub trainer: Option<String>,
+    /// 显式卡组档（扫参变体）；缺省按实际卡组 comp 自动匹配
+    pub deck_profile: Option<String>,
     /// 逐行 JSON 输出
     pub json: bool,
     /// 输出训练验算表
@@ -71,6 +73,13 @@ pub fn parse(argv: &[String]) -> Result<Args> {
                         .clone(),
                 );
             }
+            "--deck-profile" => {
+                args.deck_profile = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--deck-profile 缺少取值"))?
+                        .clone(),
+                );
+            }
             "--json" => args.json = true,
             "--verify-training" => args.verify = true,
             "--help" | "-h" => {
@@ -88,10 +97,11 @@ pub fn parse(argv: &[String]) -> Result<Args> {
 /// 用法文本
 #[must_use]
 pub fn usage() -> String {
-    "用法: matsuri online [--root <游戏根目录>] [--replay <帧目录>] [--trainer matsuri|search] [--json] [--verify-training]\n\
+    "用法: matsuri online [--root <游戏根目录>] [--replay <帧目录>] [--trainer matsuri|search] [--deck-profile <档名>] [--json] [--verify-training]\n\
      \n  --root            真机游戏根目录（含 .portable）；缺省读 MATSURI_ROOT，再缺省当前目录\n  \
      --replay          回放目录（game{id}_turn{n}.json + game{id}_finalScore.json）；给了就不挂真机监听\n  \
      --trainer         训练员：matsuri（手写） / search（搜索）；缺省按配置 [search].search_n 决定（0 = 手写，>0 = 搜索）\n  \
+     --deck-profile    显式卡组档（[decks.*] 名字；扫参变体用）；缺省按实际卡组 comp 匹配\n  \
      --json            stdout 每行一条 JSON（日志与面板走 stderr）\n  \
      --verify-training 附训练验算表（帧真值 vs 还原态预览，G13）\n\
      \n配置与环境：默认层 data/ai_config.toml + data/matsuri_config.toml，工作目录同名覆盖层；\n\
@@ -111,6 +121,11 @@ pub fn run(argv: &[String]) -> Result<()> {
     let data = Arc::new(MatsuriData::load(crate::DATA_ROOT).context("载入剧本数据失败")?);
     let mut matsuri_cfg =
         MatsuriConfig::load_with_overlay_file(crate::DATA_ROOT, ".").context("载入剧本配置失败")?;
+    let comp = matsuri_core::deck_comp(&cfg.sim.cards).context("卡组构成解析失败")?;
+    matsuri_cfg = matsuri_cfg.for_deck(comp);
+    if let Some(name) = &args.deck_profile {
+        matsuri_cfg = matsuri_cfg.for_profile(name)?;
+    }
     // 在线档与离线档读同一套配置：预算取 `matsuri_config [search].search_n`，
     // 环境变量只作为临时覆盖（`MATSURI_SEARCH_N` / `MATSURI_SEARCH_RADICAL`）。
     let search_n =
@@ -129,7 +144,11 @@ pub fn run(argv: &[String]) -> Result<()> {
     if !args.json {
         eprintln!(
             "在线档：训练员 {}（[search].search_n = {search_n}；0 = 手写）",
-            if trainer.is_search() { "search" } else { "matsuri" }
+            if trainer.is_search() {
+                "search"
+            } else {
+                "matsuri"
+            }
         );
     }
     let mut session = OnlineSession::new(&cfg, data, matsuri_cfg, trainer, args.verify)?;
@@ -243,8 +262,8 @@ fn render(
     }
     match output.kind {
         TurnKind::Decision => {
-            let scores = (!output.candidate_scores.is_empty())
-                .then_some(output.candidate_scores.as_slice());
+            let scores =
+                (!output.candidate_scores.is_empty()).then_some(output.candidate_scores.as_slice());
             write!(
                 stdout,
                 "{}",
@@ -287,17 +306,9 @@ fn render(
 }
 
 /// 渲染终局帧（`type = final`）
-fn render_final(
-    stdout: &mut impl Write,
-    output: &FinalTurnOutput,
-    json: bool,
-) -> Result<()> {
+fn render_final(stdout: &mut impl Write, output: &FinalTurnOutput, json: bool) -> Result<()> {
     if json {
-        writeln!(
-            stdout,
-            "{}",
-            serde_json::to_string(&output.json_payload())?
-        )?;
+        writeln!(stdout, "{}", serde_json::to_string(&output.json_payload())?)?;
     } else if output.accepted {
         writeln!(
             stdout,

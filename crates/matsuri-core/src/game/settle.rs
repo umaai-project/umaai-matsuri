@@ -11,8 +11,8 @@ use umaai_core::gamedata::ActionValue;
 use umasim::game::{Game, PersonType, Trainer};
 
 use super::MatsuriGame;
-use crate::config::FusionPair;
 use crate::data::{CheckPointResult, Reward, RewardResult};
+use crate::deck_config::FusionPair;
 use crate::diag;
 
 impl MatsuriGame {
@@ -199,9 +199,9 @@ impl MatsuriGame {
             return Vec::new();
         }
         if window == 2 {
-            self.config.fusion.year2.clone()
+            self.config.deck.fusion.year2.clone()
         } else {
-            self.config.fusion.year3.clone()
+            self.config.deck.fusion.year3.clone()
         }
     }
 
