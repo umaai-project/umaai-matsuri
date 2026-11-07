@@ -1,4 +1,6 @@
 /target
+# 打包产物（dist/matsuri-ai/）与打包附加资源（dist/extra/）均不入库
+/dist/
 logs/
 __pycache__/
 *.pyc

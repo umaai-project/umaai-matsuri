@@ -4,7 +4,7 @@
 
 ## 形态
 
-workspace 五 crate：
+workspace 六 crate：
 
 | crate | 职责 |
 |---|---|
@@ -13,6 +13,7 @@ workspace 五 crate：
 | `matsuri-ai` | 在线帧解析、一帧一决策会话、路由与输出 DTO |
 | `matsuri-cli` | 终端入口：离线跑局、在线帧 / 回放、手动核对、面板与日志 |
 | `matsuri-tools` | 外围测量：`bench` / `sweep` / `cardtest` 与诊断工具 |
+| `matsuri-launcher` | Windows 发布启动器 `matsuri-ai`（菜单 / 子进程装配 / 通道体检；std-only 零依赖） |
 
 - 引擎以 path 引用 `../umaai_next` 的 `umaai-core` / `umasim` / `umaai`；不 fork 引擎、不在引擎仓加剧本 crate。
 - 数据根为 `data/`：引擎静态表 + `scenario_matsuri.json` + 默认层 `matsuri_config.toml` / `ai_config.toml`。
@@ -23,15 +24,23 @@ workspace 五 crate：
 - **机制闭环**：阶段机 / 人头分布 / 训练两层公式 / 演目稽古 / 教诲与転成 / 発表会·本番·合宿·URA / 事件链 / 手写训练员 / 诊断日志均已接入。
 - **卡组配置**：`data/matsuri_config.toml` 分 `[decks.*]`；`[decks.default]` 为完整默认档（冠军档 `ga-r2`），
   其他档深合并；未匹配 comp 走 default；`variant = true` 仅显式选择。
+  当前只保留 `wisdom` 一套非默认档（教诲落位四窗口 + `status_weights` 均已定档）；
+  `stamina / guts` 于 2026-11-07 退役，备份与加回步骤见 `logs/deckselect/retired_2026-11-07/`。
 - **搜索**：`[search].search_n` 为每候选 rollout 数（默认 **8192**，`0` = 手写档）；Train / 教诲 / 事件分开关；
   教诲候选按 801 硬约束去重后再剪枝 / 搜索。
 - **在线决策**：`matsuri online` 支持真机帧监听与回放；输出局面面板、运气分、融合固定决策、Top 5 候选、
   教诲完整映射与 `AdvicePreset` 差异；在线教诲路由按窗口去重，搜索侧跳过 End 阶段的重复教诲处理。
 - **CLI**：`matsuri` / `matsuri online` 已迁移 clap，提供 `--help` / `--version`；`matsuri-tools` 仍用手写解析。
-- **发布**：Windows 启动器 `matsuri-ai` 方案已定（在线优先、`bin/` 放核心二进制、`data/config.toml`），
-  见 [`docs/plan/release_launcher.md`](docs/plan/release_launcher.md)；尚未实现。
-- **测卡 / 扫参**：`cardtest` 支持 `--matsuri-config` 显式完整配置入口；四套 build 的定卡与扫参方案见
-  [`docs/plan/deck_param_scan.md`](docs/plan/deck_param_scan.md)。
+- **发布**：Windows 启动器基础版已实现（`crates/matsuri-launcher`，bin `matsuri-ai`）：
+  菜单只保留在线模式与小黑板通道体检，工作目录 / 游戏根 / 版本只读显示；不写配置、不落日志。
+  发布包为 `matsuri-ai.exe` + `bin/matsuri.exe` + `data/`，打包与附加资源见
+  `scripts/package_launcher.py`、`dist/extra/`；完整版计划与差异见
+  [`docs/plan/release_launcher.md`](docs/plan/release_launcher.md) §0。
+- **测卡 / 扫参**：`cardtest` 支持 `--matsuri-config` 显式完整配置入口；单卡定卡、教诲落位、
+  五维系数、机制旋钮四轮扫描均已完成（结果见 `logs/deckselect` / `logs/advscan` /
+  `logs/statusscan` / `logs/knobscan`）。仅 wisdom 的五维系数定档；stamina / guts 因构成性失分
+  且参数调不动已退役，等构成搜索后再加入；`fusion` 全枚举与 T47/T59 教诲窗口补扫待做。
+  方案与结果见 [`docs/plan/deck_param_scan.md`](docs/plan/deck_param_scan.md) §9。
 
 ## 快速开始
 

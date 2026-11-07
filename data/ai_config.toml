@@ -1,17 +1,3 @@
-# 骏大祭剧本仓配置 · **默认层**（统一数据目录 `data/` 内，本仓自持）
-#
-# 形态：剧本库是唯一发布库，`data/` 为统一数据目录（引擎静态数据拷贝 + 剧本资产 + 双配置
-# 默认层），bin 与测试零参数即可跑。字段必须齐全（Rust 侧无代码缺省，避免两份真相）；
-# 未知键严格报错。本文件归剧本仓管，随仓提交；宿主仍可在工作目录放同名 `ai_config.toml`
-# 覆盖层（存在才合并，字段级）。
-#
-# 与引擎仓 `gamedata/ai_config.toml` 的差异（骏大祭适配）：
-#   - `scenario = "matsuri"`（标识本剧本宿主）
-#   - `trainer = "matsuri"`（bin 实际训练员仍由命令行参数选择）
-#
-# 引擎静态数据（events / cardDB / umaDB / constants / text / manifest）升级时重拷本目录
-# 并重录基线（见 docs/plan/stubs.md）。
-
 # ---------- sim ----------
 
 [sim]

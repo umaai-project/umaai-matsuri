@@ -1,0 +1,6 @@
+# 定卡 measured-v2 | 手写档 search_n=0 | 排名块 85000-85499 (500 局/组, --correct holm)
+# p1 无显著优于 base 的替换 → 保留起始卡组；确认块未跑
+# 影子行取 decks/panel.csv，仅用于后续参数迁移验证，不参与定卡
+name,comp,pick,slot0,slot1,slot2,slot3,slot4,friend
+speed_build,21101,measured-v2,303174,303114,303004,303224,303204,303234
+speed_build_shadow,21101,panel,302754,303124,303044,303144,303194,303234

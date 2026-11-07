@@ -1,0 +1,7 @@
+# 定卡 measured-v2 | 手写档 search_n=0 | 排名块 85000-85499 (500 局/组, --correct holm)
+# p1 采用 槽4 30238 [智]生野狄杜斯 (配对 Δ +514.5, p_adj 0.0130)
+# 确认块 86000-86499 (500 局, --correct none): Δ +899.5 ±311.7, p 0.0000, W/L 323/176 → CI 不跨零，采用
+# 影子行取 decks/panel.csv，仅用于后续参数迁移验证，不参与定卡
+name,comp,pick,slot0,slot1,slot2,slot3,slot4,friend
+wisdom_build,11102,measured-v2,303114,303044,303224,303194,302384,303234
+wisdom_build_shadow,11102,panel,302754,303044,303144,303194,303064,303234

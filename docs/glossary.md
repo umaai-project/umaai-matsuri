@@ -402,6 +402,8 @@
 | 2026-11-05 | **默认开局预设 = 100101 扫参最优** | `blue_count` 保持 `[18,0,0,0,0]`；`extra_count` 由 `[30,30,60,80,80]` 改为 `[10,10,120,140,0]`（技能点 100 不变）。口径 = 手写档默认训练员官方评分均值、同一批种子（CRN）、300 种子 / 块 × 三块独立复测；2000 种子配对相对旧默认 +869.3 ± 56.6 | 2026-11-05 开局预设扫参（[mechanism.md](mechanism.md) §5.6）：两马娘蓝因子最优均 `[18,0,0,0,0]`，剧本因子向根性 140 + 力量 / 耐力集中、避开智力（106301 还要避开速度） | 有（默认局开局属性；100101 100 局 78124.5 → 78476.0，102102 76406.6 → 76370.4） |
 
 | 2026-11-07 | **卡组配置重构 `[decks.*]`** | `data/matsuri_config.toml` 分两层：`[pre]` / `[search]` 全局运行设置，`[decks.*]` 卡组参数；`[decks.default]` 完整默认档（原 speed_build），其他档只写差异深合并；`variant = true` 只允许显式选择；未匹配 comp 走 default。`MatsuriConfig` 只留 `pre/search/decks/deck`，fusion/trainer/advice 全收进 `DeckParams`；`ROUTE_PRIOR` 移入 `AdvicePreset::default()` | user 2026-11-07 拍板（整体方案、深合并、default 兜底、迁移扫参脚本） | 纯 schema 迁移：默认档逐位不变（seed 61444 86053 / PT 11864 与迁移前一致）；后续按卡组扫参见 `plan/deck_config.md` |
+| 2026-11-07 | **教诲落位按卡组构成分档** | 六窗口预设属 `[decks.*]` 卡组参数；`stamina/guts/wisdom` 各写 t2/t11/t23/t35 四窗口差异（t47/t59 继承 default），`[decks.default.advice]` 保持 ga-r2 冠军档不变。教诲预设是 `assignment_value` 里的软先验（`hits × route`），单窗口改动效应小、四窗口组合才显著 | 手写档 advscan 全扫（三套 × 4 窗口 × 120 排列 × 2 轮，2868 变体 / 746.4 万局），独立块 90000 块 5000 局 Holm + 影子卡组同向，9/9 通过；见 `plan/deck_param_scan.md` §9 | 有（三套卡组档数值位移；默认档 seed 61444 86053 / PT 11864 逐位不变，不重录基线） |
+| 2026-11-07 | **wisdom 五维系数按档覆盖 / stamina·guts 退役** | `[decks.wisdom_build.trainer]` 只写 `status_weights`（智 2.6217 → 1.31085、耐 0.9881 → 1.111613），其余 trainer 字段继承 default；stamina / guts 的卡组夹具与参数档移除，未匹配 comp 一律回落 `[decks.default]` | 五维系数独立块 105000 块 5000 局 Holm +630.6 ±145.4、影子 +606.3；两套构成性失分调参补不动（见 `plan/deck_param_scan.md` §9.5、`logs/knobscan/FINAL.md`） | 有（仅 wisdom；默认档逐位不变，不重录基线；备份见 `logs/deckselect/retired_2026-11-07/`） |
 
 ## 10. 与旧实现 / 资料的已知分歧
 

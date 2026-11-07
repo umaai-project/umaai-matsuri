@@ -35,7 +35,7 @@
 
 ## 代码结构
 
-**workspace 五 crate，按终端业务形态划分。** `matsuri-core` 是宿主稳定面（机制 + 训练员 +
+**workspace 六 crate：五个按终端业务形态划分，另加发布启动器。** `matsuri-core` 是宿主稳定面（机制 + 训练员 +
 装配）；`matsuri-sim`（离线模拟）与 `matsuri-ai`（在线决策）是两条业务线 lib；终端入口由
 `matsuri-cli` 承载；`matsuri-tools` 是外围工具面。业务 crate 之间不允许反向依赖
 （sim / ai 不得依赖 cli）。重依赖各归其位，**在对应业务真正用上前不要往 `Cargo.toml` 加依赖或 feature**。
@@ -60,6 +60,7 @@
 | `crates/matsuri-cli/src/manual.rs` | 手动核对面板（人工核对机制）：状态取 `MatsuriView`（纯呈现）+ 育成配置 + 彩色训练明细表 + 剧本资源 / 教诲分配结果 + 动作槽增量预览 + Inquire 动作 / 事件选择 |
 | `crates/matsuri-cli/src/logging.rs` | stderr 日志器：消费 `[output] log_level`，承接 `diag!` 记录 |
 | `crates/matsuri-tools` | 外围工具（一个子面一个 bin）：`bench` / `sweep` / `cardtest`（测卡）/ `audit_search` / `probe_fail`；复盘待补 |
+| `crates/matsuri-launcher` | 发布启动器 bin `matsuri-ai`：菜单 / 子进程装配 / 小黑板通道只读体检（std-only 零依赖，不依赖业务 crate） |
 
 - **契约 trait impl 不可拆文件**：一个 trait 的 `impl` 必须整体落在同一文件。
 - **可见性**：crate 内跨模块调用标 `pub(crate)`；跨 crate 消费面标 `pub`。

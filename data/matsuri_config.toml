@@ -130,15 +130,21 @@ scarcity = 1.0
 level = 80.0
 normal_penalty = 120.0
 
-# 标准构成占位档：首版只定义 comp / note，参数继承 default；后续扫参再补差异。
-[decks.stamina_build]
-comp = [1, 2, 1, 0, 1]
-note = "耐主；首版占位，参数继承 default"
-
-[decks.guts_build]
-comp = [2, 0, 1, 1, 1]
-note = "根主；首版占位，参数继承 default"
-
+# 非默认卡组档：当前只保留 wisdom 11102（教诲落位 + 五维系数均已定档）。
+# stamina 12101 / guts 20111 于 2026-11-07 退役（构成性失分，参数调不动，等构成搜索后再加入）；
+# 卡组夹具与两段配置已备份到 logs/deckselect/retired_2026-11-07/。
+# 未匹配 comp 一律回落 [decks.default]；t47 / t59 仍继承 default（本轮未扫）。
+# 详见 docs/plan/deck_param_scan.md §9、logs/advscan/FINAL.md、logs/statusscan/FINAL.md。
 [decks.wisdom_build]
 comp = [1, 1, 1, 0, 2]
-note = "智主；首版占位，参数继承 default"
+note = "智主；2026-11-07 定档｜教诲复核 +282.9 ±145.0 (p_adj 0.0000)、影子 +346.8；五维系数复核 +630.6 ±145.4 (p_adj 0.0000)、影子 +606.3"
+
+[decks.wisdom_build.advice]
+t2 = [401, 201, 301, 501, 101]
+t11 = [101, 201, 301, 501, 401]
+t23 = [101, 301, 501, 401, 201]
+t35 = [101, 501, 201, 301, 401]
+
+[decks.wisdom_build.trainer]
+# 五维策略权重：智 2.6217 → 1.31085、耐 0.9881 → 1.111613；其余仍继承 default
+status_weights = [0.808125, 1.111613, 0.629025, 0.15, 1.31085]
