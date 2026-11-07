@@ -71,23 +71,31 @@
 - 机制：`mechanism.md` §5.5（`[pre]` 三个取值与心情盾默认 2 层）。
 - 性能：`perf_profiling.md` §13（第四轮优化与剖面）；本轮预算与分辨率结论记在 README 现状段。
 
-## 7. 在线 CLI 下一轮方案（2026-11-07，未实施）
+## 7. 在线 CLI 决策输出（2026-11-07 已实施；玩家预设取消）
 
-> 完整版见 `.workbuddy/handoff-matsuri-wiring_2026-11-06.md` §5；在线档接线记录见
-> `docs/plan/online_wiring.md` §9.10。分层不变：决策 / 路由 / 帧监听在 `matsuri-ai`，CLI 只做薄层渲染。
+> 分层不变：决策 / 路由 / 帧监听在 `matsuri-ai`，CLI 只做薄层渲染。
 
-1. **极简决策输出**：不显示回合 / 阶段 / 候选编号；训练与比赛先按 manual 口径打印 `BoardPanel`，
-   再出 `【决策】<动作名>` + 评分 Top N；动作名用 `速训练 / 飞悬稽古 / 比赛` 口径；单候选只出一行。
-2. **JSON 命名**：`action_desc` / `candidate_descriptions` 改为可读动作名、事件选项文本、教诲完整映射；
-   `decision_kind` 保持 `train/race/event/advice`。命名接口下沉 `matsuri-core`，CLI 与 AI 共用。
-3. **教诲预设**：`matsuri_config.toml [advice].preset` 按窗口 turn 写最终 id（6 个窗口，
-   基础 101–501 / 融合 601–1001，配置注释列全名字）；转成继续用 `[fusion]`，载入期校验一致。
-   预设只用于高亮，不显示预设内容：教诲输出只保留 `【决策】` AI 完整映射、`【融合】`（T23/T47）、
-   `【差异】与预设不同：<act>`；JSON 只放 `advice_diff {window, different_acts, match, has_preset}`。
-4. **在线教诲路由**：当前 `special` 帧被跳过、候选只在 Begin/End 生成；新增 `Route::Advice`
-   （`special && ps==51 && advice_window`，按窗口去重）；T23/T47 先 clone 并应用 `[fusion]` 再枚举
-   120 候选；T2 五槽全 0 补 `[101,201,301,401,501]`。
-5. **运气分**：复用引擎 `LuckScoreTracker`，只用搜索终局分；T(n)=Σ(score×n)/Σn（完整候选，不受 Top N 影响）；
-   每回合只在 `train`/`race` 主行动更新；`display = raw + (77−turn)×bonus`，`bonus` 取
-   `ai_config [record].luck_turn_bonus`；JSON 在 `scenario_extra` 平铺旧契约字段。
-6. **Top N 配置**：`matsuri_config.toml [output] decision_top_n`，默认 5，`0 = 全部`。
+1. **输出顺序**：还原 `MatsuriGame` → 打印 `BoardPanel`（搜索前）→ 搜索 → 运气行 → 决策行。
+   训练 / 比赛格式：
+
+   ```text
+   [回合 32 运气]本局：+1300, 本轮: +150
+   [回合 32 训练]首选：速训练
+   #2: 智训练 +88 (速-4 耐-1 力+1 根-2 智-2 PT-10)
+   ```
+
+   `#N` 的分数差 = 该候选终局期望分 − 本决策基线（候选按样本数加权，与运气分同口径）；
+   括号内是相对首选的终局五维 / PT 差。Top N 暂定 5（`DECISION_TOP_N`）。
+2. **JSON 命名**：`action_desc` / `candidate_descriptions` 已改为可读动作名（`速训练` / `飞悬稽古` /
+   `比赛` / `友人出行`），`decision_kind` 保持 `train/race/event/advice`；命名接口在 `matsuri-core`
+   （`Action::decision_label`、`AdviceAssignment::describe`，教诲映射不带 id）。
+3. **玩家 advice/fusion 预设：取消**（user 2026-11-07）。不提供 `[advice].preset`、不做预设差异高亮；
+   `MatsuriConfig` 的 `[decks.*]`（含 fusion / advice）只由引擎内部使用，玩家侧不覆盖。
+4. **在线教诲路由**：仍未接 `Route::Advice`（`special` 帧继续跳过）；后续单独做，输出只显示 AI 完整映射，
+   不显示玩家预设。
+5. **运气分**：复用引擎 `LuckScorer` / `LuckScoreTracker`，只统计搜索终局分；`T(n)=Σ(score×n)/Σn`；
+   只在 `train` / `race` 主行动推进；显示 `raw + (77−turn)×bonus`，`bonus` 取
+   `ai_config [record].luck_turn_bonus`。CLI 本局分按 <0 红 / <500 黄 / <1500 绿 / ≥1500 亮绿分段，
+   本轮亮青（阈值在 `online.rs::render_luck`，后续可配置化）。
+6. **颜色**：首选红底亮黄（`41;93`）；与首选差在 95% 分辨率内（`1.96×合成标准误`）绿色；
+   落后 <500 白色；落后 ≥500 灰色；`--json` / `NO_COLOR` / 非 TTY 自动退化纯文本。

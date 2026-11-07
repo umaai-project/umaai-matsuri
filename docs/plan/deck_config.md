@@ -196,8 +196,9 @@ pub struct DeckTable {
   （`DeckParams` / `DeckTable` / `AdvicePreset` / `FusionConfig` / `TrainerConfig` / 深合并 / 校验）。
 - `settle.rs` 读 `config.deck.fusion`；`trainer.rs` / `search.rs` / `value.rs` 读
   `config.deck.trainer`；`Model` 读 `config.deck.advice`；`ROUTE_PRIOR` 已从 `value.rs` 删除。
-- 入口：`matsuri` / `online` 按 comp resolve 并支持 `--deck-profile`；`bench` 支持
-  `--deck-profile`；`cardtest run` 的卡组行名命中 `[decks.*]` 时显式选档，否则按 comp；
+- 入口：`matsuri`（离线）按 comp resolve 并支持 `--deck-profile`；`online` 只按 comp 自动匹配
+  （玩家侧不再暴露卡组档覆盖）；`bench` 支持 `--deck-profile`；`cardtest run` 的卡组行名命中
+  `[decks.*]` 时显式选档，否则按 comp；
   `sweep` / `audit_search` / `probe_fail` 在 `Env::load` 按 comp resolve。
 - 验收：`cargo fmt --all --check` / `cargo check --workspace --all-targets --offline` /
   `cargo test --workspace --release --offline` 全绿（258 通过 + 2 手动 `#[ignore]`）；

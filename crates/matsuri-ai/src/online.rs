@@ -112,7 +112,7 @@ pub fn train_record(
     let describe = |index: usize| {
         actions
             .get(index)
-            .map_or_else(|| format!("#{index}"), ToString::to_string)
+            .map_or_else(|| format!("#{index}"), |action| action.decision_label())
     };
     let mut record = DecisionRecord::action_only(kind, describe(action_index));
     match explanation {
@@ -147,7 +147,7 @@ pub fn train_record(
             record.candidates = actions
                 .iter()
                 .map(|action| Candidate {
-                    description: action.to_string(),
+                    description: action.decision_label(),
                     score: None,
                     n: 0,
                 })

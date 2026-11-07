@@ -55,6 +55,32 @@ impl Display for Action {
     }
 }
 
+/// 五维轴名（与 CLI 面板同口径）
+const AXIS_LABELS: [&str; 5] = ["速", "耐", "力", "根", "智"];
+/// 演目短名（与 CLI 面板同口径）
+const ACT_SHORT_LABELS: [&str; 5] = ["流镝", "神旗", "纳舞", "大曳", "飞悬"];
+
+impl Action {
+    /// 决策展示名：`速训练` / `飞悬稽古` / `比赛` / `友人出行`
+    #[must_use]
+    pub fn decision_label(&self) -> String {
+        match self {
+            Self::Train(train) => format!(
+                "{}训练",
+                AXIS_LABELS.get(usize::from(*train)).copied().unwrap_or("?")
+            ),
+            Self::ActTrain(act) => format!(
+                "{}稽古",
+                ACT_SHORT_LABELS
+                    .get(usize::from(*act))
+                    .copied()
+                    .unwrap_or("演目")
+            ),
+            other => other.to_string(),
+        }
+    }
+}
+
 impl ActionEnum for Action {
     type Game = MatsuriGame;
 
@@ -284,5 +310,19 @@ impl MatsuriGame {
             .iter()
             .find(|row| row.card_id == card_id && row.story_step == step as i32 + 1)
             .map(|row| row.add_level)
+    }
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::Action;
+
+    #[test]
+    fn decision_labels_are_readable() {
+        assert_eq!(Action::Train(0).decision_label(), "速训练");
+        assert_eq!(Action::Train(4).decision_label(), "智训练");
+        assert_eq!(Action::ActTrain(0).decision_label(), "流镝稽古");
+        assert_eq!(Action::ActTrain(4).decision_label(), "飞悬稽古");
+        assert_eq!(Action::FriendOuting.decision_label(), "友人出行");
     }
 }

@@ -9,7 +9,7 @@
 //! 候选打分表仍在 `candidate_scores` / `candidate_descriptions` 里（供小黑板显示），
 //! 由 `scenario_extra.score_source` 标明来源。
 
-use matsuri_core::{Action, MatsuriGame, MatsuriView};
+use matsuri_core::{Action, MatsuriGame, MatsuriView, SearchSummary};
 use serde_json::{Value, json};
 use umaai::DecisionRecord;
 
@@ -53,6 +53,8 @@ pub struct OnlineTurnOutput {
     pub actions: Vec<Action>,
     /// 面板用候选分 `(动作下标, 分数)`；JSON 不读（手写档为打分表，搜索档为搜索均分）
     pub candidate_scores: Vec<(usize, f64)>,
+    /// 本次搜索的完整摘要（搜索档；含终局五维 / PT / 分辨率；手写档为 `None`）
+    pub summary: Option<SearchSummary>,
 }
 
 impl OnlineTurnOutput {

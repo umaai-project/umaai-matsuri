@@ -107,6 +107,46 @@ impl AdviceAssignment {
     pub fn slots(self) -> [usize; 5] {
         self.0.map(usize::from)
     }
+
+    /// 完整映射：`流镝←特化601 神旗←体力501 ...`（在线输出用）
+    #[must_use]
+    pub fn describe(&self, slots: &[i32; 5], fused: &[i32; 5]) -> String {
+        const ACT_SHORT: [&str; 5] = ["流镝", "神旗", "纳舞", "大曳", "飞悬"];
+        const NAMES: [(i32, &str); 10] = [
+            (101, "牵绊"),
+            (201, "擅长率"),
+            (301, "灵感"),
+            (401, "助力"),
+            (501, "体力"),
+            (601, "特化"),
+            (701, "研习"),
+            (801, "协助"),
+            (901, "不屈"),
+            (1001, "兼修"),
+        ];
+        self.0
+            .iter()
+            .enumerate()
+            .map(|(act, slot)| {
+                let slot = usize::from(*slot);
+                let id = fused.get(slot).copied().unwrap_or(0);
+                let id = if id == 0 {
+                    slots.get(slot).copied().unwrap_or(0)
+                } else {
+                    id
+                };
+                let name = NAMES
+                    .iter()
+                    .find(|(known, _)| *known == id)
+                    .map_or("未分配", |(_, name)| *name);
+                format!(
+                    "{}←{name}{id}",
+                    ACT_SHORT.get(act).copied().unwrap_or("演目")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 }
 
 impl std::fmt::Display for AdviceAssignment {
@@ -710,5 +750,21 @@ mod microbench {
             }),
         );
         println!("distribution[0] = {persons} 人");
+    }
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::AdviceAssignment;
+
+    #[test]
+    fn describe_maps_slots_and_fusion() {
+        let assign = AdviceAssignment([0, 1, 2, 3, 4]);
+        let slots = [101, 201, 301, 401, 501];
+        let fused = [601, 0, 0, 0, 901];
+        let text = assign.describe(&slots, &fused);
+        assert!(text.contains("流镝←特化"), "{text}");
+        assert!(text.contains("神旗←擅长率"), "{text}");
+        assert!(text.contains("飞悬←不屈"), "{text}");
     }
 }

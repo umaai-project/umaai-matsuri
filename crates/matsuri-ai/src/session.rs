@@ -19,11 +19,12 @@ use std::sync::Arc;
 use anyhow::{Context, Result, anyhow};
 use matsuri_core::game::restore::RestoreInput;
 use matsuri_core::{
-    MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer, MatsuriTrainer, Stage,
+    Action, MAX_TURN, MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer,
+    MatsuriTrainer, Stage,
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-use umaai::{BaseParams, FrameOutcome};
+use umaai::{BaseParams, FrameOutcome, LuckScorer};
 use umaai_core::rng::{StreamTag, derive_seed};
 use umaai_core::{Array5, Array6, Data};
 use umasim::game::{Game, SupportCard, Trainer};
@@ -106,6 +107,8 @@ pub struct OnlineSession {
     last_train_turn: Option<i32>,
     /// 是否输出训练验算表
     verify: bool,
+    /// 运气分跟踪器（只在搜索档主行动决策上推进）
+    luck: LuckScorer,
 }
 
 impl OnlineSession {
@@ -151,6 +154,7 @@ impl OnlineSession {
             prev_levels: None,
             last_train_turn: None,
             verify,
+            luck: LuckScorer::new(cfg.record.luck_turn_bonus),
         })
     }
 
@@ -162,6 +166,20 @@ impl OnlineSession {
 
     /// 处理一帧（**一帧一决策**；不推进局面，不改真机）
     pub fn handle_frame(&mut self, contents: &str) -> Result<OnlineTurnOutput> {
+        self.handle_frame_with(contents, |_, _| Ok(()))
+    }
+
+    /// 处理一帧，并在搜索前回调还原后的局面与训练候选
+    ///
+    /// 终端用它在搜索开始前打印面板；回调只读，不改局面。
+    pub fn handle_frame_with<F>(
+        &mut self,
+        contents: &str,
+        mut before_search: F,
+    ) -> Result<OnlineTurnOutput>
+    where
+        F: FnMut(&MatsuriGame, &[Action]) -> Result<()>,
+    {
         let frame = ParsedFrame::parse(contents)?;
         self.sync_epoch(frame.epoch_key());
 
@@ -188,6 +206,7 @@ impl OnlineSession {
                 game,
                 actions: Vec::new(),
                 candidate_scores: Vec::new(),
+                summary: None,
             });
         }
 
@@ -215,6 +234,7 @@ impl OnlineSession {
                 game,
                 actions: Vec::new(),
                 candidate_scores: Vec::new(),
+                summary: None,
             },
             Route::Event => {
                 let event = online::pending_event(&game)
@@ -227,16 +247,17 @@ impl OnlineSession {
                     &mut rng,
                 )?;
                 // 搜索档：把本次搜索的选项均分带进记录；手写档保持 `None`（无搜索分）
-                let scores: Option<Vec<(usize, f64, u32)>> = match &self.trainer {
-                    TrainerChoice::Search(trainer) => trainer.last_search().map(|summary| {
-                        summary
-                            .candidates
-                            .iter()
-                            .map(|candidate| (candidate.index, candidate.score, candidate.n))
-                            .collect()
-                    }),
+                let summary = match &self.trainer {
+                    TrainerChoice::Search(trainer) => trainer.last_search(),
                     TrainerChoice::Hand(_) => None,
                 };
+                let scores: Option<Vec<(usize, f64, u32)>> = summary.as_ref().map(|summary| {
+                    summary
+                        .candidates
+                        .iter()
+                        .map(|candidate| (candidate.index, candidate.score, candidate.n))
+                        .collect()
+                });
                 let search_backed = scores.is_some();
                 let record = online::event_record(event, choice, scores.as_deref());
                 OnlineTurnOutput {
@@ -254,6 +275,7 @@ impl OnlineSession {
                     game,
                     actions: Vec::new(),
                     candidate_scores: Vec::new(),
+                    summary,
                 }
             }
             Route::Train => {
@@ -274,9 +296,11 @@ impl OnlineSession {
                         game,
                         actions: Vec::new(),
                         candidate_scores: Vec::new(),
+                        summary: None,
                     }
                 } else {
                     let actions = game.list_actions()?;
+                    before_search(&game, &actions)?;
                     let mut rng = self.decision_rng(turn);
                     let index = self
                         .trainer
@@ -284,7 +308,8 @@ impl OnlineSession {
                         .select_action(&game, &actions, &mut rng)?;
                     // 手写档：解释与实际决策同源（`explain_action` 内部走同一个 `choose_action`）；
                     // 搜索档：把最近一次搜索的候选均分 / 样本数带进记录（fallback 时保持无分）
-                    let (record, candidate_scores, search_backed) = match &self.trainer {
+                    let (mut record, candidate_scores, search_backed, summary) = match &self.trainer
+                    {
                         TrainerChoice::Hand(trainer) => {
                             let explain = trainer.explain_action(&game, &actions)?;
                             let scores = explain.candidates.clone();
@@ -300,7 +325,7 @@ impl OnlineSession {
                                 }),
                             )?;
                             // 手写档的候选分只给面板看；JSON 仍是 `score = 0`（无搜索分）
-                            (record, scores, false)
+                            (record, scores, false, None)
                         }
                         TrainerChoice::Search(trainer) => match trainer.last_search() {
                             Some(summary) => {
@@ -325,15 +350,21 @@ impl OnlineSession {
                                         reason: "搜索：候选排名加权均分最高".to_string(),
                                     }),
                                 )?;
-                                (record, candidates, true)
+                                (record, candidates, true, Some(summary))
                             }
                             None => (
                                 online::train_record(&game, &actions, index, None)?,
                                 Vec::new(),
                                 false,
+                                None,
                             ),
                         },
                     };
+                    // 运气分只统计搜索终局分，且只在主行动（训练 / 比赛）上推进
+                    if search_backed {
+                        self.luck
+                            .attach(&mut record, frame.epoch_key(), turn, MAX_TURN);
+                    }
                     self.last_train_turn = Some(turn);
                     OnlineTurnOutput {
                         turn,
@@ -350,6 +381,7 @@ impl OnlineSession {
                         game,
                         actions,
                         candidate_scores,
+                        summary,
                     }
                 }
             }

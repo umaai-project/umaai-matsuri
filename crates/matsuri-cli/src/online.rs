@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! matsuri online [--root <游戏根目录>] [--replay <帧目录>] [--trainer matsuri|search]
-//!                [--deck-profile <档名>] [--json] [--verify-training]
+//!                [--json] [--verify-training]
 //! ```
 //!
 //! - `--root` 缺省读 `MATSURI_ROOT`，再缺省用当前目录（要求含 `.portable`）
@@ -25,13 +25,13 @@ use matsuri_ai::{
     FrameSource, OnlineSession, TrainerKind, TurnKind, connected_payload, error_payload,
     resolve_live_root,
 };
-use matsuri_core::{MatsuriConfig, MatsuriData};
-use umaai::{Config, FrameKind};
+use matsuri_core::{MatsuriConfig, MatsuriData, SearchCandidate};
+use umaai::{Config, FrameKind, LuckAttach};
 use umaai_cli::render::term;
 use umaai_core::Data;
 
 use crate::logging;
-use crate::panel::BoardPanel;
+use crate::panel::{BoardPanel, paint};
 
 /// 在线档参数
 #[derive(Debug, Default)]
@@ -42,8 +42,6 @@ pub struct Args {
     pub replay: Option<PathBuf>,
     /// 训练员（`matsuri` 手写 / `search` 搜索）
     pub trainer: Option<String>,
-    /// 显式卡组档（扫参变体）；缺省按实际卡组 comp 自动匹配
-    pub deck_profile: Option<String>,
     /// 逐行 JSON 输出
     pub json: bool,
     /// 输出训练验算表
@@ -73,13 +71,6 @@ pub fn parse(argv: &[String]) -> Result<Args> {
                         .clone(),
                 );
             }
-            "--deck-profile" => {
-                args.deck_profile = Some(
-                    iter.next()
-                        .ok_or_else(|| anyhow!("--deck-profile 缺少取值"))?
-                        .clone(),
-                );
-            }
             "--json" => args.json = true,
             "--verify-training" => args.verify = true,
             "--help" | "-h" => {
@@ -97,11 +88,10 @@ pub fn parse(argv: &[String]) -> Result<Args> {
 /// 用法文本
 #[must_use]
 pub fn usage() -> String {
-    "用法: matsuri online [--root <游戏根目录>] [--replay <帧目录>] [--trainer matsuri|search] [--deck-profile <档名>] [--json] [--verify-training]\n\
+    "用法: matsuri online [--root <游戏根目录>] [--replay <帧目录>] [--trainer matsuri|search] [--json] [--verify-training]\n\
      \n  --root            真机游戏根目录（含 .portable）；缺省读 MATSURI_ROOT，再缺省当前目录\n  \
      --replay          回放目录（game{id}_turn{n}.json + game{id}_finalScore.json）；给了就不挂真机监听\n  \
      --trainer         训练员：matsuri（手写） / search（搜索）；缺省按配置 [search].search_n 决定（0 = 手写，>0 = 搜索）\n  \
-     --deck-profile    显式卡组档（[decks.*] 名字；扫参变体用）；缺省按实际卡组 comp 匹配\n  \
      --json            stdout 每行一条 JSON（日志与面板走 stderr）\n  \
      --verify-training 附训练验算表（帧真值 vs 还原态预览，G13）\n\
      \n配置与环境：默认层 data/ai_config.toml + data/matsuri_config.toml，工作目录同名覆盖层；\n\
@@ -123,9 +113,6 @@ pub fn run(argv: &[String]) -> Result<()> {
         MatsuriConfig::load_with_overlay_file(crate::DATA_ROOT, ".").context("载入剧本配置失败")?;
     let comp = matsuri_core::deck_comp(&cfg.sim.cards).context("卡组构成解析失败")?;
     matsuri_cfg = matsuri_cfg.for_deck(comp);
-    if let Some(name) = &args.deck_profile {
-        matsuri_cfg = matsuri_cfg.for_profile(name)?;
-    }
     // 在线档与离线档读同一套配置：预算取 `matsuri_config [search].search_n`，
     // 环境变量只作为临时覆盖（`MATSURI_SEARCH_N` / `MATSURI_SEARCH_RADICAL`）。
     let search_n =
@@ -167,7 +154,8 @@ pub fn run(argv: &[String]) -> Result<()> {
     let replay = source.is_replay();
 
     // 面板：JSON 模式一律关色（stdout 只允许 JSON）
-    let mut panel = BoardPanel::new(term::use_color(args.json));
+    let color = term::use_color(args.json);
+    let panel = BoardPanel::new(color);
     let mut stdout = std::io::stdout();
     if args.json {
         // 启动握手：消费者据此判断「进程已就绪、开始接收帧」
@@ -205,12 +193,20 @@ pub fn run(argv: &[String]) -> Result<()> {
         match frame.kind {
             FrameKind::ThisTurn => {
                 frames += 1;
-                match session.handle_frame(&frame.contents) {
+                let handled = session.handle_frame_with(&frame.contents, |game, actions| {
+                    // 搜索前先显示还原后的局面（JSON 模式不渲染面板）
+                    if !args.json {
+                        write!(stdout, "{}", panel.render(game, actions, None)?)?;
+                        stdout.flush()?;
+                    }
+                    Ok(())
+                });
+                match handled {
                     Ok(output) => {
                         if output.kind == TurnKind::Decision {
                             decisions += 1;
                         }
-                        render(&mut stdout, &mut panel, &output, args.json)?;
+                        render(&mut stdout, &output, args.json, color)?;
                     }
                     Err(err) => {
                         // 真机档单帧失败不终止循环（等下一帧）；回放档累计后在结束时报错
@@ -246,9 +242,9 @@ pub fn run(argv: &[String]) -> Result<()> {
 /// 渲染一帧的输出
 fn render(
     stdout: &mut impl Write,
-    panel: &mut BoardPanel,
     output: &OnlineTurnOutput,
     json: bool,
+    color: bool,
 ) -> Result<()> {
     if json {
         let payload = output.json_payload();
@@ -261,31 +257,7 @@ fn render(
         return Ok(());
     }
     match output.kind {
-        TurnKind::Decision => {
-            let scores =
-                (!output.candidate_scores.is_empty()).then_some(output.candidate_scores.as_slice());
-            write!(
-                stdout,
-                "{}",
-                panel.render(&output.game, &output.actions, scores)?
-            )?;
-            if let Some(record) = &output.record {
-                let reason = record
-                    .extra
-                    .as_ref()
-                    .and_then(|extra| extra.get("reason"))
-                    .and_then(|reason| reason.as_str())
-                    .unwrap_or("");
-                writeln!(
-                    stdout,
-                    "【AI 决策】T{} {} → [{}] {}",
-                    output.turn, record.kind, record.action_index, record.action_desc
-                )?;
-                if !reason.is_empty() {
-                    writeln!(stdout, "【决策理由】{reason}")?;
-                }
-            }
-        }
+        TurnKind::Decision => render_decision(stdout, output, color)?,
         TurnKind::Skipped => {
             writeln!(
                 stdout,
@@ -303,6 +275,151 @@ fn render(
     }
     stdout.flush()?;
     Ok(())
+}
+
+/// 决策候选展示上限（首选 + 其余；后续接配置 `[output] decision_top_n`）
+const DECISION_TOP_N: usize = 5;
+
+/// 极简决策输出：运气行 + 首选 / Top N（涕分差 + 终局五维 / PT 差）
+fn render_decision(stdout: &mut impl Write, output: &OnlineTurnOutput, color: bool) -> Result<()> {
+    let Some(record) = &output.record else {
+        return Ok(());
+    };
+    if let Some(luck) = &record.luck {
+        render_luck(stdout, output.turn, luck, color)?;
+    }
+    let kind = decision_kind_label(&record.kind);
+    let top = "41;93";
+    if let Some(summary) = &output.summary
+        && !summary.candidates.is_empty()
+    {
+        let Some(chosen) = summary
+            .candidates
+            .iter()
+            .find(|candidate| candidate.index == summary.chosen)
+            .or_else(|| summary.candidates.first())
+        else {
+            return Ok(());
+        };
+        writeln!(
+            stdout,
+            "[回合 {} {}]{}",
+            output.turn,
+            kind,
+            paint(&format!("首选：{}", chosen.description), Some(top), color)
+        )?;
+        let mut rest: Vec<&SearchCandidate> = summary
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.index != chosen.index)
+            .collect();
+        rest.sort_by(|a, b| b.score.total_cmp(&a.score));
+        for (position, candidate) in rest
+            .iter()
+            .take(DECISION_TOP_N.saturating_sub(1))
+            .enumerate()
+        {
+            let diff = candidate.score - summary.baseline;
+            let code =
+                candidate_color(chosen.score, candidate.score, resolution(chosen, candidate));
+            let line = format!(
+                "#{}: {} {diff:+.0} ({})",
+                position + 2,
+                candidate.description,
+                terminal_delta(candidate, chosen)
+            );
+            writeln!(stdout, "{}", paint(&line, Some(code), color))?;
+        }
+        return Ok(());
+    }
+    // 手写档 / 无搜索分：只报首选，不伪造候选分
+    writeln!(
+        stdout,
+        "[回合 {} {}]{}",
+        output.turn,
+        kind,
+        paint(&format!("首选：{}", record.action_desc), Some(top), color)
+    )?;
+    Ok(())
+}
+
+/// 决策类别中文名
+fn decision_kind_label(kind: &str) -> &'static str {
+    match kind {
+        "train" => "训练",
+        "race" => "比赛",
+        "event" => "事件",
+        "advice" => "教诲",
+        _ => "决策",
+    }
+}
+
+/// 运气行：本局分 <0 红 / <500 黄 / <1500 绿 / ≥1500 亮绿；本轮亮青
+fn render_luck(stdout: &mut impl Write, turn: i32, luck: &LuckAttach, color: bool) -> Result<()> {
+    let total = luck.snapshot.total_luck_score.round() as i64;
+    let total_code = if total < 0 {
+        "31"
+    } else if total < 500 {
+        "33"
+    } else if total < 1500 {
+        "32"
+    } else {
+        "92"
+    };
+    let delta = luck
+        .snapshot
+        .last_turn_delta
+        .map_or_else(|| "--".to_string(), |d| format!("{:+.0}", d));
+    writeln!(
+        stdout,
+        "[回合 {} 运气]本局：{}, 本轮: {}",
+        turn,
+        paint(&format!("{total:+}"), Some(total_code), color),
+        paint(&delta, Some("96"), color)
+    )?;
+    Ok(())
+}
+
+/// 两候选差的 95% 分辨率（单候选标准误合成）
+fn resolution(chosen: &SearchCandidate, other: &SearchCandidate) -> f64 {
+    let se = |candidate: &SearchCandidate| {
+        if candidate.n <= 1 {
+            0.0
+        } else {
+            candidate.stdev / f64::from(candidate.n).sqrt()
+        }
+    };
+    let se_chosen = se(chosen);
+    let se_other = se(other);
+    1.96 * (se_chosen * se_chosen + se_other * se_other).sqrt()
+}
+
+/// 候选颜色：绿（分辨率内）/ 白（落后 <500）/ 灰（落后 ≥500）
+fn candidate_color(chosen_score: f64, candidate_score: f64, resolution: f64) -> &'static str {
+    let behind = chosen_score - candidate_score;
+    if behind.abs() <= resolution {
+        "32"
+    } else if behind < 500.0 {
+        "37"
+    } else {
+        "90"
+    }
+}
+
+/// 相对首选的终局五维 / PT 差
+fn terminal_delta(candidate: &SearchCandidate, chosen: &SearchCandidate) -> String {
+    const NAMES: [&str; 5] = ["速", "耐", "力", "根", "智"];
+    let mut parts: Vec<String> = (0..5)
+        .map(|axis| {
+            format!(
+                "{}{:+}",
+                NAMES[axis],
+                (candidate.five[axis] - chosen.five[axis]).round() as i64
+            )
+        })
+        .collect();
+    parts.push(format!("PT{:+}", (candidate.pt - chosen.pt).round() as i64));
+    parts.join(" ")
 }
 
 /// 渲染终局帧（`type = final`）
@@ -369,4 +486,17 @@ fn render_verify(report: &matsuri_ai::TrainingReport) -> String {
         );
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::candidate_color;
+
+    #[test]
+    fn candidate_color_has_three_tiers() {
+        assert_eq!(candidate_color(1000.0, 950.0, 60.0), "32", "分辨率内绿色");
+        assert_eq!(candidate_color(1000.0, 700.0, 50.0), "37", "落后 <500 白色");
+        assert_eq!(candidate_color(1000.0, 400.0, 50.0), "90", "落后 ≥500 灰色");
+        assert_eq!(candidate_color(1000.0, 500.0, 50.0), "90", "边界 500 归灰");
+    }
 }

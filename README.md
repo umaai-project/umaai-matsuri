@@ -46,7 +46,7 @@
   搜索档 10 局的均分标准误约 ±483 / ±155；跑满 100 局可把标准误压到 ±150 / ±50。
   默认开局预设为 `extra_count = [10,10,120,140,0,100]`（100101 扫参结果，见
   [docs/mechanism.md](docs/mechanism.md) §5.6，未按新默认马娘重扫）。
-- **验收**：workspace **258 通过 + 2 手动档**（1024 整局复现、教诲微基准，均 `#[ignore]`）；
+- **验收**：workspace **261 通过 + 2 手动档**（1024 整局复现、教诲微基准，均 `#[ignore]`）；
   `fmt --check` / `check` / `test` 三门绿（clippy 只在 Windows 侧跑）。
 - **性能**：四轮 O0–O4 优化，配对测量与复现见 [`docs/perf_profiling.md`](docs/perf_profiling.md)：
   第一轮（预览零克隆 / 教诲查表 / 原因惰性化）整局 N=1024 55.7 s → 24.7 s；第二轮

@@ -18,7 +18,7 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 use umaai_core::gamedata::{EventChoice, EventData};
 use umasim::game::{Game, Trainer};
-use umasim::search::{FlatSearch, FlatSearchGame, NoTerminal, SearchConfig};
+use umasim::search::{FlatSearch, FlatSearchGame, RolloutOutcome, SearchConfig, SearchOutput};
 
 use crate::config::{MatsuriConfig, SearchScopeConfig};
 use crate::diag;
@@ -29,6 +29,54 @@ use crate::trainer::MatsuriTrainer;
 const ADVICE_TOPK: usize = 16;
 /// 事件搜索最多支持的候选数（dummy token 容量：5 个 Train + 5 个 ActTrain）
 const EVENT_MAX_CHOICES: usize = 10;
+
+umasim::define_terminal_record!(
+    /// 一次 rollout 的终局五维 / PT（只做展示，不参与搜索排序）
+    MatsuriTerminal,
+    /// 逐候选终局统计
+    MatsuriTerminalStats {
+        speed => { key: "speed", label: "速度", unit: "status" },
+        stamina => { key: "stamina", label: "耐力", unit: "status" },
+        power => { key: "power", label: "力量", unit: "status" },
+        guts => { key: "guts", label: "根性", unit: "status" },
+        wisdom => { key: "wisdom", label: "智力", unit: "status" },
+        pt => { key: "pt", label: "PT", unit: "pt" },
+    }
+);
+
+impl MatsuriTerminal {
+    /// 从终局局面提取展示用事实（`total_pt` 失败只影响展示，记 0）
+    fn of(game: &MatsuriGame) -> Self {
+        let five = game.uma().five_status;
+        Self {
+            speed: f64::from(five[0]),
+            stamina: f64::from(five[1]),
+            power: f64::from(five[2]),
+            guts: f64::from(five[3]),
+            wisdom: f64::from(five[4]),
+            pt: f64::from(game.uma().total_pt().unwrap_or(0)),
+        }
+    }
+}
+
+/// 候选按搜索次数加权的期望分（与 `DecisionRecord::baseline_score` 同口径）
+fn weighted_baseline(candidates: &[SearchCandidate]) -> f64 {
+    let (sum_score, sum_score_n, total_n) = candidates.iter().fold((0.0, 0.0, 0u32), |acc, c| {
+        (
+            acc.0 + c.score,
+            acc.1 + c.score * f64::from(c.n),
+            acc.2 + c.n,
+        )
+    });
+    if candidates.is_empty() {
+        return 0.0;
+    }
+    if total_n == 0 {
+        sum_score / candidates.len() as f64
+    } else {
+        sum_score_n / f64::from(total_n)
+    }
+}
 
 /// 叶子估值器接口（预留）
 ///
@@ -57,8 +105,14 @@ pub struct SearchCandidate {
     pub description: String,
     /// 排名加权均分（与搜索排序同口径）
     pub score: f64,
+    /// 单候选均分样本标准差（展示分辨率用）
+    pub stdev: f64,
     /// rollout 样本数
     pub n: u32,
+    /// 终局五维均值（速 / 耐 / 力 / 根 / 智）
+    pub five: [f64; 5],
+    /// 终局 PT 均值
+    pub pt: f64,
 }
 
 /// 最近一次搜索的摘要
@@ -71,6 +125,8 @@ pub struct SearchSummary {
     pub candidates: Vec<SearchCandidate>,
     /// 中选候选在完整候选空间里的下标
     pub chosen: usize,
+    /// 本决策开始的期望分基线（候选按样本数加权；与运气分同口径）
+    pub baseline: f64,
 }
 
 /// FlatSearch 搜索训练员
@@ -145,27 +201,44 @@ impl MatsuriSearchTrainer {
 
     /// 搜索结果 → 摘要（`index_map` 把搜索输入下标映射回完整候选空间）
     fn summary_of(
-        out: &umasim::search::SearchOutput<Action>,
+        out: &SearchOutput<Action, MatsuriTerminalStats>,
         index_map: impl Fn(usize) -> usize,
         describe: impl Fn(usize) -> String,
         chosen: usize,
     ) -> SearchSummary {
+        let candidates: Vec<SearchCandidate> = out
+            .action_results
+            .iter()
+            .enumerate()
+            .map(|(position, result)| {
+                let terminal = out
+                    .terminal_results
+                    .get(position)
+                    .copied()
+                    .unwrap_or_default();
+                let index = index_map(position);
+                SearchCandidate {
+                    index,
+                    description: describe(index),
+                    score: result.weighted_mean(out.radical_factor),
+                    stdev: result.stdev(),
+                    n: result.count(),
+                    five: [
+                        terminal.speed.mean(),
+                        terminal.stamina.mean(),
+                        terminal.power.mean(),
+                        terminal.guts.mean(),
+                        terminal.wisdom.mean(),
+                    ],
+                    pt: terminal.pt.mean(),
+                }
+            })
+            .collect();
+        let baseline = weighted_baseline(&candidates);
         SearchSummary {
-            candidates: out
-                .action_results
-                .iter()
-                .enumerate()
-                .map(|(position, result)| {
-                    let index = index_map(position);
-                    SearchCandidate {
-                        index,
-                        description: describe(index),
-                        score: result.weighted_mean(out.radical_factor),
-                        n: result.count(),
-                    }
-                })
-                .collect(),
+            candidates,
             chosen,
+            baseline,
         }
     }
 
@@ -211,15 +284,15 @@ impl MatsuriSearchTrainer {
         let started = Instant::now();
         // 与 ramen 一致：搜索从调用方决策流取种子；局面规则流由 `fork_for_rollout`
         // 独立派生，搜索不读 / 不改真实局面的规则流。
-        let out = self
-            .search
-            .search::<NoTerminal, _>(game, actions, rng, |_| NoTerminal)?;
+        let out =
+            self.search
+                .search::<MatsuriTerminal, _>(game, actions, rng, MatsuriTerminal::of)?;
         let chosen = out.best_action_idx;
         let mean = out.action_results[chosen].weighted_mean(out.radical_factor);
         self.set_last(Self::summary_of(
             &out,
             |index| index,
-            |index| actions[index].to_string(),
+            |index| actions[index].decision_label(),
             chosen,
         ));
         diag!(
@@ -247,16 +320,21 @@ impl MatsuriSearchTrainer {
             return self.fallback.select_action(game, actions, rng);
         }
         let started = Instant::now();
-        let out = self
-            .search
-            .search::<NoTerminal, _>(game, &subset, rng, |_| NoTerminal)?;
+        let out =
+            self.search
+                .search::<MatsuriTerminal, _>(game, &subset, rng, MatsuriTerminal::of)?;
         let picked = out.best_action_idx;
         let chosen = map[picked];
         let mean = out.action_results[picked].weighted_mean(out.radical_factor);
+        let slots = game.advice.slots;
+        let fused = game.advice.fused;
         self.set_last(Self::summary_of(
             &out,
             |position| map[position],
-            |index| actions[index].to_string(),
+            |index| match &actions[index] {
+                Action::AssignAdvice(assign) => assign.describe(&slots, &fused),
+                other => other.decision_label(),
+            },
             chosen,
         ));
         diag!(
@@ -290,7 +368,7 @@ impl MatsuriSearchTrainer {
         let fallback = &self.fallback;
         let out = self
             .search
-            .search_with(game, &tokens, rng, |g, token, seed| {
+            .search_with_terminal(game, &tokens, rng, |g, token, seed| {
                 let choice = choice_of_token(token)?;
                 let mut sim = g.fork_for_rollout(seed);
                 if sim.event_queue.get(sim.event_cursor).is_none() {
@@ -326,7 +404,11 @@ impl MatsuriSearchTrainer {
                     sim.run_stage(fallback, &mut sim_rng)?;
                 }
                 sim.on_simulation_end(fallback, &mut sim_rng)?;
-                sim.search_score(pt)
+                let score = sim.search_score(pt)?;
+                Ok(RolloutOutcome {
+                    score,
+                    terminal: MatsuriTerminal::of(&sim),
+                })
             })?;
         let picked = out.best_action_idx;
         let mean = out.action_results[picked].weighted_mean(out.radical_factor);
@@ -483,7 +565,11 @@ mod tests {
             assert_eq!(candidate.index, position, "Train 摘要保留下标顺序");
             assert!(candidate.score.is_finite(), "候选分应为有限值");
             assert!(candidate.n > 0, "搜索过就应有样本");
-            assert_eq!(candidate.description, actions[position].to_string());
+            assert!(candidate.stdev >= 0.0, "候选分标准差非负");
+            assert!(candidate.five.iter().all(|value| value.is_finite()));
+            assert!(candidate.pt.is_finite());
+            assert!(summary.baseline.is_finite());
+            assert_eq!(candidate.description, actions[position].decision_label());
         }
 
         // 单候选走 fallback → 必须清空上一次摘要（在线档不能贴旧分）
