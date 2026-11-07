@@ -526,7 +526,10 @@ fn load_repo_config() -> Result<()> {
         default.decks.default_params(),
         "[decks.default] 必须与内置兜底一致"
     );
-    assert!(cfg.decks.resolve_name("stamina_build").is_some());
+    assert!(
+        cfg.decks.resolve_name("wisdom_build").is_some(),
+        "默认层应带 wisdom_build 档（stamina / guts 已于 2026-11-07 退役）"
+    );
     assert_eq!(cfg.decks.default_params().fusion.year2.len(), 2);
     assert_eq!(cfg.decks.default_params().fusion.year3.len(), 3);
     println!(

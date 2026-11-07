@@ -237,8 +237,8 @@ mod tests {
             "[decks.default] 必须与内置兜底一致"
         );
         assert!(
-            cfg.decks.resolve_name("stamina_build").is_some(),
-            "默认层应带标准构成占位档"
+            cfg.decks.resolve_name("wisdom_build").is_some(),
+            "默认层应带 wisdom_build 档（stamina / guts 已于 2026-11-07 退役）"
         );
     }
 
