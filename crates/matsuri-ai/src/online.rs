@@ -60,7 +60,7 @@ pub fn route(game: &MatsuriGame, frame: &ParsedFrame) -> Route {
     // 走到这里说明本地没有该事件的数据 —— 事件帧的训练 / 分布 / 等级都是残值，
     // 绝不能回落到 `Train` 给建议
     if frame.source() == "event" {
-        return Route::Skip("事件帧无可用选项数据（storyId 未收录，见帧提示）");
+        return Route::Skip("事件帧无可用选项数据（storyId 未收录）");
     }
     // 阶段由还原侧按「有无决策面」定档：带训练入口的帧一律是 `Train`，
     // 走到这里只剩动作已执行、没有入口的帧（事件已结算完）
@@ -425,7 +425,7 @@ mod tests {
             festa: FestaState::default(),
             training: BTreeMap::new(),
             digest: 0,
-            ill_effects: Vec::new(),
+            chara_effects: Vec::new(),
             story_id,
         }
     }
@@ -445,7 +445,7 @@ mod tests {
         let game = train_game();
         assert_eq!(
             route(&game, &frame("event", Some(400015106))),
-            Route::Skip("事件帧无可用选项数据（storyId 未收录，见帧提示）")
+            Route::Skip("事件帧无可用选项数据（storyId 未收录）")
         );
         assert_eq!(route(&game, &frame("command", None)), Route::Train);
     }

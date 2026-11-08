@@ -25,7 +25,7 @@ use matsuri_ai::{
     FrameSource, OnlineSession, TrainerKind, TurnKind, connected_payload, error_payload,
     resolve_live_root,
 };
-use matsuri_core::{MatsuriConfig, MatsuriData, SearchCandidate};
+use matsuri_core::{MAX_TURN, MatsuriConfig, MatsuriData, SearchCandidate};
 use umaai::{Config, DecisionRecord, FrameKind, LuckAttach};
 use umaai_cli::render::term;
 use umaai_core::Data;
@@ -160,7 +160,13 @@ pub fn run(args: Args) -> Result<()> {
                         if output.kind == TurnKind::Decision {
                             decisions += 1;
                         }
-                        render(&mut stdout, &output, args.json, color)?;
+                        render(
+                            &mut stdout,
+                            &output,
+                            args.json,
+                            color,
+                            cfg.record.luck_turn_bonus,
+                        )?;
                     }
                     Err(err) => {
                         // 真机档单帧失败不终止循环（等下一帧）；回放档累计后在结束时报错
@@ -208,6 +214,7 @@ fn render(
     output: &OnlineTurnOutput,
     json: bool,
     color: bool,
+    luck_bonus: i32,
 ) -> Result<()> {
     if json {
         let payload = output.json_payload();
@@ -220,7 +227,7 @@ fn render(
         return Ok(());
     }
     match output.kind {
-        TurnKind::Decision => render_decision(stdout, output, color)?,
+        TurnKind::Decision => render_decision(stdout, output, color, luck_bonus)?,
         TurnKind::Skipped => {
             writeln!(
                 stdout,
@@ -237,9 +244,8 @@ fn render(
             )?;
         }
     }
-    for note in &output.notes {
-        writeln!(stdout, "  · 帧提示：{note}")?;
-    }
+    // 跳过帧已有黄色跳过行说明原因，帧提示只在决策帧输出
+    render_notes(stdout, output.kind, &output.notes)?;
     if let Some(report) = &output.verify {
         write!(stdout, "{}", render_verify(report))?;
     }
@@ -247,11 +253,27 @@ fn render(
     Ok(())
 }
 
+/// 帧提示：跳过帧不打印（黄色跳过行已经给出原因），决策帧照常输出
+fn render_notes(stdout: &mut impl Write, kind: TurnKind, notes: &[String]) -> Result<()> {
+    if kind != TurnKind::Decision {
+        return Ok(());
+    }
+    for note in notes {
+        writeln!(stdout, "  · 帧提示：{note}")?;
+    }
+    Ok(())
+}
+
 /// 决策候选展示上限（首选 + 其余；后续接配置 `[output] decision_top_n`）
 const DECISION_TOP_N: usize = 5;
 
 /// 极简决策输出：运气行 + 首选 / Top N（涕分差 + 终局五维 / PT 差）
-fn render_decision(stdout: &mut impl Write, output: &OnlineTurnOutput, color: bool) -> Result<()> {
+fn render_decision(
+    stdout: &mut impl Write,
+    output: &OnlineTurnOutput,
+    color: bool,
+    luck_bonus: i32,
+) -> Result<()> {
     let Some(record) = &output.record else {
         return Ok(());
     };
@@ -264,7 +286,7 @@ fn render_decision(stdout: &mut impl Write, output: &OnlineTurnOutput, color: bo
                 summary.expected_rank.as_str(),
             )
         });
-        render_luck(stdout, output.turn, luck, expected, color)?;
+        render_luck(stdout, output.turn, luck, expected, luck_bonus, color)?;
     }
     if let Some(fusion) = record
         .extra
@@ -427,15 +449,17 @@ fn render_event_detail(
 
 /// 运气行：本局分 <0 红 / <500 黄 / <1500 绿 / ≥1500 亮绿；本轮亮青
 ///
-/// `expected` = `(期望分, 单局终局 σ, 档次名)`：期望分取 `SearchSummary::expected_score`（官方口径，
-/// 与终局得分同量纲；搜索分因 PT 项被放大，不能直接当期望分用），
-/// σ 取候选样本方差的合并值，档次取 `constants.rank_names`（空串则不写）。
-/// 分数与档次亮青，σ 不着色。σ 为 0 / 无摘要时整段不显示（手写档、搜索 fallback 都走这里）。
+/// `expected` = `(官方口径期望分 E₀, 单局终局 σ, 档次名)`：E₀ 取 `SearchSummary::expected_score`
+/// （搜索分因 PT 项被放大，不能直接当期望分用），显示时按 `E₀ + (MAX_TURN − turn) × luck_bonus`
+/// 投影到显示分空间，与「本局/本轮」同量纲；档次仍按 E₀ 查 `constants.rank_names`（空串则不写），
+/// σ 取候选样本方差的合并值。分数与档次亮青，σ 不着色。
+/// σ 为 0 / 无摘要时整段不显示（手写档、搜索 fallback 都走这里）。
 fn render_luck(
     stdout: &mut impl Write,
     turn: i32,
     luck: &LuckAttach,
     expected: Option<(f64, f64, &str)>,
+    luck_bonus: i32,
     color: bool,
 ) -> Result<()> {
     let total = luck.snapshot.total_luck_score.round() as i64;
@@ -455,7 +479,9 @@ fn render_luck(
     let expected = expected
         .filter(|(_, stdev, _)| *stdev > 0.0)
         .map(|(score, stdev, rank)| {
-            let score = paint(&format!("{score:.0}"), Some("96"), color);
+            // 显示层把官方口径期望分投影到显示分空间（与「本局/本轮」同量纲）
+            let display = score + (MAX_TURN - turn) as f64 * f64::from(luck_bonus);
+            let score = paint(&format!("{display:.0}"), Some("96"), color);
             let tail = if rank.is_empty() {
                 format!("（±{stdev:.0}）")
             } else {
@@ -586,7 +612,7 @@ fn render_verify(report: &matsuri_ai::TrainingReport) -> String {
 mod tests {
     use umaai::{LuckAttach, LuckScoreSnapshot};
 
-    use super::{candidate_color, render_luck};
+    use super::{TurnKind, candidate_color, render_luck, render_notes};
 
     /// 单一快照（终局显示分口径）：`delta` 为本轮运气
     fn luck(total: f64, delta: Option<f64>) -> LuckAttach {
@@ -610,6 +636,7 @@ mod tests {
             32,
             &luck(150.0, Some(150.0)),
             Some((82140.0, 3012.0, "LF")),
+            0,
             false,
         )
         .expect("渲染运气行");
@@ -619,7 +646,7 @@ mod tests {
         );
 
         let mut out = Vec::new();
-        render_luck(&mut out, 32, &luck(-40.0, None), None, false).expect("渲染运气行");
+        render_luck(&mut out, 32, &luck(-40.0, None), None, 0, false).expect("渲染运气行");
         assert_eq!(
             String::from_utf8(out).expect("utf8"),
             "[回合 32 运气]本局：-40, 本轮: --\n"
@@ -631,6 +658,7 @@ mod tests {
             32,
             &luck(0.0, None),
             Some((80000.0, 0.0, "UF")),
+            0,
             false,
         )
         .expect("渲染运气行");
@@ -647,6 +675,7 @@ mod tests {
             32,
             &luck(0.0, None),
             Some((80000.0, 900.0, "")),
+            0,
             false,
         )
         .expect("渲染运气行");
@@ -662,6 +691,7 @@ mod tests {
             32,
             &luck(150.0, Some(150.0)),
             Some((82140.0, 3012.0, "LF")),
+            0,
             true,
         )
         .expect("渲染运气行");
@@ -672,6 +702,78 @@ mod tests {
         );
         assert!(text.contains("\u{1b}[96mLF\u{1b}[0m"), "档次应亮青：{text}");
         assert!(!text.contains("\u{1b}[96m±"), "σ 不着色：{text}");
+    }
+
+    /// 期望分按回合投影到显示分空间：`E = E₀ + (77 − turn) × luck_bonus`
+    #[test]
+    fn render_luck_projects_expected_by_turn() {
+        let mut early = Vec::new();
+        render_luck(
+            &mut early,
+            0,
+            &luck(0.0, None),
+            Some((82140.0, 3000.0, "LF")),
+            100,
+            false,
+        )
+        .expect("渲染运气行");
+        assert_eq!(
+            String::from_utf8(early).expect("utf8"),
+            "[回合 0 运气]本局：+0, 本轮: --, 期望 89840 （±3000，LF）\n"
+        );
+
+        let mut late = Vec::new();
+        render_luck(
+            &mut late,
+            76,
+            &luck(0.0, None),
+            Some((82140.0, 3000.0, "LF")),
+            100,
+            false,
+        )
+        .expect("渲染运气行");
+        assert_eq!(
+            String::from_utf8(late).expect("utf8"),
+            "[回合 76 运气]本局：+0, 本轮: --, 期望 82240 （±3000，LF）\n"
+        );
+
+        // bonus = 0 → 投影退化为官方口径
+        let mut raw = Vec::new();
+        render_luck(
+            &mut raw,
+            0,
+            &luck(0.0, None),
+            Some((82140.0, 3000.0, "LF")),
+            0,
+            false,
+        )
+        .expect("渲染运气行");
+        assert_eq!(
+            String::from_utf8(raw).expect("utf8"),
+            "[回合 0 运气]本局：+0, 本轮: --, 期望 82140 （±3000，LF）\n"
+        );
+    }
+
+    /// 跳过帧已有黄色跳过行：帧提示只在决策帧输出
+    #[test]
+    fn render_notes_only_on_decision() {
+        let notes = vec![
+            "EventSkipped { id: 501099715 }".to_string(),
+            "storyId 未收录".to_string(),
+        ];
+        let mut skipped = Vec::new();
+        render_notes(&mut skipped, TurnKind::Skipped, &notes).expect("渲染帧提示");
+        assert!(
+            String::from_utf8(skipped).expect("utf8").is_empty(),
+            "跳过帧不应再打印帧提示"
+        );
+
+        let mut decision = Vec::new();
+        render_notes(&mut decision, TurnKind::Decision, &notes).expect("渲染帧提示");
+        assert_eq!(
+            String::from_utf8(decision).expect("utf8"),
+            "  · 帧提示：EventSkipped { id: 501099715 }\n  · 帧提示：storyId 未收录\n"
+        );
     }
 
     #[test]

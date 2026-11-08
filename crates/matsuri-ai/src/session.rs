@@ -210,15 +210,8 @@ impl OnlineSession {
 
         // 帧 → 局面（还原失败即拒绝计算：编成 / 人头 / 分布不合规时抛错，绝不带病出决策）
         let (game, mut notes) = self.restore(&frame)?;
-        // 事件帧缺选项数据时给一条可对账的提示（含 storyId）；路由会跳过，不给训练建议
-        if frame.source() == "event" && online::pending_event(&game).is_none() {
-            notes.push(match frame.story_id {
-                Some(id) => format!(
-                    "事件帧 storyId={id} 未收录（补进 scenario_matsuri.json 的 scenario_events 后即可决策）"
-                ),
-                None => "事件帧缺可用选项数据（引擎事件表未收录）".to_string(),
-            });
-        }
+        // 事件帧查不到本地事件数据时路由直接跳过，黄色跳过行已给出原因；
+        // 不再追加「storyId 未收录」提示（对账信息在 JSON 的 story_id / reason 里）
         // 本地事件与帧 `story` 的选项数不一致：数值按本地，可能是表过时（提示一下便于补数据）
         if let (Some(story), Some(event)) =
             (frame.status.story.as_ref(), online::pending_event(&game))
@@ -694,7 +687,7 @@ impl OnlineSession {
                     frame.status.friendship_noncard_yayoi,
                     frame.status.friendship_noncard_reporter,
                 )),
-                ill_effects: &frame.ill_effects,
+                chara_effects: &frame.chara_effects,
                 story_id: frame.story_id,
             },
             Arc::clone(&self.data),

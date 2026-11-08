@@ -138,7 +138,7 @@ fn restore_round_trip_at_decision_point() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: Some((0, 0)),
-            ill_effects: &[],
+            chara_effects: &[],
             story_id: None,
         },
         data,
@@ -264,7 +264,7 @@ fn restore_keeps_build_roster_before_scenario_start() -> Result<()> {
             frame_persons: &frame_persons(&game),
             prev_train_levels: None,
             noncard_friendship: None,
-            ill_effects: &[],
+            chara_effects: &[],
             story_id: None,
         },
         data,
@@ -302,7 +302,7 @@ fn restore_carries_level_baseline_when_frame_zero() -> Result<()> {
             frame_persons: &frame_persons(&game),
             prev_train_levels: Some(levels),
             noncard_friendship: None,
-            ill_effects: &[],
+            chara_effects: &[],
             story_id: None,
         },
         data,
@@ -336,7 +336,7 @@ fn restore_after_training_stage() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
-            ill_effects: &[],
+            chara_effects: &[],
             story_id: None,
         },
         data,
@@ -372,7 +372,7 @@ fn restore_rejects_deck_without_ssr_friend() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
-            ill_effects: &[],
+            chara_effects: &[],
             story_id: None,
         },
         data,
@@ -410,7 +410,7 @@ fn restore_rejects_unknown_guest() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
-            ill_effects: &[],
+            chara_effects: &[],
             story_id: None,
         },
         data,
@@ -444,7 +444,7 @@ fn restore_rejects_roster_order_mismatch() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
-            ill_effects: &[],
+            chara_effects: &[],
             story_id: None,
         },
         data,
@@ -485,7 +485,7 @@ fn distribution_maps_protocol_ids() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: Some((30, 40)),
-            ill_effects: &[],
+            chara_effects: &[],
             story_id: None,
         },
         data,
@@ -548,7 +548,7 @@ fn restore_maps_check_point_results() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
-            ill_effects: &[],
+            chara_effects: &[],
             story_id: None,
         },
         data,
@@ -562,9 +562,11 @@ fn restore_maps_check_point_results() -> Result<()> {
     Ok(())
 }
 
-/// 帧 `illEffects` → 病种精确还原（协议布尔只能落 `UNKNOWN`，变胖只有这条才认得出来）
+/// 帧 `charaEffects`（全量状态数组）→ 只挑 142 表病种精确还原
+///
+/// 协议布尔只能落 `UNKNOWN`，变胖只有这条才认得出来；输入里的非病 ID 不应污染病位。
 #[test]
-fn restore_ill_effects_by_kind() -> Result<()> {
+fn restore_chara_effects_by_kind() -> Result<()> {
     let mut game = sample_game_with_uma(UMA_ID);
     drive_to_train(&mut game, TARGET_TURN)?;
 
@@ -584,7 +586,7 @@ fn restore_ill_effects_by_kind() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
-            ill_effects: &effects,
+            chara_effects: &effects,
             story_id: None,
         },
         data,
@@ -629,7 +631,7 @@ fn restore_fat_comes_from_effect_4() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
-            ill_effects: &effects,
+            chara_effects: &effects,
             story_id: None,
         },
         data,
@@ -642,6 +644,72 @@ fn restore_fat_comes_from_effect_4() -> Result<()> {
     assert!(
         !restored.uma().flags.ill.contains(umaai_core::Ill::LAZY),
         "4 不应被当成摸鱼"
+    );
+    Ok(())
+}
+
+/// 用全量状态数组还原一局：底座病位可先塞粗粒度 `UNKNOWN`，检验是否被正确覆盖
+fn restore_with_effects(effects: &[i32], initial_ill: umaai_core::Ill) -> Result<MatsuriGame> {
+    let mut game = sample_game_with_uma(UMA_ID);
+    drive_to_train(&mut game, TARGET_TURN)?;
+
+    let data = Arc::clone(&game.data);
+    let festa = game.export_festa();
+    let persons = frame_persons(&game);
+    let mut base = game.base.clone();
+    base.distribution = protocol_distribution(&game);
+    base.uma.flags.ill = initial_ill;
+    MatsuriGame::restore(
+        RestoreInput {
+            base,
+            festa: &festa,
+            stage: Stage::Train,
+            frame_persons: &persons,
+            prev_train_levels: None,
+            noncard_friendship: None,
+            chara_effects: effects,
+            story_id: None,
+        },
+        data,
+        MatsuriConfig::default(),
+    )
+}
+
+/// `charaEffects = [25, 47, 4]`：两个 buff 不污染病位，只还原出变胖
+#[test]
+fn restore_chara_effects_ignores_non_illness_ids() -> Result<()> {
+    let restored = restore_with_effects(&[25, 47, 4], umaai_core::Ill::UNKNOWN)?;
+    assert_eq!(
+        restored.uma().flags.ill.bits(),
+        umaai_core::Ill::FAT.bits(),
+        "全量数组里含 buff 时仍只按 142 表挑 1–6"
+    );
+    Ok(())
+}
+
+/// `charaEffects = []`：无状态且 `isIll=false` → `NONE`；旧插件缺字段 → 回退 `UNKNOWN`
+#[test]
+fn restore_empty_chara_effects() -> Result<()> {
+    let none = restore_with_effects(&[], umaai_core::Ill::NONE)?;
+    assert_eq!(none.uma().flags.ill.bits(), umaai_core::Ill::NONE.bits());
+
+    let fallback = restore_with_effects(&[], umaai_core::Ill::UNKNOWN)?;
+    assert_eq!(
+        fallback.uma().flags.ill.bits(),
+        umaai_core::Ill::UNKNOWN.bits(),
+        "空数组沿用引擎粗粒度 isIll"
+    );
+    Ok(())
+}
+
+/// `charaEffects = [25, 47]` 且无病：非空但无病也要覆盖掉粗粒度 `UNKNOWN`
+#[test]
+fn restore_buffs_only_clears_unknown() -> Result<()> {
+    let restored = restore_with_effects(&[25, 47], umaai_core::Ill::UNKNOWN)?;
+    assert_eq!(
+        restored.uma().flags.ill.bits(),
+        umaai_core::Ill::NONE.bits(),
+        "只有 buff 的回合不应回退成 UNKNOWN / 误判生病"
     );
     Ok(())
 }
@@ -672,7 +740,7 @@ fn restore_injects_event_by_story_id() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
-            ill_effects: &[],
+            chara_effects: &[],
             story_id,
         },
         Arc::clone(&data),
@@ -697,7 +765,7 @@ fn restore_injects_event_by_story_id() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
-            ill_effects: &[],
+            chara_effects: &[],
             story_id,
         },
         Arc::clone(&data),
@@ -722,7 +790,7 @@ fn restore_injects_event_by_story_id() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
-            ill_effects: &[],
+            chara_effects: &[],
             story_id,
         },
         data,
@@ -765,7 +833,7 @@ fn restore_prefers_local_event_over_frame_story() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
-            ill_effects: &[],
+            chara_effects: &[],
             story_id: Some(400015106),
         },
         data,

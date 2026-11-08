@@ -546,11 +546,15 @@
 **「追加訓練」（`102`）选项 1（体力 −5）定点治变胖**——只清 `FAT`，不动其它病位 / 不擅长训练。
 「追加の稽古」上档另有一条通用 `event_extras`「解一个 debuff」（顺序 不擅长 → 变胖 → 其余具名病位，
 `value.rs::debuff_clear_value` 同口径）。
-**线上病种**：协议 `isIll` 只有布尔（引擎落 `Ill::UNKNOWN`），病种由帧 `baseGame.illEffects`
-（`chara_effect_id` 原值）精确还原。映射按**文本库分类 142**：`1 熬夜→NIGHT` / `2 懒惰成性→LAZY` /
-`3 皮肤粗糙→SKIN` / `4 变胖→FAT` / `5 偏头痛→HEADACHE` / `6 不擅长练习→BAD_TRAINER`——
-**与 `Ill` 的位序不同**，也与事件数据 `add_flags.ill` 的位集（`1` = 变胖）不是一套编号。
-帧不带该字段时退化成「未知病」——会被守门①直接送治病，不会误按变胖处理。
+**线上病种**：协议 `isIll` 只有布尔（引擎落 `Ill::UNKNOWN`），病种由帧 `baseGame.charaEffects`
+精确还原。该字段是**全量状态 ID**（`chara_effect_id_array` 去 0 / 去重 / 保序，恒输出），
+含 1–6 病种与切者 / 正向思考 / 助力支撑 / 情热领域等其它状态；`isIll` 独立按「数组里存在 1–6」计算，
+两者不互相推导。还原侧 `ill_from_effects` 只挑 1–6，映射按**文本库分类 142**：
+`1 熬夜→NIGHT` / `2 懒惰成性→LAZY` / `3 皮肤粗糙→SKIN` / `4 变胖→FAT` /
+`5 偏头痛→HEADACHE` / `6 不擅长练习→BAD_TRAINER`——**与 `Ill` 的位序不同**，
+也与事件数据 `add_flags.ill` 的位集（`1` = 变胖）不是一套编号。数组非空但无 1–6 时覆盖成 `NONE`
+（不会误判生病）；帧不带该字段（旧插件）或空数组时沿用 `isIll`，退化成「未知病」→ 守门①治病，
+不会误按变胖处理。
 
 **事件帧（`storyId`）**：插件端只透传 `baseGame.storyId`（取事件串里第一个多选项事件；效果表命中时另有
 `story`，**未收录时只有 id**），选项数与效果由接收端自持。还原侧按 id 查本地事件表
@@ -569,7 +573,7 @@
 | 事件结算 | `event_extras` / `event_person_target` | `Begin` / `AfterTrain` | `traits.rs::apply_event` / `event.rs::apply_event_extra` | `game/event.rs` 内联 | §5.4 |
 | 友人链 | `friend_events` + `FriendOutState` | `AfterTrain` / `Begin` / `Train` | `train.rs::after_train` / `event.rs` / `action.rs::do_friend_outing` | 内联 + `mechanics.rs` | §5.4 |
 | 追加稽古 | `scenario_events[400015106]` + `event_extras` | `Begin` 预掷 → 训练后 | `advice.rs::roll_kensan` / `train.rs::try_kensan` / `event.rs::trigger_kensan_event` | 内联 | §5.4 |
-| 变胖 | `Ill::FAT` / `rules.fat_recovery_prob`（15%，STUB）/ 帧 `illEffects` | 回合开始 / 训练 / 休息 / 治病 / 事件 | `event.rs::roll_fat_recovery` / `apply_event_extra` / `train.rs::settle_training` / `action.rs::do_rest` / `restore.rs::ill_from_effects` | 内联 + `tests/restore.rs` | §5.4 |
+| 变胖 | `Ill::FAT` / `rules.fat_recovery_prob`（15%，STUB）/ 帧 `charaEffects` | 回合开始 / 训练 / 休息 / 治病 / 事件 | `event.rs::roll_fat_recovery` / `apply_event_extra` / `train.rs::settle_training` / `action.rs::do_rest` / `restore.rs::ill_from_effects` | 内联 + `tests/restore.rs` | §5.4 |
 | 继承 | `ai_config` `blue_count` / `extra_count`（引擎 `InheritInfo`） | `Begin`（T30 / T54 固定事件） | `traits.rs::apply_event` | `mechanics.rs::inheritance_settles_stats_pt_and_limit` | §5.4 |
 
 ### 5.5 状态：切者 / 小切 / 心情盾（2026-11-04 接线）
@@ -779,18 +783,22 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
 - **在线运气行（2026-11-08 加期望分与档次）**：`[回合 n 运气]本局：+X, 本轮: +Y, 期望 E （±S，档）`
   —— `本局/本轮` 沿用引擎 `LuckScoreTracker`（显示分口径 `raw + (max_turn − turn) × luck_turn_bonus`，
   2026-11-08 标定后取 **100**，见下条）；
-  `E` = **官方口径期望分**（`SearchSummary::expected_score`）。注意搜索基线本身不是官方分数：
+  `E` = 官方口径期望分 `E₀`（`SearchSummary::expected_score`）**按回合计入显示分加成**：
+  `E = E₀ + (77 − t) × luck_turn_bonus`，与 `本局/本轮` 落在同一显示分空间（2026-11-08 user 拍板）。
+  注意搜索基线本身不是官方分数：
   搜索分把 PT 项放大 `pt_favor_rate` 倍，换算口径为
   `official = search − PT加权均值 × pt_score_rate × 切者/小切因子 × (favor − 1)`
   （`favor` = `[decks.*.trainer].pt_favor_rate`，默认 1.7271；本剧本 11k PT 时约差 1.6 万），
   这样 `E` 才与终局得分同量纲；**`SearchSummary::baseline` 仍留在搜索口径**（运气分与候选分差都用它）；
   `S` = 单局终局标准差（`baseline_stdev`，候选样本方差按样本数加权合并，不随预算收敛）；
-  `档` = `constants.get_rank_name(E)`。呈现：`E` 与 `档` 亮青（`96`），`S` 不着色。
+  `档` = `constants.get_rank_name(E₀)`（仍按官方口径查；投影值不是终局分，直接查会虚高档次）。
+  呈现：`E` 与 `档` 亮青（`96`），`S` 不着色。
   `S = 0` / 手写档 / 搜索 fallback 时不显示该段（手写档连运气行本身都不出，因为没有搜索终局分）。
   同回合重复决策时 `本局/本轮` 用同回合缓存快照，`E` 用当前最新摘要刷新。
-  JSON 同口径写进 `scenario_extra.expected_score` / `expected_stdev` / `expected_rank`。
-  **`E` 是未投影的原始期望分**（`raw`，不叠加 `luck_turn_bonus`）：搜索 rollout 跑到终局，
-  期望分本身就是终局量纲，再乘回合加成会重复计入。
+  JSON 仍写官方口径 `E₀` / `S` / `档`（`scenario_extra.expected_score` / `expected_stdev` / `expected_rank`），
+  不叠显示分加成。
+  **只在显示层投影**：`render_luck` 改的是终端显示值，`SearchSummary::expected_score` 与 JSON 保持官方口径；
+  决策 / 搜索排序 / 基线零影响。档次仍按 `E₀` 查，避免拿投影值查表虚高档次。
 
 - **运气显示分标定（2026-11-08，`luck_turn_bonus` 70 → 100）**：`ai_config [record]`。
   搜索期望分（终局口径）随回合 **系统性上升**：MCTS 自博弈实测（N=1024、uma 105902、

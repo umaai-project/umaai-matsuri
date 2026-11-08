@@ -110,8 +110,9 @@
    只在 `train` / `race` 主行动推进；显示 `raw + (77−turn)×bonus`，`bonus` 取
    `ai_config [record].luck_turn_bonus`。CLI 本局分按 <0 红 / <500 黄 / <1500 绿 / ≥1500 亮绿分段，
    本轮亮青（阈值在 `online.rs::render_luck`，后续可配置化）。
-   **2026-11-08 追加**：行尾再带 `期望 E （±S，档）`（`E` = **官方口径**期望分 = 搜索基线扣掉 PT 项放大差额，
-   `S` = 单局终局标准差，`档` = `constants.get_rank_name(E)`；`E` 与档亮青）；
-   JSON 同口径进 `scenario_extra.expected_score` / `expected_stdev` / `expected_rank`。
+   **2026-11-08 追加**：行尾再带 `期望 E （±S，档）`（`E₀` = **官方口径**期望分 = 搜索基线扣掉 PT 项放大差额，
+   终端显示 `E = E₀ + (77−turn)×luck_turn_bonus` 投影到显示分空间；`S` = 单局终局标准差，
+   `档` = `constants.get_rank_name(E₀)`；`E` 与档亮青）；
+   JSON 仍写官方口径 `E₀` / `S` / `档`（`scenario_extra.expected_score` / `expected_stdev` / `expected_rank`）。
 6. **颜色**：首选红底亮黄（`41;93`）；与首选差在 95% 分辨率内（`1.96×合成标准误`）绿色；
    落后 <500 白色；落后 ≥500 灰色；`--json` / `NO_COLOR` / 非 TTY 自动退化纯文本。

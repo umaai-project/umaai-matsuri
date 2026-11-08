@@ -76,11 +76,11 @@ pub struct RestoreInput<'a> {
     pub prev_train_levels: Option<Array5>,
     /// 非卡人头羁绊 `(理事长, 记者)`（帧 `friendship_noncard_*`；`None` = 帧未给，保持 0）
     pub noncard_friendship: Option<(i32, i32)>,
-    /// 帧 `baseGame.illEffects`（游戏 `chara_effect_id` 原始 id，1–6 为病种）
+    /// 帧 `baseGame.charaEffects`：全量状态 ID（含非病状态，插件已去 0 / 去重 / 保序）
     ///
-    /// 空 = 帧未给（旧插件 / 别的剧本）→ 沿用引擎粗粒度 `isIll`（落到 [`Ill::UNKNOWN`]），
-    /// 变胖不可辨；非空时按病种精确还原（见 [`ill_from_effects`]）。
-    pub ill_effects: &'a [i32],
+    /// 空 = 帧未给（旧插件）或马娘无任何状态 → 沿用引擎粗粒度 `isIll`；非空时
+    /// 由 [`ill_from_effects`] 只挑 142 表 1–6 病种精确还原，其余状态一律忽略。
+    pub chara_effects: &'a [i32],
     /// 帧 `baseGame.storyId`（待选事件 id；插件只透传 id，选项数据由接收端自持）
     ///
     /// 命中本地事件表（本仓 `scenario_events` → 引擎五表）时注入 `unresolved_events`，
@@ -88,7 +88,7 @@ pub struct RestoreInput<'a> {
     pub story_id: Option<i32>,
 }
 
-/// 游戏 `chara_effect_id`（文本库分类 **142**）→ 生病位集
+/// 全量状态数组 → 生病位集：只取 `chara_effect_id`（文本库分类 **142**）的 1–6
 ///
 /// | id | 142 名称（中文） | 位 |
 /// |---|---|---|
@@ -101,7 +101,7 @@ pub struct RestoreInput<'a> {
 ///
 /// **不要按 [`Ill`] 的位序推**：142 表是日文 UI 的列表顺序（熬夜在前、变胖在第 4），
 /// 与位序不同。另注：事件数据里的 `add_flags.ill` 用的是**位集**（`1` = 变胖），
-/// 与本函数的协议 id 是两套编号，别混用。其余 id（切者 / 爱娇 / 心情盾…）忽略。
+/// 与本函数的协议 id 是两套编号，别混用。输入是全量 `charaEffects`，1–6 以外（切者 / 正向思考 / 助力支撑 / 情热领域等）一律忽略。
 fn ill_from_effects(ids: &[i32]) -> Ill {
     let mut ill = Ill::NONE;
     for id in ids {
@@ -163,7 +163,7 @@ impl MatsuriGame {
             frame_persons,
             prev_train_levels,
             noncard_friendship,
-            ill_effects,
+            chara_effects,
             story_id,
         } = input;
         let turn = base.turn;
@@ -172,10 +172,11 @@ impl MatsuriGame {
             .filter(|id| *id > 0)
             .and_then(|id| lookup_event(id as u32, &data.scenario_events));
         let mut game = Self::assemble(base, data)?;
-        // 病种：协议通用段只有 `isIll` 布尔（引擎落 `Ill::UNKNOWN`），帧带 `illEffects`
-        // 时按病种精确覆盖——变胖（`FAT`）只有这条路才认得出来。
-        if !ill_effects.is_empty() {
-            let ill = ill_from_effects(ill_effects);
+        // 病种：协议通用段只有 `isIll` 布尔（引擎落 `Ill::UNKNOWN`），帧带非空 `charaEffects`
+        // 时按 142 表挑病种覆盖——变胖（`FAT`）只有这条路才认得出来。
+        // 数组里只有 buff / 其它状态时 `ill_from_effects` 返回 `NONE`，同样覆盖粗粒度标记。
+        if !chara_effects.is_empty() {
+            let ill = ill_from_effects(chara_effects);
             let flags = &mut game.uma_mut().flags;
             flags.ill = ill;
             // 引擎不变量：`bad_trainer` 与 `Ill::BAD_TRAINER` 同置同清

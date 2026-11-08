@@ -39,9 +39,12 @@ struct BaseGameExtra {
     /// 训练预览协议真值（仅骏大祭填充；`{command_id: {failureRate, lower, upper}}`）
     #[serde(default)]
     training: Option<BTreeMap<String, TrainingFrame>>,
-    /// 生病病种（游戏 `chara_effect_id` 原值，1–6，142 表口径）；旧插件不给 → 空
+    /// 全量状态 ID（游戏 `chara_effect_id_array` 原值：插件已过滤非正值 / 去重 / 保序）
+    ///
+    /// 恒输出，空数组 = 一个状态都没有；含 1–6 病种与切者 / 正向思考 / 助力支撑等其它状态，
+    /// 语义由消费端按自己的数据解释。
     #[serde(default)]
-    ill_effects: Vec<i32>,
+    chara_effects: Vec<i32>,
     /// 待选事件的 `story_id`（`evt.story_id` 原值）；单选项 / 无事件帧不给
     ///
     /// 插件只透传 id：效果表命中时另有 `story`，**未收录时只有本字段**，
@@ -91,8 +94,10 @@ pub struct ParsedFrame {
     pub training: BTreeMap<String, TrainingFrame>,
     /// 帧原文摘要（`G7` 幂等：同内容不重复决策）
     pub digest: u64,
-    /// 生病病种（游戏 `chara_effect_id` 原值，1–6，142 表口径）；空 = 帧未给（沿用 `isIll` 布尔）
-    pub ill_effects: Vec<i32>,
+    /// 全量状态 ID（含 1–6 病种与所有其它状态，顺序按协议原值）
+    ///
+    /// 空 = 帧未给（旧插件）或一个状态都没有；病种由还原层按 142 表自行挑出。
+    pub chara_effects: Vec<i32>,
     /// 待选事件的 `story_id`（插件只发 id，选项数据由接收端自持）；无事件帧为 `None`
     pub story_id: Option<i32>,
 }
@@ -121,7 +126,7 @@ impl ParsedFrame {
             festa,
             training,
             digest: digest_of(contents),
-            ill_effects: extra.ill_effects,
+            chara_effects: extra.chara_effects,
             story_id: extra.story_id,
         })
     }
@@ -216,15 +221,37 @@ mod tests {
         assert!(frame.status.story.is_none(), "未收录事件没有效果数据");
     }
 
-    /// 层1：帧带 `illEffects` 时按病种解析（引擎通用段容忍该新增键）
+    /// 层1：帧带 `charaEffects` 时按全量状态解析（引擎通用段容忍该新增键）
     #[test]
-    fn parse_ill_effects() {
+    fn parse_chara_effects() {
         let frame = ParsedFrame::parse(&FRAME.replace(
             "\"isIll\": false",
-            "\"isIll\": true, \"illEffects\": [1, 3]",
+            "\"isIll\": true, \"charaEffects\": [1, 3, 25, 47]",
         ))
-        .expect("带病种的帧应可解析");
-        assert_eq!(frame.ill_effects, vec![1, 3]);
+        .expect("带全量状态数组的帧应可解析");
+        assert_eq!(frame.chara_effects, vec![1, 3, 25, 47]);
+        assert!(
+            frame.status.is_ill,
+            "isIll 只表示 1–6 病种存在，与数组是否含其它状态无关"
+        );
+    }
+
+    /// 层1：恒输出的空数组 / 只有非病状态，也能解析且不带病种
+    #[test]
+    fn parse_chara_effects_without_illness() {
+        let only_buffs = ParsedFrame::parse(&FRAME.replace(
+            "\"isIll\": false",
+            "\"isIll\": false, \"charaEffects\": [25, 47]",
+        ))
+        .expect("只有 buff 的帧应可解析");
+        assert_eq!(only_buffs.chara_effects, vec![25, 47]);
+        assert!(!only_buffs.status.is_ill);
+
+        let empty = ParsedFrame::parse(
+            &FRAME.replace("\"isIll\": false", "\"isIll\": false, \"charaEffects\": []"),
+        )
+        .expect("空数组帧应可解析");
+        assert!(empty.chara_effects.is_empty());
     }
 
     /// 层1：非本剧本（scenarioId 不符 / 无 festa 段）→ 明确报错，不退化成默认状态

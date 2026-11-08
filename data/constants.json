@@ -24,7 +24,7 @@
     "friend_unlock_high": 0.25,
     "doll": 0.33,
     "extra_train": 0.15,
-    "hint_attr": 0.25,
+    "hint_attr": 0.167,
     "qiezhe_normal": 0.05,
     "default_success_event": 0.4
   },
