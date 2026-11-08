@@ -137,8 +137,8 @@ impl MatsuriGame {
     /// 技能灵感与粉丝不建模，见 `stubs.md`）
     fn apply_reward(&mut self, reward: &Reward) {
         let mut value = ActionValue::default();
-        for status in 0..5 {
-            value.status_pt[status] += reward.status;
+        for point in &mut value.status_pt[..5] {
+            *point += reward.status;
         }
         value.status_pt[5] += reward.skill_pt;
         value.vital += reward.vital;
@@ -297,12 +297,14 @@ mod tests {
         let before = game.uma().clone();
         game.settle_turn_end().expect("结算失败");
         assert_eq!(game.check_points[0], CheckPointResult::GreatSuccess);
-        for axis in 0..5 {
-            assert_eq!(
-                game.uma().five_status[axis] - before.five_status[axis],
-                5,
-                "第 1 回大成功：五维各 +5（axis {axis}）"
-            );
+        for (axis, (now, old)) in game
+            .uma()
+            .five_status
+            .iter()
+            .zip(&before.five_status)
+            .enumerate()
+        {
+            assert_eq!(now - old, 5, "第 1 回大成功：五维各 +5（axis {axis}）");
         }
         assert_eq!(game.uma().skill_pt - before.skill_pt, 200, "SP +200");
         assert_eq!(game.train_level_bonus, [1; 5], "全部普通训练 Lv+1");
@@ -425,8 +427,8 @@ mod tests {
         game.check_points = [CheckPointResult::GreatSuccess; 3];
         let before = game.uma().clone();
         game.apply_career_end_reward();
-        for axis in 0..5 {
-            assert_eq!(game.uma().five_status[axis] - before.five_status[axis], 30);
+        for (now, old) in game.uma().five_status.iter().zip(&before.five_status) {
+            assert_eq!(now - old, 30);
         }
         assert_eq!(game.uma().skill_pt - before.skill_pt, 350);
 

@@ -289,10 +289,10 @@ impl MatsuriGame {
         let own_train = self.train_of_act(act);
         let mut candidates = [0usize; 5];
         let mut len = 0;
-        for train in 0..5 {
+        for (train, slot) in self.base.distribution.iter().enumerate().take(5) {
             if train != own_train
-                && self.base.distribution[train].len() < TRAIN_CAP
-                && !self.base.distribution[train].contains(&(person_index as i32))
+                && slot.len() < TRAIN_CAP
+                && !slot.contains(&(person_index as i32))
             {
                 candidates[len] = train;
                 len += 1;

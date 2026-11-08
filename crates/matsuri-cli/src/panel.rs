@@ -467,8 +467,7 @@ fn stage_name(stage: u64) -> &'static str {
 fn gauge_suffix(game: &MatsuriGame, action: &Action, color: bool) -> String {
     let preview = game.preview_action_resources(action);
     let mut parts: Vec<String> = Vec::new();
-    for act in 0..5 {
-        let delta = preview.gauge_delta[act];
+    for (act, &delta) in preview.gauge_delta.iter().enumerate() {
         if delta > 0 {
             parts.push(paint(
                 &format!("{}{:+}", act_short(act), delta),

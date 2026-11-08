@@ -308,10 +308,7 @@ fn solve_basic_value() -> Result<()> {
         }
         // 只看「速训练位 + 速轴」（已知唯一对不上的组合），也顺带看别的位做对照
         // 按「训练位 / 轴 / 稽古 / 当前基础值」分组：junior 与 classic 是两套表，混在一起没有意义
-        let mut groups: std::collections::BTreeMap<
-            (usize, usize, bool, i32),
-            Vec<&(i32, usize, usize, i32, i32, f64, bool, bool, i32)>,
-        > = Default::default();
+        let mut groups: std::collections::BTreeMap<GroupKey, Vec<&Sample>> = Default::default();
         for row in &samples {
             groups
                 .entry((row.1, row.2, row.7, row.8))
@@ -407,7 +404,7 @@ fn dump_outliers() -> Result<()> {
             continue;
         }
         let parsed = matsuri_ai::ParsedFrame::parse(&frame.contents)?;
-        if !matches!(parsed.epoch_key(), 6308 | 6309 | 6310) {
+        if !(6308..=6310).contains(&parsed.epoch_key()) {
             continue;
         }
         let output = session.handle_frame(&frame.contents)?;
@@ -491,8 +488,8 @@ fn dump_outliers() -> Result<()> {
             );
             println!(
                 "  裁  下层未裁{:?} → 裁后{:?}（上限 {}）；属性余量裁掉{:?}",
-                &b.lower_raw,
-                &b.lower_clipped,
+                b.lower_raw,
+                b.lower_clipped,
                 output.game.data.rules.training_upper_cap,
                 layers.clip
             );

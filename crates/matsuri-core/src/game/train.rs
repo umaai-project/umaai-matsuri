@@ -309,11 +309,11 @@ impl MatsuriGame {
         // 把特化 25 也加进去会得 245（Δ25）。
         let mut sp_cap = self.data.rules.training_upper_cap;
         let mut sp_training = 0;
-        if let Some(act) = act_effect {
-            if five_types {
-                sp_training = act.sp_training;
-                sp_cap += act.sp_limit;
-            }
+        if let Some(act) = act_effect
+            && five_types
+        {
+            sp_training = act.sp_training;
+            sp_cap += act.sp_limit;
         }
         let sp_base = lower_clipped.status_pt[5];
         let friend_pct = 100

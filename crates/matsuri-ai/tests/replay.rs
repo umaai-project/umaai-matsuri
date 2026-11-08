@@ -21,6 +21,12 @@ use umaai::FrameKind;
 use umaai_core::Data;
 use umasim::game::Game;
 
+/// 体力偏差样本：`(回合, 训练位, 稽古, 帧体力, 我体力, 体力减免%, 我下层体力)`
+type VitalSample = (i32, usize, bool, i32, i32, f32, i32);
+
+/// 超差样本：`(回合, 训练位, 稽古, |Δ|max, Δ, 闪彩数, 友情%)`
+type OutlierSample = (i32, usize, bool, i32, Vec<i32>, usize, f32);
+
 /// 真机帧目录（仓外夹具）
 fn frames_dir() -> Option<PathBuf> {
     let root = data_dir().parent()?.parent()?.to_path_buf();
@@ -63,10 +69,8 @@ fn replay_real_frames() -> Result<()> {
     let mut worst: (i32, usize, Vec<i32>, Vec<i32>) = (0, 0, vec![], vec![]);
     // 逐行最大偏差分桶：0 / 1 / 2 / 3–5 / 6–10 / >10
     let mut buckets = [0usize; 6];
-    // (回合, 训练位, 稽古, 帧体力, 我体力, 体力减免%, 我下层体力)
-    let mut vital_samples: Vec<(i32, usize, bool, i32, i32, f32, i32)> = Vec::new();
-    // (回合, 训练位, 稽古, |Δ|max, Δ, 闪彩数, 友情%)
-    let mut outliers: Vec<(i32, usize, bool, i32, Vec<i32>, usize, f32)> = Vec::new();
+    let mut vital_samples: Vec<VitalSample> = Vec::new();
+    let mut outliers: Vec<OutlierSample> = Vec::new();
     while let Some(frame) = source.next_frame(Duration::ZERO)? {
         // 终局帧不进决策链：只走三道闸 + 终局评分
         if frame.kind == FrameKind::FinalScore {
@@ -228,8 +232,7 @@ fn replay_real_frames() -> Result<()> {
             if keiko { "·稽古" } else { "" }
         );
     }
-    let multi: Vec<&(i32, usize, bool, i32, Vec<i32>, usize, f32)> =
-        outliers.iter().filter(|row| row.5 >= 2).collect();
+    let multi: Vec<&OutlierSample> = outliers.iter().filter(|row| row.5 >= 2).collect();
     println!(
         "超 2 的行里：闪彩≥2 的 {} 条 / 闪彩≤1 的 {} 条",
         multi.len(),

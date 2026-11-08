@@ -713,9 +713,8 @@ impl<'a> Model<'a> {
         let pt_scale = stats_scale * self.game.race_pt_rate();
         for group in &mut event.choices {
             for row in group {
-                for axis in 0..5 {
-                    row.value.status_pt[axis] =
-                        (f64::from(row.value.status_pt[axis]) * stats_scale).floor() as i32;
+                for point in &mut row.value.status_pt[..5] {
+                    *point = (f64::from(*point) * stats_scale).floor() as i32;
                 }
                 row.value.status_pt[5] =
                     (f64::from(row.value.status_pt[5]) * pt_scale).floor() as i32;

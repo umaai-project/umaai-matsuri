@@ -19,8 +19,6 @@ use umasim::game::Game;
 
 /// 要拆解的回合：剧本首帧（已知 0 偏差）/ 首次偏差 / 発表会后 / 稽古重训练 / 后期
 const TURNS: [i32; 9] = [2, 3, 12, 16, 20, 24, 40, 48, 60];
-/// 只拆这一局（中途加载局，帧最全）
-const GAME: &str = "game6310_";
 
 fn frames_dir() -> Option<PathBuf> {
     let root = data_dir().parent()?.parent()?.to_path_buf();
