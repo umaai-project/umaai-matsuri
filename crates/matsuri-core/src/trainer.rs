@@ -120,10 +120,8 @@ impl MatsuriTrainer {
         }
 
         // 守门 ⓪：自选比赛义务补足（区间未达标 = 育成失败，优先于其它守门）
-        if let Some((need, left)) = game.free_race_progress()
-            && need >= left
-            && let Some(index) = actions.iter().position(|action| *action == Action::Race)
-        {
+        if let Some(index) = game.forced_race(actions) {
+            let (need, left) = game.free_race_progress().unwrap_or_default();
             diag!(
                 "【决策】T{} 守门·自选比赛补足（剩{need}场 / 可赛{left}回合）",
                 game.turn()
