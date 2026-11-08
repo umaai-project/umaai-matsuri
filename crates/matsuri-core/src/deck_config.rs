@@ -133,14 +133,14 @@ impl AdvicePreset {
 }
 
 impl Default for AdvicePreset {
-    /// 原 `value.rs::ROUTE_PRIOR` 的离线上线蒸馏先验（默认档 = speed_build）
+    /// 内置默认档 = GA 冠军 `g0269`（与 `[decks.default.advice]` 由测试锁死）
     fn default() -> Self {
         Self {
-            t2: [201, 101, 501, 301, 401],
-            t11: [501, 301, 101, 201, 401],
-            t23: [101, 501, 401, 301, 201],
-            t35: [101, 301, 501, 401, 201],
-            t47: [501, 101, 401, 301, 201],
+            t2: [101, 201, 501, 301, 401],
+            t11: [101, 501, 201, 301, 401],
+            t23: [101, 401, 501, 301, 201],
+            t35: [101, 501, 301, 401, 201],
+            t47: [101, 501, 401, 301, 201],
             t59: [501, 401, 101, 301, 201],
         }
     }
@@ -342,55 +342,55 @@ pub struct AdviceWeights {
 }
 
 impl Default for TrainerConfig {
-    /// 内置默认档 = 原冠军档 `ga-r2`（与 `[decks.default.trainer]` 由测试锁死）
+    /// 内置默认档 = GA 冠军 `g0269`（与 `[decks.default.trainer]` 由测试锁死）
     fn default() -> Self {
         Self {
-            pt_favor_rate: 1.7271,
-            rest_vital: 64,
-            checkpoint_margin: 5,
-            act_level_target: 9,
+            pt_favor_rate: 1.931954,
+            rest_vital: 66,
+            checkpoint_margin: 4,
+            act_level_target: 2,
             self_race: false,
             friend_outing_early: true,
-            free_race_urgency: 1.0,
-            status_weights: [0.6465, 0.9881, 0.8387, 0.3, 2.6217],
+            free_race_urgency: 1.764718,
+            status_weights: [0.994888, 0.542242, 0.407084, 0.156003, 0.860951],
             weights: ValueWeights {
-                vital: 1.4774,
-                motivation: 23.6572,
-                friendship: 0.5559,
-                hint: 1.1725,
-                gauge: 27.9217,
-                act_level: 12.9562,
-                checkpoint: 1105.0179,
-                fat: 108.4909,
+                vital: 5.730157,
+                motivation: 10.93116,
+                friendship: 3.339714,
+                hint: 4.313881,
+                gauge: 53.094769,
+                act_level: 58.536224,
+                checkpoint: 2223.151961,
+                fat: 193.041812,
             },
             advice: AdviceWeights {
-                card: 1.4462,
-                npc: 0.4246,
-                train: 0.2,
-                keiko: 0.763,
-                level: 0.2,
-                milestone: 0.2,
+                card: 1.684001,
+                npc: 0.3559,
+                train: 0.153215,
+                keiko: 1.158553,
+                level: 0.772682,
+                milestone: 0.028781,
                 status_limit: 0.0,
                 assist: 0.0,
-                route: 500.0,
+                route: 392.251041,
             },
             dynamic: DynamicConfig {
-                status_catchup: 1.3553,
-                act_catchup: 0.0,
-                vital_decay: 0.2879,
-                vital_idle: 0.0,
-                keiko_tempo: 0.486,
+                status_catchup: 3.086141,
+                act_catchup: 0.012934,
+                vital_decay: 0.005776,
+                vital_idle: 1.625975,
+                keiko_tempo: 2.239315,
             },
             overflow: OverflowConfig {
-                margin: 0.02,
-                tilt: 0.5,
-                keep: 0.15,
+                margin: 0.076106,
+                tilt: 3.54432,
+                keep: 0.018218,
             },
             endgame: EndgameConfig {
-                keiko: 250.0,
-                scarcity: 1.0,
-                level: 80.0,
-                normal_penalty: 120.0,
+                keiko: 763.274261,
+                scarcity: 0.45993,
+                level: 162.659083,
+                normal_penalty: 462.583525,
             },
         }
     }

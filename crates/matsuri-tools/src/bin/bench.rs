@@ -755,8 +755,9 @@ fn cmd_micro(env: &Env, args: &[String]) -> Result<()> {
         );
     });
     println!("explain_action         {explain_ns:10.1}  (choose + 全量打分)");
+    let pt_favor = game.config.deck.trainer.pt_favor_rate;
     let score_ns = bench(iters, || {
-        black_box(game.search_score(1.7271).ok());
+        black_box(game.search_score(pt_favor).ok());
     });
     println!("search_score           {score_ns:10.1}");
     let list_ns = bench(iters.max(200), || {
