@@ -7,6 +7,8 @@
 //! | `source == special` + `playing_state = 51` + 教诲窗口 | 教诲分配 | T2/T11/T23/T35/T47/T59；重复进入同一窗口重新分配 |
 //! | 其余 `source == special`（`playing_state = 49/51`） | 跳过 | 発表会 / 本番的结算中间态，没有可选动作 |
 //! | 有「多选项待选事件」 | 事件决策 | 事件由服务器挂起，等玩家选（结局 / 抽签等） |
+//! | `source == event` 但没有可用选项数据 | 跳过 | 插件只发 `storyId`，本地事件表未收录该事件；
+//!   这类帧的训练 / 分布 / 等级都是残值，**不能**退化成训练建议 |
 //! | 阶段不是 `Train` | 跳过 | 动作已执行且本帧没有训练入口（见 `session::restore` 的阶段定档） |
 //! | 预览非零 + 分布全空（T0 载入快照） | 跳过 | 帧自相矛盾，等 `command` 帧 |
 //! | 其余（→ `Train`） | 训练 / 比赛决策 | 决策点 |
@@ -53,6 +55,12 @@ pub fn route(game: &MatsuriGame, frame: &ParsedFrame) -> Route {
     }
     if pending_event(game).is_some() {
         return Route::Event;
+    }
+    // 事件帧（插件按 `storyId` 发帧）：还原侧按本地事件表注入过才走 `Event`，
+    // 走到这里说明本地没有该事件的数据 —— 事件帧的训练 / 分布 / 等级都是残值，
+    // 绝不能回落到 `Train` 给建议
+    if frame.source() == "event" {
+        return Route::Skip("事件帧无可用选项数据（storyId 未收录，见帧提示）");
     }
     // 阶段由还原侧按「有无决策面」定档：带训练入口的帧一律是 `Train`，
     // 走到这里只剩动作已执行、没有入口的帧（事件已结算完）
@@ -372,6 +380,13 @@ pub fn verify_training(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use matsuri_core::game::festa::FestaState;
+    use matsuri_core::testing::sample_game;
+    use umaai::BaseStatus;
+    use umaai_core::gamedata::EventData;
+
     use super::*;
 
     /// 官方映射：101 速 / 105 耐 / 102 力 / 103 根 / 106 智（**不是** 101–105 顺排）
@@ -397,5 +412,62 @@ mod tests {
         // 未登记
         assert_eq!(command_to_train(104), None, "104 不在官方表里");
         assert_eq!(command_to_train(606), None);
+    }
+
+    /// 造一帧：只填路由关心的字段（`source` / `storyId`）
+    fn frame(source: &str, story_id: Option<i32>) -> ParsedFrame {
+        ParsedFrame {
+            status: BaseStatus {
+                scenario_id: 15,
+                source: Some(source.to_string()),
+                ..BaseStatus::default()
+            },
+            festa: FestaState::default(),
+            training: BTreeMap::new(),
+            digest: 0,
+            ill_effects: Vec::new(),
+            story_id,
+        }
+    }
+
+    /// 决策点局面（`Train` + 分布已捕获），供路由用例共用
+    fn train_game() -> MatsuriGame {
+        let mut game = sample_game();
+        game.stage = Stage::Train;
+        game.base.distribution = vec![vec![0]; 5];
+        game.base.unresolved_events.clear();
+        game
+    }
+
+    /// 事件帧本地查不到 → 跳过；同局面的 command 帧仍走 Train（拦的是事件帧本身）
+    #[test]
+    fn event_frame_without_data_skips() {
+        let game = train_game();
+        assert_eq!(
+            route(&game, &frame("event", Some(400015106))),
+            Route::Skip("事件帧无可用选项数据（storyId 未收录，见帧提示）")
+        );
+        assert_eq!(route(&game, &frame("command", None)), Route::Train);
+    }
+
+    /// 事件帧 + 还原侧已注入多选项事件 → 事件决策
+    #[test]
+    fn event_frame_with_injected_event_routes_event() {
+        let mut game = train_game();
+        let mut event = EventData::from_action_value(400015106, "追加の稽古", &Default::default());
+        event.player_select = true;
+        event.choices.push(event.choices[0].clone());
+        game.base.unresolved_events = vec![event];
+        assert_eq!(route(&game, &frame("event", Some(400015106))), Route::Event);
+    }
+
+    /// 老插件：`source=event` 但既无 `storyId` 也无事件数据 → 仍跳过（不给训练建议）
+    #[test]
+    fn event_frame_without_story_id_skips() {
+        let game = train_game();
+        assert!(matches!(
+            route(&game, &frame("event", None)),
+            Route::Skip(_)
+        ));
     }
 }

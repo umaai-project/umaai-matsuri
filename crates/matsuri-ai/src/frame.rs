@@ -39,6 +39,15 @@ struct BaseGameExtra {
     /// 训练预览协议真值（仅骏大祭填充；`{command_id: {failureRate, lower, upper}}`）
     #[serde(default)]
     training: Option<BTreeMap<String, TrainingFrame>>,
+    /// 生病病种（游戏 `chara_effect_id` 原值，1–6，142 表口径）；旧插件不给 → 空
+    #[serde(default)]
+    ill_effects: Vec<i32>,
+    /// 待选事件的 `story_id`（`evt.story_id` 原值）；单选项 / 无事件帧不给
+    ///
+    /// 插件只透传 id：效果表命中时另有 `story`，**未收录时只有本字段**，
+    /// 事件与选项数据由接收端按自己的表还原。
+    #[serde(default)]
+    story_id: Option<i32>,
 }
 
 /// 一条训练预览真值
@@ -82,6 +91,10 @@ pub struct ParsedFrame {
     pub training: BTreeMap<String, TrainingFrame>,
     /// 帧原文摘要（`G7` 幂等：同内容不重复决策）
     pub digest: u64,
+    /// 生病病种（游戏 `chara_effect_id` 原值，1–6，142 表口径）；空 = 帧未给（沿用 `isIll` 布尔）
+    pub ill_effects: Vec<i32>,
+    /// 待选事件的 `story_id`（插件只发 id，选项数据由接收端自持）；无事件帧为 `None`
+    pub story_id: Option<i32>,
 }
 
 impl ParsedFrame {
@@ -101,15 +114,15 @@ impl ParsedFrame {
         let festa = envelope
             .festa
             .ok_or_else(|| anyhow!("帧内没有 `festa` 段：不是骏大祭的帧（拒绝计算）"))?;
-        let training = envelope
-            .base_game
-            .and_then(|extra| extra.training)
-            .unwrap_or_default();
+        let extra = envelope.base_game.unwrap_or_default();
+        let training = extra.training.unwrap_or_default();
         Ok(Self {
             status,
             festa,
             training,
             digest: digest_of(contents),
+            ill_effects: extra.ill_effects,
+            story_id: extra.story_id,
         })
     }
 
@@ -187,6 +200,31 @@ mod tests {
         assert_eq!(frame.festa.camp_remain, Some(1));
         let training = frame.training.get("5101").expect("应带训练真值");
         assert_eq!(training.total(), vec![107, 10, 35, 10, 10, 121, -19]);
+    }
+
+    /// 层1：事件帧只有 `storyId`、没有 `story`（插件未收录效果表）也能解析
+    #[test]
+    fn parse_story_id_without_story() {
+        // 只换 source（帧里已有 source，重复键 serde 会报错）+ 追加 storyId
+        let frame = ParsedFrame::parse(&FRAME.replace(
+            "\"source\": \"command\"",
+            "\"source\": \"event\", \"storyId\": 400015106",
+        ))
+        .expect("事件帧应可解析");
+        assert_eq!(frame.story_id, Some(400015106));
+        assert_eq!(frame.source(), "event");
+        assert!(frame.status.story.is_none(), "未收录事件没有效果数据");
+    }
+
+    /// 层1：帧带 `illEffects` 时按病种解析（引擎通用段容忍该新增键）
+    #[test]
+    fn parse_ill_effects() {
+        let frame = ParsedFrame::parse(&FRAME.replace(
+            "\"isIll\": false",
+            "\"isIll\": true, \"illEffects\": [1, 3]",
+        ))
+        .expect("带病种的帧应可解析");
+        assert_eq!(frame.ill_effects, vec![1, 3]);
     }
 
     /// 层1：非本剧本（scenarioId 不符 / 无 festa 段）→ 明确报错，不退化成默认状态

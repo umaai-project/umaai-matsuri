@@ -372,22 +372,28 @@ pub(crate) fn choice_result_name(result: i32) -> &'static str {
 }
 
 /// 单组事件选项标签（组内各结果拼成一行）
-pub(crate) fn choice_group_label(group: &[EventChoice]) -> String {
+///
+/// `with_prob` = 附带「成功率%[结果档]」前缀（手动面板保留；在线事件回显只要实际数值）。
+fn choice_rows_label(group: &[EventChoice], with_prob: bool) -> String {
     if group.is_empty() {
         return "（空组）".to_string();
     }
     let mut out = String::new();
     for choice in group {
-        let _ = write!(
-            out,
-            "  {}%{}",
-            if choice.prob == 0 { 100 } else { choice.prob },
-            if choice.result != 0 {
-                format!("[{}]", choice_result_name(choice.result))
-            } else {
-                String::new()
-            }
-        );
+        if with_prob {
+            let _ = write!(
+                out,
+                "  {}%{}",
+                if choice.prob == 0 { 100 } else { choice.prob },
+                if choice.result != 0 {
+                    format!("[{}]", choice_result_name(choice.result))
+                } else {
+                    String::new()
+                }
+            );
+        } else {
+            out.push_str("  ");
+        }
         let value = choice.value.to_string();
         if !value.is_empty() {
             let _ = write!(out, " {value}");
@@ -407,6 +413,16 @@ pub(crate) fn choice_group_label(group: &[EventChoice]) -> String {
         }
     }
     out.trim_start().to_string()
+}
+
+/// 单组事件选项标签（带成功率 / 结果档；手动面板用）
+pub(crate) fn choice_group_label(group: &[EventChoice]) -> String {
+    choice_rows_label(group, true)
+}
+
+/// 单组事件选项的**实际效果**（不带概率 / 结果档；在线事件回显用）
+pub(crate) fn choice_effect_label(group: &[EventChoice]) -> String {
+    choice_rows_label(group, false)
 }
 
 /// 友人出行状态名
@@ -1484,7 +1500,23 @@ impl BoardPanel {
 
 #[cfg(test)]
 mod tests {
+    use umaai_core::gamedata::{ActionValue, ChoiceResult, EventChoice};
+
     use super::*;
+
+    /// 在线事件回显只要实际数值；手动面板仍带成功率 / 结果档
+    #[test]
+    fn choice_effect_label_omits_probability() {
+        let value = ActionValue {
+            vital: -5,
+            ..Default::default()
+        };
+        let group = vec![EventChoice::from_action_value(&value, ChoiceResult::Normal)];
+        assert_eq!(choice_effect_label(&group), "体-5");
+        let full = choice_group_label(&group);
+        assert!(full.starts_with("100%"), "{full}");
+        assert!(full.ends_with("体-5"), "{full}");
+    }
 
     #[test]
     fn test_paint_respects_switch() {

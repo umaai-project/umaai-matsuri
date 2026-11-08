@@ -524,7 +524,7 @@ pub struct Rules {
     pub training_upper_cap: i32,
     /// 助力支撑（助力の教え / 転成 401 获得）
     pub assist_support: AssistSupportRule,
-    /// 【变胖】每回合解除概率 %（剧本自持暂定值 20；STUB 待真机）
+    /// 【变胖】每回合解除概率 %（暂定 15；2026-11-08 由 25 回调，待真机复核）
     pub fat_recovery_prob: i32,
 }
 

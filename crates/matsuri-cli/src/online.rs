@@ -31,7 +31,7 @@ use umaai_cli::render::term;
 use umaai_core::Data;
 
 use crate::logging;
-use crate::panel::{BoardPanel, paint};
+use crate::panel::{BoardPanel, choice_effect_label, paint};
 
 /// 在线档参数
 #[derive(Debug, Default, clap::Args)]
@@ -224,9 +224,16 @@ fn render(
         TurnKind::Skipped => {
             writeln!(
                 stdout,
-                "T{} 跳过：{}",
-                output.turn,
-                output.skip_reason.as_deref().unwrap_or("—")
+                "{}",
+                paint(
+                    &format!(
+                        "T{} 跳过：{}",
+                        output.turn,
+                        output.skip_reason.as_deref().unwrap_or("—")
+                    ),
+                    Some("33"),
+                    color
+                )
             )?;
         }
     }
@@ -249,7 +256,15 @@ fn render_decision(stdout: &mut impl Write, output: &OnlineTurnOutput, color: bo
         return Ok(());
     };
     if let Some(luck) = &record.luck {
-        render_luck(stdout, output.turn, luck, color)?;
+        // 搜索档额外带「期望 ± 单局 σ + 档次」；手写档 / 无摘要时为 `None`
+        let expected = output.summary.as_ref().map(|summary| {
+            (
+                summary.expected_score,
+                summary.baseline_stdev,
+                summary.expected_rank.as_str(),
+            )
+        });
+        render_luck(stdout, output.turn, luck, expected, color)?;
     }
     if let Some(fusion) = record
         .extra
@@ -258,6 +273,10 @@ fn render_decision(stdout: &mut impl Write, output: &OnlineTurnOutput, color: bo
         .and_then(|fusion| fusion.as_str())
     {
         writeln!(stdout, "[回合 {} 融合]{}", output.turn, fusion)?;
+    }
+    // 事件决策前先回显「还原出来的事件」与各选项实际效果（帧可能没带 `story`，属性以本地数据为准）
+    if record.kind == "event" {
+        render_event_detail(stdout, output, color)?;
     }
     let kind = decision_kind_label(&record.kind);
     let top = "41;93";
@@ -361,8 +380,64 @@ fn decision_kind_label(kind: &str) -> &'static str {
     }
 }
 
+/// 事件回显：事件名 / id + 每个选项的实际效果（帧 `story` 有文本时附在「选项N」后）
+///
+/// 属性一律取**还原出的 `EventData`**（本仓数据），不读帧里的效果文本：插件只透传 id 时
+/// 帧文本本来就没有，而两边的数值口径也可能不同。没有选项文本时退化成「选项1 / 选项2」。
+fn render_event_detail(
+    stdout: &mut impl Write,
+    output: &OnlineTurnOutput,
+    color: bool,
+) -> Result<()> {
+    let Some(event) = matsuri_ai::online::pending_event(&output.game) else {
+        return Ok(());
+    };
+    if event.name.is_empty() {
+        writeln!(stdout, "[回合 {} 事件]#{}", output.turn, event.id)?;
+    } else {
+        writeln!(
+            stdout,
+            "[回合 {} 事件]{} #{}",
+            output.turn,
+            paint(&event.name, Some("94"), color),
+            event.id
+        )?;
+    }
+    for (index, group) in event.choices.iter().enumerate() {
+        let text = output
+            .story_options
+            .get(index)
+            .map(String::as_str)
+            .unwrap_or_default();
+        let text = if text.is_empty() {
+            String::new()
+        } else {
+            format!("（{text}）")
+        };
+        writeln!(
+            stdout,
+            "  选项{}{}：{}",
+            index + 1,
+            text,
+            choice_effect_label(group)
+        )?;
+    }
+    Ok(())
+}
+
 /// 运气行：本局分 <0 红 / <500 黄 / <1500 绿 / ≥1500 亮绿；本轮亮青
-fn render_luck(stdout: &mut impl Write, turn: i32, luck: &LuckAttach, color: bool) -> Result<()> {
+///
+/// `expected` = `(期望分, 单局终局 σ, 档次名)`：期望分取 `SearchSummary::expected_score`（官方口径，
+/// 与终局得分同量纲；搜索分因 PT 项被放大，不能直接当期望分用），
+/// σ 取候选样本方差的合并值，档次取 `constants.rank_names`（空串则不写）。
+/// 分数与档次亮青，σ 不着色。σ 为 0 / 无摘要时整段不显示（手写档、搜索 fallback 都走这里）。
+fn render_luck(
+    stdout: &mut impl Write,
+    turn: i32,
+    luck: &LuckAttach,
+    expected: Option<(f64, f64, &str)>,
+    color: bool,
+) -> Result<()> {
     let total = luck.snapshot.total_luck_score.round() as i64;
     let total_code = if total < 0 {
         "31"
@@ -377,9 +452,21 @@ fn render_luck(stdout: &mut impl Write, turn: i32, luck: &LuckAttach, color: boo
         .snapshot
         .last_turn_delta
         .map_or_else(|| "--".to_string(), |d| format!("{:+.0}", d));
+    let expected = expected
+        .filter(|(_, stdev, _)| *stdev > 0.0)
+        .map(|(score, stdev, rank)| {
+            let score = paint(&format!("{score:.0}"), Some("96"), color);
+            let tail = if rank.is_empty() {
+                format!("（±{stdev:.0}）")
+            } else {
+                format!("（±{stdev:.0}，{}）", paint(rank, Some("96"), color))
+            };
+            format!(", 期望 {score} {tail}")
+        })
+        .unwrap_or_default();
     writeln!(
         stdout,
-        "[回合 {} 运气]本局：{}, 本轮: {}",
+        "[回合 {} 运气]本局：{}, 本轮: {}{expected}",
         turn,
         paint(&format!("{total:+}"), Some(total_code), color),
         paint(&delta, Some("96"), color)
@@ -497,7 +584,95 @@ fn render_verify(report: &matsuri_ai::TrainingReport) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::candidate_color;
+    use umaai::{LuckAttach, LuckScoreSnapshot};
+
+    use super::{candidate_color, render_luck};
+
+    /// 单一快照（终局显示分口径）：`delta` 为本轮运气
+    fn luck(total: f64, delta: Option<f64>) -> LuckAttach {
+        LuckAttach {
+            snapshot: LuckScoreSnapshot {
+                initial_terminal_baseline: 50_000.0,
+                current_terminal_baseline: 50_000.0 + total,
+                total_luck_score: total,
+                last_turn_delta: delta,
+            },
+            action_luck: Vec::new(),
+        }
+    }
+
+    /// 运气行：搜索档追加「期望 分数 （±σ，档次）」；无摘要 / σ=0 时不追加
+    #[test]
+    fn render_luck_appends_expected_score() {
+        let mut out = Vec::new();
+        render_luck(
+            &mut out,
+            32,
+            &luck(150.0, Some(150.0)),
+            Some((82140.0, 3012.0, "LF")),
+            false,
+        )
+        .expect("渲染运气行");
+        assert_eq!(
+            String::from_utf8(out).expect("utf8"),
+            "[回合 32 运气]本局：+150, 本轮: +150, 期望 82140 （±3012，LF）\n"
+        );
+
+        let mut out = Vec::new();
+        render_luck(&mut out, 32, &luck(-40.0, None), None, false).expect("渲染运气行");
+        assert_eq!(
+            String::from_utf8(out).expect("utf8"),
+            "[回合 32 运气]本局：-40, 本轮: --\n"
+        );
+
+        let mut out = Vec::new();
+        render_luck(
+            &mut out,
+            32,
+            &luck(0.0, None),
+            Some((80000.0, 0.0, "UF")),
+            false,
+        )
+        .expect("渲染运气行");
+        assert_eq!(
+            String::from_utf8(out).expect("utf8"),
+            "[回合 32 运气]本局：+0, 本轮: --\n",
+            "σ 为 0 时不显示期望段"
+        );
+
+        // 数据未初始化 / rank_names 缺失 → 档次留空，只写 σ
+        let mut out = Vec::new();
+        render_luck(
+            &mut out,
+            32,
+            &luck(0.0, None),
+            Some((80000.0, 900.0, "")),
+            false,
+        )
+        .expect("渲染运气行");
+        assert_eq!(
+            String::from_utf8(out).expect("utf8"),
+            "[回合 32 运气]本局：+0, 本轮: --, 期望 80000 （±900）\n"
+        );
+
+        // 上色：期望分与档次亮青（96），σ 不着色
+        let mut out = Vec::new();
+        render_luck(
+            &mut out,
+            32,
+            &luck(150.0, Some(150.0)),
+            Some((82140.0, 3012.0, "LF")),
+            true,
+        )
+        .expect("渲染运气行");
+        let text = String::from_utf8(out).expect("utf8");
+        assert!(
+            text.contains("\u{1b}[96m82140\u{1b}[0m"),
+            "期望分应亮青：{text}"
+        );
+        assert!(text.contains("\u{1b}[96mLF\u{1b}[0m"), "档次应亮青：{text}");
+        assert!(!text.contains("\u{1b}[96m±"), "σ 不着色：{text}");
+    }
 
     #[test]
     fn candidate_color_has_three_tiers() {

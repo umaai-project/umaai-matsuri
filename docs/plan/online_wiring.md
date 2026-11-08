@@ -390,6 +390,25 @@ T40 `[2,3,2,2,3]` + kensan `[F,T,F,T,F]`）。即「单点 0 + 稽古」在现�
 | `keyEvents` | int[] | 关键族 `story_id`（§3.5） |
 | `inheritGains` / `inheritLimitGains` | int[] / int[][] | 继承属性增量 / 五维上限增量（协议原值） |
 | 状态标志 | bool/int | `isQieZhe` `isXiaoQie` `isAiJiao` `PositiveThinkingCount` `isRefreshMind` `isIll` `LuckyCount` `isRacing` `ptScoreRate` `failureRateBias` `zhongMaBlueCount` `saihou` 等 |
+| `illEffects` | int[] | **生病病种**（游戏 `chara_effect_id` 原值，**文本库分类 142** 口径：1 熬夜 / 2 懒惰成性 / 3 皮肤粗糙 / 4 变胖 / 5 偏头痛 / 6 不擅长练习）。`isIll` 只是「有没有病」的布尔；本字段 2026-11-08 新增，旧插件不给 → 退化 `Ill::UNKNOWN` |
+| `storyId` | int? | **待选事件 id**（`evt.story_id` 原值，取事件串里**第一个**多选项事件）。出现条件 = 本帧 `unchecked_event_array` 有 `choice_array.Length > 1` 的事件；单选项自动事件不发帧。效果表命中时另有 `story`，**未收录时只有本字段**，选项数据由接收端自持 |
+
+> **病种还原（`G15`，2026-11-08）**：引擎 `BaseStatus::to_flags` 只有布尔 → `Ill::UNKNOWN`，`Ill::FAT`（变胖）
+> 永远认不出来（训练速度分量不归零 → 高估速度训练）。插件补 `illEffects` 后由 `matsuri-ai::frame` 读出、
+> `RestoreInput.ill_effects` 传给 `restore.rs::ill_from_effects`。
+> 映射**按 142 表**（`Matsuri_AI/data/text_data_dict.json` 分类 142）：
+> `1 熬夜 → NIGHT` / `2 懒惰成性 → LAZY` / `3 皮肤粗糙 → SKIN` / `4 变胖 → FAT` /
+> `5 偏头痛 → HEADACHE` / `6 不擅长练习 → BAD_TRAINER`。
+> **不要按 `Ill` 的位序推**（142 是日文 UI 列表顺序，位序是 变胖/皮肤/头痛/摸鱼/熬夜/不擅长），
+> 也**不要**和事件数据里的 `add_flags.ill` 混用——那里是位集（`1` = 变胖）。
+> 缺字段时**不覆盖**引擎的 `UNKNOWN`，行为与旧版一致（守门① 走治病）。
+
+> **事件帧（`G16`，2026-11-08）**：插件只透传 `storyId`，接收端按 id 查本地事件表
+> （本仓 `scenario_events` → 引擎 `story` / `uma` / `card` / `friend` / `system` 五表）
+> 还原 `EventData` 并注入 `unresolved_events`（**本仓数据优先**：引擎按 `story` 建过的同 id 事件会被覆盖，
+> 帧只提供选项文本；选项数不一致按本仓并打帧提示）；**查不到时路由直接跳过**，绝不回落训练建议
+> （事件帧的 `training` / 分布 / 等级都是残值）。剧本关键事件里，追加稽古走 `scenario_events`
+> （`400015106`）、友人出行第三段走 `friend_events`（`809052013`），均已覆盖。
 
 ### 4.4 真机片段（`game6310_turn40.json`，值已核对）
 

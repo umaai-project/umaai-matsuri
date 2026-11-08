@@ -33,6 +33,12 @@ pub struct OnlineTurnOutput {
     pub scenario: String,
     /// 帧原文摘要
     pub frame_digest: u64,
+    /// 帧 `baseGame.storyId`（待选事件 id；无事件帧为 `None`）
+    pub story_id: Option<i32>,
+    /// 帧 `story` 里各选项的文本（按选项组；空串 = 该组没有文本）
+    ///
+    /// 只作呈现：属性仍按还原出的 `EventData` 显示（帧文本可能与本仓数据不同语言 / 精度）。
+    pub story_options: Vec<String>,
     /// 走向
     pub kind: TurnKind,
     /// 决策记录（`kind == Decision` 时必有）
@@ -98,6 +104,24 @@ impl OnlineTurnOutput {
                         "score_source".to_string(),
                         json!(if self.search_backed { "search" } else { "hand" }),
                     );
+                    // 待选事件 id（插件只发 id；未收录事件便于对账）
+                    if let Some(story_id) = self.story_id {
+                        map.insert("story_id".to_string(), json!(story_id));
+                    }
+                    // 期望分（官方口径）/ 单局终局 σ / 档次（搜索档；与终端运气行同口径）
+                    if self.search_backed
+                        && let Some(summary) = &self.summary
+                    {
+                        map.insert(
+                            "expected_score".to_string(),
+                            json!(summary.expected_score.round() as i64),
+                        );
+                        map.insert(
+                            "expected_stdev".to_string(),
+                            json!(summary.baseline_stdev.round() as i64),
+                        );
+                        map.insert("expected_rank".to_string(), json!(summary.expected_rank));
+                    }
                 }
                 json!({
                     "type": "decision",
@@ -117,6 +141,7 @@ impl OnlineTurnOutput {
                 "event": "frame_skipped",
                 "turn": self.turn,
                 "scenario": self.scenario,
+                "story_id": self.story_id,
                 "reason": self.skip_reason.clone().unwrap_or_default(),
             }),
             // `Decision` 却没记录属内部矛盾；退化成 info，不 panic

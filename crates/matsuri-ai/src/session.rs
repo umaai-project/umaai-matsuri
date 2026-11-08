@@ -189,9 +189,48 @@ impl OnlineSession {
     {
         let frame = ParsedFrame::parse(contents)?;
         self.sync_epoch(frame.epoch_key());
+        // 帧内事件选项文本（呈现用；无 `story` 时为空 → 前端退化成「选项N」）
+        let story_options: Vec<String> = frame
+            .status
+            .story
+            .as_ref()
+            .map(|story| {
+                story
+                    .choices
+                    .iter()
+                    .map(|group| {
+                        group
+                            .first()
+                            .map(|choice| choice.option.trim().to_string())
+                            .unwrap_or_default()
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
 
         // 帧 → 局面（还原失败即拒绝计算：编成 / 人头 / 分布不合规时抛错，绝不带病出决策）
-        let (game, notes) = self.restore(&frame)?;
+        let (game, mut notes) = self.restore(&frame)?;
+        // 事件帧缺选项数据时给一条可对账的提示（含 storyId）；路由会跳过，不给训练建议
+        if frame.source() == "event" && online::pending_event(&game).is_none() {
+            notes.push(match frame.story_id {
+                Some(id) => format!(
+                    "事件帧 storyId={id} 未收录（补进 scenario_matsuri.json 的 scenario_events 后即可决策）"
+                ),
+                None => "事件帧缺可用选项数据（引擎事件表未收录）".to_string(),
+            });
+        }
+        // 本地事件与帧 `story` 的选项数不一致：数值按本地，可能是表过时（提示一下便于补数据）
+        if let (Some(story), Some(event)) =
+            (frame.status.story.as_ref(), online::pending_event(&game))
+            && story.choices.len() != event.choices.len()
+        {
+            notes.push(format!(
+                "事件帧 storyId={} 选项数不一致：帧 {} 组 / 本仓 {} 组（按本仓）",
+                event.id,
+                story.choices.len(),
+                event.choices.len()
+            ));
+        }
         let view = game.view();
         let turn = game.turn();
         let scenario = "matsuri".to_string();
@@ -203,6 +242,8 @@ impl OnlineSession {
                 epoch: frame.epoch_key(),
                 scenario,
                 frame_digest: frame.digest,
+                story_id: frame.story_id,
+                story_options: story_options.clone(),
                 kind: TurnKind::Skipped,
                 record: None,
                 skip_reason: Some("重复帧（内容与已处理帧一致）".to_string()),
@@ -231,6 +272,8 @@ impl OnlineSession {
                 epoch: frame.epoch_key(),
                 scenario,
                 frame_digest: frame.digest,
+                story_id: frame.story_id,
+                story_options: story_options.clone(),
                 kind: TurnKind::Skipped,
                 record: None,
                 skip_reason: Some(reason.to_string()),
@@ -272,6 +315,8 @@ impl OnlineSession {
                     epoch: frame.epoch_key(),
                     scenario,
                     frame_digest: frame.digest,
+                    story_id: frame.story_id,
+                    story_options: story_options.clone(),
                     kind: TurnKind::Decision,
                     record: Some(record),
                     skip_reason: None,
@@ -294,6 +339,8 @@ impl OnlineSession {
                             epoch: frame.epoch_key(),
                             scenario,
                             frame_digest: frame.digest,
+                            story_id: frame.story_id,
+                            story_options: story_options.clone(),
                             kind: TurnKind::Skipped,
                             record: None,
                             skip_reason: Some("教诲尚未授予，跳过分配".to_string()),
@@ -333,6 +380,8 @@ impl OnlineSession {
                         epoch: frame.epoch_key(),
                         scenario,
                         frame_digest: frame.digest,
+                        story_id: frame.story_id,
+                        story_options: story_options.clone(),
                         kind: TurnKind::Skipped,
                         record: None,
                         skip_reason: Some("教诲分配候选为空".to_string()),
@@ -454,6 +503,8 @@ impl OnlineSession {
                     epoch: frame.epoch_key(),
                     scenario,
                     frame_digest: frame.digest,
+                    story_id: frame.story_id,
+                    story_options: story_options.clone(),
                     kind: TurnKind::Decision,
                     record: Some(record),
                     skip_reason: None,
@@ -546,6 +597,8 @@ impl OnlineSession {
                     epoch: frame.epoch_key(),
                     scenario,
                     frame_digest: frame.digest,
+                    story_id: frame.story_id,
+                    story_options: story_options.clone(),
                     kind: TurnKind::Decision,
                     record: Some(record),
                     skip_reason: None,
@@ -641,6 +694,8 @@ impl OnlineSession {
                     frame.status.friendship_noncard_yayoi,
                     frame.status.friendship_noncard_reporter,
                 )),
+                ill_effects: &frame.ill_effects,
+                story_id: frame.story_id,
             },
             Arc::clone(&self.data),
             self.config.clone(),

@@ -18,7 +18,7 @@ use umasim::game::{Game, Person, PersonType};
 
 use crate::deck_config::{AdviceWeights, TrainerConfig, ValueWeights};
 use crate::game::advice::{AdviceAssignment, AdviceSlotEffect};
-use crate::game::event::KENSAN_EVENT_ID;
+use crate::game::event::{EXTRA_TRAIN_EVENT_ID, KENSAN_EVENT_ID};
 use crate::game::{Action, MatsuriGame, PersonOrigin};
 
 /// 训练失败的机会成本（评分点；含失败后事件损失）
@@ -37,6 +37,8 @@ const FRIEND_OUTING_EARLY_BONUS: f64 = 120.0;
 const CLINIC_VALUE: f64 = 400.0;
 /// 非变胖病位的惩罚
 const OTHER_ILL_PENALTY: f64 = 40.0;
+/// 「解一个 debuff」在非变胖目标上的价值（追加稽古上档）
+const DEBUFF_CLEAR_VALUE: f64 = 60.0;
 /// 单次比赛的保底价值（强制比赛回合只有比赛一个候选）
 const FORCED_RACE_BASE: f64 = 500.0;
 /// 满体力闲逛惩罚（vital ≥ 70 时休息 / 普通出行扣分；GA 验证行为修正）
@@ -372,7 +374,16 @@ impl<'a> Model<'a> {
             total += self.weights.gauge;
             total += self.debuff_clear_value();
         }
+        // 「追加訓練」上档（体力 −5）：附带定点治疗变胖（`event.rs::apply_event_extra` 同口径）
+        if event_id == EXTRA_TRAIN_EVENT_ID && choice_index == 0 && self.is_fat() {
+            total += self.weights.fat;
+        }
         total
+    }
+
+    /// 当前是否变胖（训练速度分量归零的状态）
+    fn is_fat(&self) -> bool {
+        self.game.uma().flags.ill.contains(Ill::FAT)
     }
 
     /// 教诲分配方案估值（与 `apply_assignment` 的 801 硬约束同口径）
@@ -1020,13 +1031,22 @@ impl<'a> Model<'a> {
     }
 
     /// 追加稽古上档「解一个 debuff」的估值
+    ///
+    /// 与 `event.rs::clear_one_debuff` 的清除顺序同口径：**不擅长训练 → 变胖 → 其余具名病位**，
+    /// 取实际会被清掉那个的价值；只带 `UNKNOWN`（线上病种未辨）时无人可清 → 0。
     fn debuff_clear_value(&self) -> f64 {
+        const OTHERS: Ill = Ill::from_bits(
+            Ill::SKIN.bits() | Ill::HEADACHE.bits() | Ill::LAZY.bits() | Ill::NIGHT.bits(),
+        );
         let flags = &self.game.uma().flags;
+        if flags.bad_trainer || flags.ill.contains(Ill::BAD_TRAINER) {
+            return DEBUFF_CLEAR_VALUE;
+        }
         if flags.ill.contains(Ill::FAT) {
             return self.weights.fat;
         }
-        if flags.bad_trainer || !flags.ill.is_empty() {
-            return 60.0;
+        if flags.ill.bits() & OTHERS.bits() != 0 {
+            return DEBUFF_CLEAR_VALUE;
         }
         0.0
     }

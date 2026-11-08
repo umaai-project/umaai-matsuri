@@ -28,7 +28,8 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use umaai::BasePersonStatus;
-use umaai_core::{Array5, Data};
+use umaai_core::gamedata::EventData;
+use umaai_core::{Array5, Data, Ill};
 use umasim::game::Game;
 use umasim::game::base::BaseGame;
 
@@ -37,6 +38,7 @@ use super::person::{MatsuriPerson, PersonOrigin};
 use super::{MatsuriGame, SCENARIO_START_TURN, Stage};
 use crate::MatsuriConfig;
 use crate::data::{CheckPointResult, MatsuriData};
+use crate::diag;
 
 /// 协议人头 id 里「NPC / 占位」段（`101–115`）：从不出现在分布，还原时丢弃
 const NPC_PLACEHOLDER_RANGE: std::ops::RangeInclusive<i32> = 101..=115;
@@ -74,6 +76,70 @@ pub struct RestoreInput<'a> {
     pub prev_train_levels: Option<Array5>,
     /// 非卡人头羁绊 `(理事长, 记者)`（帧 `friendship_noncard_*`；`None` = 帧未给，保持 0）
     pub noncard_friendship: Option<(i32, i32)>,
+    /// 帧 `baseGame.illEffects`（游戏 `chara_effect_id` 原始 id，1–6 为病种）
+    ///
+    /// 空 = 帧未给（旧插件 / 别的剧本）→ 沿用引擎粗粒度 `isIll`（落到 [`Ill::UNKNOWN`]），
+    /// 变胖不可辨；非空时按病种精确还原（见 [`ill_from_effects`]）。
+    pub ill_effects: &'a [i32],
+    /// 帧 `baseGame.storyId`（待选事件 id；插件只透传 id，选项数据由接收端自持）
+    ///
+    /// 命中本地事件表（本仓 `scenario_events` → 引擎五表）时注入 `unresolved_events`，
+    /// 路由据此进事件决策；查不到则由上层跳过（不给训练建议）。
+    pub story_id: Option<i32>,
+}
+
+/// 游戏 `chara_effect_id`（文本库分类 **142**）→ 生病位集
+///
+/// | id | 142 名称（中文） | 位 |
+/// |---|---|---|
+/// | 1 | 熬夜（夜ふかし気味） | [`Ill::NIGHT`] |
+/// | 2 | 懒惰成性（なまけ癖） | [`Ill::LAZY`] |
+/// | 3 | 皮肤粗糙（肌あれ） | [`Ill::SKIN`] |
+/// | 4 | 变胖（太り気味） | [`Ill::FAT`] |
+/// | 5 | 偏头痛（片頭痛） | [`Ill::HEADACHE`] |
+/// | 6 | 不擅长练习（練習ベタ） | [`Ill::BAD_TRAINER`] |
+///
+/// **不要按 [`Ill`] 的位序推**：142 表是日文 UI 的列表顺序（熬夜在前、变胖在第 4），
+/// 与位序不同。另注：事件数据里的 `add_flags.ill` 用的是**位集**（`1` = 变胖），
+/// 与本函数的协议 id 是两套编号，别混用。其余 id（切者 / 爱娇 / 心情盾…）忽略。
+fn ill_from_effects(ids: &[i32]) -> Ill {
+    let mut ill = Ill::NONE;
+    for id in ids {
+        let kind = match id {
+            1 => Ill::NIGHT,
+            2 => Ill::LAZY,
+            3 => Ill::SKIN,
+            4 => Ill::FAT,
+            5 => Ill::HEADACHE,
+            6 => Ill::BAD_TRAINER,
+            _ => continue,
+        };
+        ill.insert(kind);
+    }
+    ill
+}
+
+/// 按 `storyId` 找事件数据：**本仓剧本资产优先**，其后引擎五表（`story` / `uma` / `card` /
+/// `friend` / `system`）
+///
+/// 插件端只透传 `story_id`（效果表未收录时不发 `story`），事件身份与选项数完全由接收端
+/// 按自己的数据判断。`festa` / 追加稽古 / 友人出行第三段这类剧本关键事件都在
+/// `scenario_events` 与 `friend_events` 里，命中即可正常做事件决策。
+fn lookup_event(id: u32, scenario: &[EventData]) -> Option<EventData> {
+    if let Some(event) = scenario.iter().find(|event| event.id == id) {
+        return Some(event.clone());
+    }
+    let data = Data::get().ok()?;
+    let events = &data.events;
+    events
+        .story_events
+        .iter()
+        .chain(events.uma_events.iter())
+        .chain(events.card_events.iter())
+        .chain(events.friend_events.values())
+        .chain(events.system_events.values())
+        .find(|event| event.id == id)
+        .cloned()
 }
 
 impl MatsuriGame {
@@ -97,9 +163,24 @@ impl MatsuriGame {
             frame_persons,
             prev_train_levels,
             noncard_friendship,
+            ill_effects,
+            story_id,
         } = input;
         let turn = base.turn;
+        // 事件帧：插件可能只发 id（效果表未收录时没有 `story`），先按 id 查本地表
+        let pending = story_id
+            .filter(|id| *id > 0)
+            .and_then(|id| lookup_event(id as u32, &data.scenario_events));
         let mut game = Self::assemble(base, data)?;
+        // 病种：协议通用段只有 `isIll` 布尔（引擎落 `Ill::UNKNOWN`），帧带 `illEffects`
+        // 时按病种精确覆盖——变胖（`FAT`）只有这条路才认得出来。
+        if !ill_effects.is_empty() {
+            let ill = ill_from_effects(ill_effects);
+            let flags = &mut game.uma_mut().flags;
+            flags.ill = ill;
+            // 引擎不变量：`bad_trainer` 与 `Ill::BAD_TRAINER` 同置同清
+            flags.bad_trainer |= ill.contains(Ill::BAD_TRAINER);
+        }
         // 局外状态（小切 / 正向思考）以帧为准（`to_base_game` 已写进 flags），
         // 这里**不再**套 `with_config` 的 `[pre]` 段，否则会重复施加。
         game.config = config;
@@ -126,6 +207,40 @@ impl MatsuriGame {
         // 人头建完才能把分布从协议 id 翻成 `person_index`
         let raw_distribution = std::mem::take(&mut game.base.distribution);
         game.base.distribution = game.map_distribution(&raw_distribution)?;
+
+        // 事件帧注入：**本仓事件数据优先**——数值与选项数以本地表为准，帧 `story` 只提供选项文本。
+        // 因此引擎按 `story` 建过的同 id 事件会被本地那份覆盖；本地查不到才回退帧数据，
+        // 两者都没有则由路由层跳过（事件帧的训练 / 分布 / 等级都是残值，不能拿来做训练建议）
+        if let Some(id) = story_id.filter(|id| *id > 0) {
+            match pending {
+                Some(event) => {
+                    match game
+                        .base
+                        .unresolved_events
+                        .iter_mut()
+                        .find(|queued| queued.id == id as u32)
+                    {
+                        Some(slot) => {
+                            let frame_groups = slot.choices.len();
+                            *slot = event;
+                            if frame_groups == slot.choices.len() {
+                                diag!("【事件帧】T{turn} storyId={id} 按本地事件表覆盖帧数据");
+                            } else {
+                                diag!(
+                                    "【事件帧】T{turn} storyId={id} 选项数不一致：帧 {frame_groups} 组 / 本地 {} 组，按本地",
+                                    slot.choices.len()
+                                );
+                            }
+                        }
+                        None => {
+                            diag!("【事件帧】T{turn} storyId={id} 按本地事件表注入");
+                            game.base.unresolved_events.push(event);
+                        }
+                    }
+                }
+                None => diag!("【事件帧】T{turn} storyId={id} 未收录（本地事件表查不到）"),
+            }
+        }
 
         // 注释 2：入口阶段由调用方给定，绝不从 `Begin` 进来
         game.stage = stage;

@@ -83,7 +83,7 @@ cargo check --workspace --all-targets --offline
 cargo test --workspace --release --offline
 ```
 
-当前：workspace **264 通过 + 2 手动 `#[ignore]`**；基线 / 性能复现见
+当前：workspace **278 通过 + 2 手动 `#[ignore]`**；基线 / 性能复现见
 [`docs/tests_overview.md`](docs/tests_overview.md) 与 [`docs/perf_profiling.md`](docs/perf_profiling.md)。
 clippy 只在 Windows 侧跑。
 

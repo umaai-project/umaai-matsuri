@@ -16,8 +16,9 @@ use std::time::Instant;
 use anyhow::{Result, bail};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
+use umaai_core::Data;
 use umaai_core::gamedata::{EventChoice, EventData};
-use umasim::game::{Game, Trainer};
+use umasim::game::{Game, Trainer, UmaFlagsExt};
 use umasim::search::{FlatSearch, FlatSearchGame, RolloutOutcome, SearchConfig, SearchOutput};
 
 use crate::config::{MatsuriConfig, SearchScopeConfig};
@@ -78,6 +79,36 @@ fn weighted_baseline(candidates: &[SearchCandidate]) -> f64 {
     }
 }
 
+/// **单局终局分的标准差**（候选样本方差按搜索次数加权的合并）
+///
+/// `sqrt(Σ nᵢσᵢ² / N)`：语义是「照着搜索选出的走法打一局，终局得分相对期望的典型波动」，
+/// 不随搜索预算收敛（「期望分本身估得准不准」是另一回事，不在本字段里）。在线运气行的
+/// 「期望 ±σ」用它——玩家关心的是终局落在哪个区间，而不是期望分本身估得有多准。
+fn pooled_stdev(candidates: &[SearchCandidate]) -> f64 {
+    let total_n: f64 = candidates.iter().map(|c| f64::from(c.n)).sum();
+    if candidates.is_empty() || total_n <= 0.0 {
+        return 0.0;
+    }
+    let variance: f64 = candidates
+        .iter()
+        .map(|c| f64::from(c.n) * c.stdev * c.stdev)
+        .sum();
+    (variance / total_n).sqrt()
+}
+
+/// 终局 PT 数（原始值，非分数）的样本数加权均值——官方口径换算用
+fn weighted_pt(candidates: &[SearchCandidate]) -> f64 {
+    let total_n: f64 = candidates.iter().map(|c| f64::from(c.n)).sum();
+    if candidates.is_empty() || total_n <= 0.0 {
+        return 0.0;
+    }
+    candidates
+        .iter()
+        .map(|c| c.pt * f64::from(c.n))
+        .sum::<f64>()
+        / total_n
+}
+
 /// 叶子估值器接口（预留）
 ///
 /// 当前引擎没有截断搜索的 leaf hook；生产 `max_depth = 0`，本接口不进入搜索路径。
@@ -127,6 +158,12 @@ pub struct SearchSummary {
     pub chosen: usize,
     /// 本决策开始的期望分基线（候选按样本数加权；与运气分同口径）
     pub baseline: f64,
+    /// 单局终局分标准差（候选样本方差按样本数加权的合并；0 = 无有效样本）
+    pub baseline_stdev: f64,
+    /// 期望分（**官方口径**：搜索分扣掉 PT 项放大差额，与终局得分同量纲）
+    pub expected_score: f64,
+    /// 期望分对应的评价档次名（`constants.rank_names`；数据未初始化时为空串）
+    pub expected_rank: String,
 }
 
 /// FlatSearch 搜索训练员
@@ -200,7 +237,12 @@ impl MatsuriSearchTrainer {
     }
 
     /// 搜索结果 → 摘要（`index_map` 把搜索输入下标映射回完整候选空间）
+    ///
+    /// `baseline` 留在搜索口径（PT 项被 `pt_favor_rate` 放大），因为运气分 / 候选分差都在这个空间里；
+    /// 另给 `expected_score` = 官方口径（`official = search − Σpt×(favor−1)`），供呈现与档次判定。
     fn summary_of(
+        &self,
+        game: &MatsuriGame,
         out: &SearchOutput<Action, MatsuriTerminalStats>,
         index_map: impl Fn(usize) -> usize,
         describe: impl Fn(usize) -> String,
@@ -235,10 +277,31 @@ impl MatsuriSearchTrainer {
             })
             .collect();
         let baseline = weighted_baseline(&candidates);
+        let baseline_stdev = pooled_stdev(&candidates);
+        // 官方口径期望分：搜索分把 PT 项乘了 `pt_favor_rate`（`parts.pt` 已含 ×2.0 与切者 / 小切因子），
+        // 扣掉放大差额即回到与终局得分同量纲的分数
+        let pt_mean = weighted_pt(&candidates);
+        let data = Data::get().ok();
+        let pt_rate = data
+            .as_ref()
+            .map_or(2.0, |data| f64::from(data.consts.pt_score_rate));
+        let pt_factor = f64::from(game.uma().flags.pt_score_rate_factor());
+        let expected_score = baseline - pt_mean * pt_rate * pt_factor * (self.pt_favor_rate - 1.0);
+        // 期望分 → 评价档次（呈现用；`rank_names` 空表时 `get_rank_name` 会给兜底名）
+        let expected_rank = data
+            .map(|data| {
+                data.consts
+                    .get_rank_name(expected_score.round() as i32)
+                    .to_string()
+            })
+            .unwrap_or_default();
         SearchSummary {
             candidates,
             chosen,
             baseline,
+            baseline_stdev,
+            expected_score,
+            expected_rank,
         }
     }
 
@@ -289,7 +352,8 @@ impl MatsuriSearchTrainer {
                 .search::<MatsuriTerminal, _>(game, actions, rng, MatsuriTerminal::of)?;
         let chosen = out.best_action_idx;
         let mean = out.action_results[chosen].weighted_mean(out.radical_factor);
-        self.set_last(Self::summary_of(
+        self.set_last(self.summary_of(
+            game,
             &out,
             |index| index,
             |index| actions[index].decision_label(),
@@ -326,7 +390,8 @@ impl MatsuriSearchTrainer {
         let picked = out.best_action_idx;
         let chosen = map[picked];
         let mean = out.action_results[picked].weighted_mean(out.radical_factor);
-        self.set_last(Self::summary_of(
+        self.set_last(self.summary_of(
+            game,
             &out,
             |position| map[position],
             |index| match &actions[index] {
@@ -412,7 +477,8 @@ impl MatsuriSearchTrainer {
             })?;
         let picked = out.best_action_idx;
         let mean = out.action_results[picked].weighted_mean(out.radical_factor);
-        self.set_last(Self::summary_of(
+        self.set_last(self.summary_of(
+            game,
             &out,
             |position| position,
             |index| format!("选项{}", index + 1),
@@ -516,6 +582,37 @@ mod tests {
     use rand::RngCore;
 
     use super::*;
+
+    /// 期望分与单局终局 σ：候选按样本数加权合并
+    #[test]
+    fn baseline_and_stdev_weight_by_samples() {
+        let candidate = |score: f64, stdev: f64, n: u32| SearchCandidate {
+            index: 0,
+            description: String::new(),
+            score,
+            stdev,
+            n,
+            five: [0.0; 5],
+            pt: score,
+        };
+        let candidates = [candidate(100.0, 10.0, 3), candidate(200.0, 20.0, 1)];
+        assert!(
+            (weighted_baseline(&candidates) - 125.0).abs() < 1e-9,
+            "加权期望"
+        );
+        // σ² = (3×100 + 1×400) / 4 = 175
+        assert!(
+            (pooled_stdev(&candidates) - 175f64.sqrt()).abs() < 1e-9,
+            "合并 σ"
+        );
+        // 无有效样本 → 0（在线运气行按 0 视为「不显示 σ」）
+        assert_eq!(pooled_stdev(&[]), 0.0);
+        assert_eq!(pooled_stdev(&[candidate(1.0, 5.0, 0)]), 0.0);
+        assert_eq!(weighted_baseline(&[]), 0.0);
+        // 官方口径换算用：PT 数按样本数加权（(100×3 + 200×1) / 4 = 125）
+        assert!((weighted_pt(&candidates) - 125.0).abs() < 1e-9, "加权 PT");
+        assert_eq!(weighted_pt(&[]), 0.0);
+    }
 
     #[test]
     fn event_token_roundtrip() {

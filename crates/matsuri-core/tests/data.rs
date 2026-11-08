@@ -326,11 +326,8 @@ fn rules_s5_s6() -> Result<()> {
         (rules.assist_support.count, rules.assist_support.effect),
         (3, 5)
     );
-    assert_eq!(
-        rules.fat_recovery_prob, 20,
-        "变胖每回合解除概率（剧本自持暂定值）"
-    );
-    println!("S5/S6 规则常量：上层上限 100 / 助力支撑 3×5% / 变胖解除 20%");
+    assert_eq!(rules.fat_recovery_prob, 15, "变胖每回合解除概率（暂定值）");
+    println!("S5/S6 规则常量：上层上限 100 / 助力支撑 3×5% / 变胖解除 15%");
     Ok(())
 }
 

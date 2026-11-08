@@ -21,6 +21,8 @@ use crate::diag;
 
 /// 研鑽「追加の稽古」事件 ID（`scenario_events` 内定义）
 pub(crate) const KENSAN_EVENT_ID: u32 = 400015106;
+/// 「追加訓練」事件 ID（引擎系统事件，`events.json` `system_events.extra_train`）
+pub(crate) const EXTRA_TRAIN_EVENT_ID: u32 = 102;
 /// 友人（吾妻）出行解锁事件 ID（`809052004` 求むるは、新たな書）
 pub(crate) const FRIEND_OUT_EVENT_ID: u32 = 809052004;
 
@@ -195,38 +197,42 @@ impl MatsuriGame {
         self.uma().flags.ill.contains(Ill::FAT)
     }
 
-    /// 事件额外效果结算（引擎 `ActionValue` 之外的部分，按 `(event_id, choice)` 定位）
+    /// 事件额外效果结算（引擎 `ActionValue` 之外的部分）
+    ///
+    /// 两类来源：① 「追加訓練」（引擎系统事件 `102`）选项 1 定点治疗变胖 —— 真机口径，
+    /// 不走数据表（`event_extras` 只登记剧本事件）；② `event_extras` 按 `(event_id, choice)`
+    /// 定位的剧本效果（最低演目槽 / 解一个 debuff）。
     pub(crate) fn apply_event_extra(&mut self, event_id: u32, choice: usize) {
-        let Some(extra) = self
+        let mut parts: Vec<String> = Vec::new();
+        // ① 追加訓練上档（体力 −5、训练轴 +5）：附带治疗变胖
+        if event_id == EXTRA_TRAIN_EVENT_ID && choice == 0 && self.is_fat() {
+            self.uma_mut().flags.ill.remove(Ill::FAT);
+            parts.push("解除变胖".to_owned());
+        }
+        // ② 剧本事件额外效果
+        if let Some(extra) = self
             .data
             .event_extras
             .iter()
             .find(|extra| extra.event_id == event_id && extra.choice == choice)
             .cloned()
-        else {
-            return;
-        };
-        let gauge_before = self.acts.gauge;
-        if extra.act_gauge_lowest > 0 {
-            self.gain_lowest_act_gauge(extra.act_gauge_lowest);
-        }
-        let cleared = if extra.clear_debuff {
-            self.clear_one_debuff()
-        } else {
-            None
-        };
-        let mut parts: Vec<String> = Vec::new();
-        if extra.act_gauge_lowest > 0 {
-            for (act, (before, after)) in
-                gauge_before.iter().zip(self.acts.gauge.iter()).enumerate()
-            {
-                if before != after {
-                    parts.push(format!("演目{act}槽{before}→{after}"));
+        {
+            let gauge_before = self.acts.gauge;
+            if extra.act_gauge_lowest > 0 {
+                self.gain_lowest_act_gauge(extra.act_gauge_lowest);
+                for (act, (before, after)) in
+                    gauge_before.iter().zip(self.acts.gauge.iter()).enumerate()
+                {
+                    if before != after {
+                        parts.push(format!("演目{act}槽{before}→{after}"));
+                    }
                 }
             }
-        }
-        if let Some(name) = cleared {
-            parts.push(format!("解除{name}"));
+            if extra.clear_debuff
+                && let Some(name) = self.clear_one_debuff()
+            {
+                parts.push(format!("解除{name}"));
+            }
         }
         if !parts.is_empty() {
             diag!(
@@ -518,6 +524,34 @@ mod tests {
             (got - expect).abs() <= 15.0,
             "100 个种子的解除次数 {got} 应接近规则概率 {expect}"
         );
+    }
+
+    /// 【追加訓練】上档（体力 −5）定点治变胖；下档（体力 +5）不治
+    #[test]
+    fn extra_train_upper_clears_fat() {
+        let mut game = sample_game();
+        game.uma_mut().flags.ill.insert(Ill::FAT);
+        game.apply_event_extra(EXTRA_TRAIN_EVENT_ID, 1);
+        assert!(game.is_fat(), "下档不治变胖");
+        game.apply_event_extra(EXTRA_TRAIN_EVENT_ID, 0);
+        assert!(!game.is_fat(), "上档应治变胖");
+    }
+
+    /// 【追加訓練】只治变胖：其它病位与不擅长训练不动（定点口径）
+    #[test]
+    fn extra_train_upper_keeps_other_ills() {
+        let mut game = sample_game();
+        game.uma_mut().flags.ill.insert(Ill::FAT);
+        game.uma_mut().flags.ill.insert(Ill::HEADACHE);
+        game.uma_mut().flags.ill.insert(Ill::BAD_TRAINER);
+        game.uma_mut().flags.bad_trainer = true;
+        game.apply_event_extra(EXTRA_TRAIN_EVENT_ID, 0);
+        assert!(!game.is_fat(), "变胖应被清掉");
+        assert!(
+            game.uma().flags.ill.contains(Ill::HEADACHE),
+            "偏头痛不在定点范围内"
+        );
+        assert!(game.uma().flags.bad_trainer, "不擅长训练不在定点范围内");
     }
 
     /// 事件额外效果：最低演目 gauge +1、解一个 debuff

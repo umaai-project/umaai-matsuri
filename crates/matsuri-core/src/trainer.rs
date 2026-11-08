@@ -32,7 +32,7 @@ impl MatsuriTrainer {
         Self { config }
     }
 
-    /// 是否需要优先治病（变胖只影响训练速度、每回合 20% 自解，不占动作；不擅长 / 具名病才治）
+    /// 是否需要优先治病（变胖只影响训练速度、每回合 15% 自解，不占动作；不擅长 / 具名病才治）
     fn needs_clinic(game: &MatsuriGame) -> bool {
         let flags = &game.uma().flags;
         flags.bad_trainer || flags.ill.bits() & !Ill::FAT.bits() != 0

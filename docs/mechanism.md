@@ -534,8 +534,32 @@
 **兑现判定 = 训练位参与者**（普通训练 / 稽古同口径，不按稽古下标）；回合 `End` 仍 pending → 诊断
 「掷中未兑现（未选择追加稽古训练）」并作废。手写训练员估值同口径（`value.rs::kensan_bonus`）。
 
-**变胖（`Ill::FAT`）**：事件可附加；**训练 / 排练的速度增量归零**（训练后事件 / 休息 / 出行 / 比赛 /
-事件仍可加速度）；回合开始按 `rules.fat_recovery_prob`（剧本自持暂定 20%）解除，治病 / 合宿版休息也解除。
+**追加訓練（引擎系统事件 `102`）**：`after_train` 按 `constants.event_probs.extra_train`（15%，非夏合宿）
+在每次成功训练后抽（羁绊归属理事长）。上档（选项 1）= 体力 −5 / 该训练轴 +5 / 羁绊 +5 / **治变胖**；
+下档（选项 2）= 体力 +5。治愈在 `apply_event_extra` 里按 `EXTRA_TRAIN_EVENT_ID` + `choice 0` 定点结算
+（数据表 `event_extras` 只登记剧本事件，此条属引擎系统事件，故写在代码里）；估值 `event_choice_value`
+同口径（变胖时给上档 +`weights.fat`）。
+
+**变胖（`Ill::FAT`）**：事件可附加；**训练 / 排练的速度分量归零**（训练后事件 / 休息 / 出行 / 比赛 /
+事件仍可加速度）。回合开始按 `rules.fat_recovery_prob`（**暂定 15%**，期望持续约 6.7 回合；2026-11-08 曾定 25、同日后回调，待真机复核）解除；
+另有三条解除口：**治病**（引擎 `do_clinic` 清空全部生病位）、**合宿版休息**（普通休息不解除）、
+**「追加訓練」（`102`）选项 1（体力 −5）定点治变胖**——只清 `FAT`，不动其它病位 / 不擅长训练。
+「追加の稽古」上档另有一条通用 `event_extras`「解一个 debuff」（顺序 不擅长 → 变胖 → 其余具名病位，
+`value.rs::debuff_clear_value` 同口径）。
+**线上病种**：协议 `isIll` 只有布尔（引擎落 `Ill::UNKNOWN`），病种由帧 `baseGame.illEffects`
+（`chara_effect_id` 原值）精确还原。映射按**文本库分类 142**：`1 熬夜→NIGHT` / `2 懒惰成性→LAZY` /
+`3 皮肤粗糙→SKIN` / `4 变胖→FAT` / `5 偏头痛→HEADACHE` / `6 不擅长练习→BAD_TRAINER`——
+**与 `Ill` 的位序不同**，也与事件数据 `add_flags.ill` 的位集（`1` = 变胖）不是一套编号。
+帧不带该字段时退化成「未知病」——会被守门①直接送治病，不会误按变胖处理。
+
+**事件帧（`storyId`）**：插件端只透传 `baseGame.storyId`（取事件串里第一个多选项事件；效果表命中时另有
+`story`，**未收录时只有 id**），选项数与效果由接收端自持。还原侧按 id 查本地事件表
+（本仓 `scenario_events` → 引擎 `story` / `uma` / `card` / `friend` / `system`），**命中即以本仓数据为准**（数值 / 选项数），
+帧 `story` 只提供选项文本：引擎按 `story` 建过的同 id 事件会被本地那份**覆盖**（不是追加），
+选项数与帧不一致时按本仓并打一条帧提示；未收录才回退帧数据。命中后路由进事件决策；**两者都查不到则 `Route::Skip`，绝不回落训练建议**
+（事件帧的 `training` / 分布 / 训练等级都是残值）。帧提示里带 `storyId`，便于真机对账与补录。
+剧本关键事件均已覆盖：追加稽古 `400015106`（`scenario_events`）、友人出行第三段 `809052013`
+（`friend_events`）。
 
 **实现落点**
 
@@ -545,7 +569,7 @@
 | 事件结算 | `event_extras` / `event_person_target` | `Begin` / `AfterTrain` | `traits.rs::apply_event` / `event.rs::apply_event_extra` | `game/event.rs` 内联 | §5.4 |
 | 友人链 | `friend_events` + `FriendOutState` | `AfterTrain` / `Begin` / `Train` | `train.rs::after_train` / `event.rs` / `action.rs::do_friend_outing` | 内联 + `mechanics.rs` | §5.4 |
 | 追加稽古 | `scenario_events[400015106]` + `event_extras` | `Begin` 预掷 → 训练后 | `advice.rs::roll_kensan` / `train.rs::try_kensan` / `event.rs::trigger_kensan_event` | 内联 | §5.4 |
-| 变胖 | `Ill::FAT` / `rules.fat_recovery_prob` | 回合开始 / 训练 / 休息 / 治病 | `event.rs` / `train.rs::settle_training` / `action.rs::do_rest` | 内联 | §5.4 |
+| 变胖 | `Ill::FAT` / `rules.fat_recovery_prob`（15%，STUB）/ 帧 `illEffects` | 回合开始 / 训练 / 休息 / 治病 / 事件 | `event.rs::roll_fat_recovery` / `apply_event_extra` / `train.rs::settle_training` / `action.rs::do_rest` / `restore.rs::ill_from_effects` | 内联 + `tests/restore.rs` | §5.4 |
 | 继承 | `ai_config` `blue_count` / `extra_count`（引擎 `InheritInfo`） | `Begin`（T30 / T54 固定事件） | `traits.rs::apply_event` | `mechanics.rs::inheritance_settles_stats_pt_and_limit` | §5.4 |
 
 ### 5.5 状态：切者 / 小切 / 心情盾（2026-11-04 接线）
@@ -688,7 +712,7 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
 
 1. 候选只有 1 个 → 直接选（强制比赛 / 强制休息回合）。
 2. 候选全是教诲分配方案 → 价值矩阵择优（见下）。
-3. 生病 / 不擅长且可选治病 → 治病（变胖只影响训练速度、每回合 20% 自解，不占动作）。
+3. 生病 / 不擅长且可选治病 → 治病（变胖只影响训练速度、每回合 15% 自解、追加訓練上档也能治，不占动作）。
 4. 其余候选统一打分，取最高（确定性；同分取先出现者）：
    - 训练 / 稽古：`成功收益 × (1−失败率) + 失败惩罚 × 失败率`；成功收益 = 官方评分边际（属性 + PT）
      + 体力 / 干劲 / 羁绊 / 灵感估值 + 演目槽 / Lv / 発表会达标急迫 + 亮起囤积惩罚 + 追加稽古掷中兑现；
@@ -745,6 +769,26 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
   「可触发追加稽古」与剧本起始说明（`0–1 回合无担当分配…`）；手动核对 / `explain` 仍是完整档，
   演目表照旧。在线档在面板之后、搜索之前另打一条分隔线与「AI计算中…」。
 
+- **事件决策回显（2026-11-08）**：事件帧进入决策前先打事件身份与逐选项效果——
+  `[回合 N 事件]事件名 #id` + `  选项1（选项文本）：PT+20 体-5 羁绊+5 额外[上次训练+20]`。
+  属性取**还原出的 `EventData`**（本仓 / 引擎事件表），不读帧里的效果文本；帧 `story` 带选项文本时
+  附在「选项N」后的括号里，没有就只写「选项N」。事件名亮蓝（`94`，与手动面板同口径），
+  选项行不着色；数值格式复用 `panel::choice_effect_label`（不带成功率 / 结果档，
+  手动面板仍用 `choice_group_label`）。
+- **跳过行（2026-11-08）**：`T{n} 跳过：原因` 整行亮黄（`33`），与决策行区分。
+- **在线运气行（2026-11-08 加期望分与档次）**：`[回合 n 运气]本局：+X, 本轮: +Y, 期望 E （±S，档）`
+  —— `本局/本轮` 沿用引擎 `LuckScoreTracker`（显示分口径 `raw + (77−turn)×70`）；
+  `E` = **官方口径期望分**（`SearchSummary::expected_score`）。注意搜索基线本身不是官方分数：
+  搜索分把 PT 项放大 `pt_favor_rate` 倍，换算口径为
+  `official = search − PT加权均值 × pt_score_rate × 切者/小切因子 × (favor − 1)`
+  （`favor` = `[decks.*.trainer].pt_favor_rate`，默认 1.7271；本剧本 11k PT 时约差 1.6 万），
+  这样 `E` 才与终局得分同量纲；**`SearchSummary::baseline` 仍留在搜索口径**（运气分与候选分差都用它）；
+  `S` = 单局终局标准差（`baseline_stdev`，候选样本方差按样本数加权合并，不随预算收敛）；
+  `档` = `constants.get_rank_name(E)`。呈现：`E` 与 `档` 亮青（`96`），`S` 不着色。
+  `S = 0` / 手写档 / 搜索 fallback 时不显示该段（手写档连运气行本身都不出，因为没有搜索终局分）。
+  同回合重复决策时 `本局/本轮` 用同回合缓存快照，`E` 用当前最新摘要刷新。
+  JSON 同口径写进 `scenario_extra.expected_score` / `expected_stdev` / `expected_rank`。
+
 - **属性显示压缩**：五维**值与上限**显示 = 原始 ≤1200 取原值；>1200 部分减半向下取整
   （1600 → 1400，上限 3179 → 2189）。**计分 / 训练收益 / 变化量一律用原始值**（引擎
   `docs/game/game_rules.md` §9.4）；显示函数只在 `matsuri-cli` 呈现层。
@@ -777,7 +821,7 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
   并剥掉失败事件选项里的生病位（避免「盾扣了、事件又加回来」）。
 - **不变量**：`bad_trainer` 与 `Ill::BAD_TRAINER` 同置同清 → **一起拦（都生效或都不生效）**；
   **变胖（`Ill::FAT`）也是生病**，一并挡（user 2026-11-03 口径）。`trainer.rs::needs_clinic` 不治变胖是**治疗策略**
-  （变胖每回合 20% 自解、不占动作），与「算不算生病」无关。
+  （变胖每回合 15% 自解、不占动作），与「算不算生病」无关。
 - **数值影响**：离线 `data/events.json` 无 `lucky_count` 授予点 → 正常跑局零差；在线外壳按协议取真机值后生效。
 - **测试**：`lucky_body_blocks_training_failure_illness` / `training_failure_sets_illness_without_lucky_body` /
   `lucky_body_blocks_event_illness_including_fat` / `lucky_body_blocks_bad_trainer_atomically` /

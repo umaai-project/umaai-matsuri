@@ -16,6 +16,7 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 use umaai::BasePersonStatus;
 use umaai_core::Data;
+use umaai_core::gamedata::{ActionValue, EventData};
 use umasim::game::Game;
 
 /// 仓内默认测试马娘（与 `testing::sample_game` 同源）
@@ -137,6 +138,8 @@ fn restore_round_trip_at_decision_point() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: Some((0, 0)),
+            ill_effects: &[],
+            story_id: None,
         },
         data,
         config,
@@ -261,6 +264,8 @@ fn restore_keeps_build_roster_before_scenario_start() -> Result<()> {
             frame_persons: &frame_persons(&game),
             prev_train_levels: None,
             noncard_friendship: None,
+            ill_effects: &[],
+            story_id: None,
         },
         data,
         MatsuriConfig::default(),
@@ -297,6 +302,8 @@ fn restore_carries_level_baseline_when_frame_zero() -> Result<()> {
             frame_persons: &frame_persons(&game),
             prev_train_levels: Some(levels),
             noncard_friendship: None,
+            ill_effects: &[],
+            story_id: None,
         },
         data,
         MatsuriConfig::default(),
@@ -329,6 +336,8 @@ fn restore_after_training_stage() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
+            ill_effects: &[],
+            story_id: None,
         },
         data,
         MatsuriConfig::default(),
@@ -363,6 +372,8 @@ fn restore_rejects_deck_without_ssr_friend() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
+            ill_effects: &[],
+            story_id: None,
         },
         data,
         MatsuriConfig::default(),
@@ -399,6 +410,8 @@ fn restore_rejects_unknown_guest() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
+            ill_effects: &[],
+            story_id: None,
         },
         data,
         MatsuriConfig::default(),
@@ -431,6 +444,8 @@ fn restore_rejects_roster_order_mismatch() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
+            ill_effects: &[],
+            story_id: None,
         },
         data,
         MatsuriConfig::default(),
@@ -470,6 +485,8 @@ fn distribution_maps_protocol_ids() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: Some((30, 40)),
+            ill_effects: &[],
+            story_id: None,
         },
         data,
         MatsuriConfig::default(),
@@ -531,6 +548,8 @@ fn restore_maps_check_point_results() -> Result<()> {
             frame_persons: &persons,
             prev_train_levels: None,
             noncard_friendship: None,
+            ill_effects: &[],
+            story_id: None,
         },
         data,
         MatsuriConfig::default(),
@@ -540,6 +559,230 @@ fn restore_maps_check_point_results() -> Result<()> {
     assert_eq!(restored.check_points[1], CheckPointResult::GreatSuccess);
     assert_eq!(restored.check_points[2], CheckPointResult::NotReached);
     assert!(!restored.finals_done, "本番未结算");
+    Ok(())
+}
+
+/// 帧 `illEffects` → 病种精确还原（协议布尔只能落 `UNKNOWN`，变胖只有这条才认得出来）
+#[test]
+fn restore_ill_effects_by_kind() -> Result<()> {
+    let mut game = sample_game_with_uma(UMA_ID);
+    drive_to_train(&mut game, TARGET_TURN)?;
+
+    let data = Arc::clone(&game.data);
+    let festa = game.export_festa();
+    let persons = frame_persons(&game);
+    let mut base = game.base.clone();
+    base.distribution = protocol_distribution(&game);
+    // 旧插件 / 粗粒度落点：`isIll: true` → `UNKNOWN`
+    base.uma.flags.ill = umaai_core::Ill::UNKNOWN;
+    let effects = [1, 3];
+    let restored = MatsuriGame::restore(
+        RestoreInput {
+            base,
+            festa: &festa,
+            stage: Stage::Train,
+            frame_persons: &persons,
+            prev_train_levels: None,
+            noncard_friendship: None,
+            ill_effects: &effects,
+            story_id: None,
+        },
+        data,
+        MatsuriConfig::default(),
+    )?;
+    assert!(
+        restored.uma().flags.ill.contains(umaai_core::Ill::NIGHT),
+        "1 = 熬夜（夜ふかし気味）"
+    );
+    assert!(
+        restored.uma().flags.ill.contains(umaai_core::Ill::SKIN),
+        "3 = 皮肤粗糙（肌あれ）"
+    );
+    assert!(
+        !restored.uma().flags.ill.contains(umaai_core::Ill::UNKNOWN),
+        "精确病种应覆盖粗粒度标记"
+    );
+    assert!(
+        !restored.uma().flags.ill.contains(umaai_core::Ill::FAT),
+        "1 不是变胖（142 表：4 = 变胖）"
+    );
+    Ok(())
+}
+
+/// 142 表口径：协议 id `4` 才是变胖（不是 `1`）——按 `Ill` 位序推会错位
+#[test]
+fn restore_fat_comes_from_effect_4() -> Result<()> {
+    let mut game = sample_game_with_uma(UMA_ID);
+    drive_to_train(&mut game, TARGET_TURN)?;
+
+    let data = Arc::clone(&game.data);
+    let festa = game.export_festa();
+    let persons = frame_persons(&game);
+    let mut base = game.base.clone();
+    base.distribution = protocol_distribution(&game);
+    let effects = [4];
+    let restored = MatsuriGame::restore(
+        RestoreInput {
+            base,
+            festa: &festa,
+            stage: Stage::Train,
+            frame_persons: &persons,
+            prev_train_levels: None,
+            noncard_friendship: None,
+            ill_effects: &effects,
+            story_id: None,
+        },
+        data,
+        MatsuriConfig::default(),
+    )?;
+    assert!(
+        restored.uma().flags.ill.contains(umaai_core::Ill::FAT),
+        "4 = 变胖（太り気味）"
+    );
+    assert!(
+        !restored.uma().flags.ill.contains(umaai_core::Ill::LAZY),
+        "4 不应被当成摸鱼"
+    );
+    Ok(())
+}
+
+/// 事件帧：`storyId` 按本地事件表注入待选事件（剧本资产优先，其次引擎五表）
+#[test]
+fn restore_injects_event_by_story_id() -> Result<()> {
+    let mut game = sample_game_with_uma(UMA_ID);
+    drive_to_train(&mut game, TARGET_TURN)?;
+
+    let data = Arc::clone(&game.data);
+    let festa = game.export_festa();
+    let persons = frame_persons(&game);
+    let mk = |story_id: Option<i32>| {
+        let mut base = game.base.clone();
+        base.distribution = protocol_distribution(&game);
+        base.unresolved_events.clear();
+        (base, story_id)
+    };
+
+    // ① 追加稽古（本仓 scenario_events，`player_select` + 2 组选项）
+    let (base, story_id) = mk(Some(400015106));
+    let restored = MatsuriGame::restore(
+        RestoreInput {
+            base,
+            festa: &festa,
+            stage: Stage::Train,
+            frame_persons: &persons,
+            prev_train_levels: None,
+            noncard_friendship: None,
+            ill_effects: &[],
+            story_id,
+        },
+        Arc::clone(&data),
+        MatsuriConfig::default(),
+    )?;
+    let injected = restored
+        .base
+        .unresolved_events
+        .iter()
+        .find(|event| event.id == 400015106)
+        .expect("追加稽古应被注入");
+    assert!(injected.player_select, "追加稽古是多选项事件");
+    assert_eq!(injected.choices.len(), 2, "上 / 下两档");
+
+    // ② 友人出行第三段（引擎 `friend_events`，同为多选项）
+    let (base, story_id) = mk(Some(809052013));
+    let restored = MatsuriGame::restore(
+        RestoreInput {
+            base,
+            festa: &festa,
+            stage: Stage::Train,
+            frame_persons: &persons,
+            prev_train_levels: None,
+            noncard_friendship: None,
+            ill_effects: &[],
+            story_id,
+        },
+        Arc::clone(&data),
+        MatsuriConfig::default(),
+    )?;
+    assert!(
+        restored
+            .base
+            .unresolved_events
+            .iter()
+            .any(|event| event.id == 809052013 && event.player_select),
+        "友人出行第三段应被注入"
+    );
+
+    // ③ 未收录的 id：不注入假事件（由路由层跳过）
+    let (base, story_id) = mk(Some(999_999_999));
+    let restored = MatsuriGame::restore(
+        RestoreInput {
+            base,
+            festa: &festa,
+            stage: Stage::Train,
+            frame_persons: &persons,
+            prev_train_levels: None,
+            noncard_friendship: None,
+            ill_effects: &[],
+            story_id,
+        },
+        data,
+        MatsuriConfig::default(),
+    )?;
+    assert!(
+        restored.base.unresolved_events.is_empty(),
+        "未收录事件不应注入任何东西"
+    );
+    Ok(())
+}
+
+/// 事件帧：**本仓数据优先**——引擎按帧 `story` 建过的同 id 事件被本地那份覆盖
+#[test]
+fn restore_prefers_local_event_over_frame_story() -> Result<()> {
+    let mut game = sample_game_with_uma(UMA_ID);
+    drive_to_train(&mut game, TARGET_TURN)?;
+
+    let data = Arc::clone(&game.data);
+    let festa = game.export_festa();
+    let persons = frame_persons(&game);
+    let mut base = game.base.clone();
+    base.distribution = protocol_distribution(&game);
+    // 模拟引擎按帧 `story` 建的那份：同 id、只有 1 组选项、数值取帧口径（体力 +3）
+    let mut frame_event = EventData::from_action_value(
+        400015106,
+        "追加の稽古",
+        &ActionValue {
+            vital: 3,
+            ..Default::default()
+        },
+    );
+    frame_event.player_select = true;
+    base.unresolved_events = vec![frame_event];
+    let restored = MatsuriGame::restore(
+        RestoreInput {
+            base,
+            festa: &festa,
+            stage: Stage::Train,
+            frame_persons: &persons,
+            prev_train_levels: None,
+            noncard_friendship: None,
+            ill_effects: &[],
+            story_id: Some(400015106),
+        },
+        data,
+        MatsuriConfig::default(),
+    )?;
+    let queued: Vec<&EventData> = restored
+        .base
+        .unresolved_events
+        .iter()
+        .filter(|event| event.id == 400015106)
+        .collect();
+    assert_eq!(queued.len(), 1, "同 id 只应留一条（覆盖而非追加）");
+    assert_eq!(queued[0].choices.len(), 2, "选项数按本仓（上 / 下两档）");
+    assert_eq!(
+        queued[0].choices[0][0].value.vital, -5,
+        "数值按本仓（体力 −5）"
+    );
     Ok(())
 }
 

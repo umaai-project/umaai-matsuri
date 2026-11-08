@@ -110,7 +110,7 @@ const SAMPLE_RATE: i32 = 100;
 - [ ] 每项都有替换条件与影响面；
 - [ ] 替换后已重录基线并在 `glossary.md` 留痕；
 - [ ] 代码中搜索 `STUB:` / `TBD:` 与登记表一致。
-| 变胖状态（`Ill::FAT`） | 训练 / 排练速度增量归零；每回合 20% 解除；治病 / 合宿版休息解除 | user 2026-11-01 + memo/上游 | `data/scenario_matsuri.json` `rules.fat_recovery_prob` + `game/event.rs` / `game/train.rs` / `game/action.rs` | 事件来源=构造事件「大胃王」33% 档；解除概率为剧本自持暂定值（STUB）；训练后事件 / 休息 / 出行 / 比赛 / 事件仍可加速度 | 会位移 | STUB（概率待真机）/ 已实现 |
+| 变胖状态（`Ill::FAT`） | 训练 / 排练速度分量归零；**每回合 15% 解除**（暂定值；2026-11-08 曾定 25 后回调）；治病 / 合宿版休息 / 「追加訓練」选项 1 定点治 | user 2026-11-08（25% + 追加訓練治愈）+ memo/上游 | `data/scenario_matsuri.json` `rules.fat_recovery_prob` + `game/event.rs` / `game/train.rs` / `game/action.rs` | 事件来源 = 构造事件「大胃王」33% 档；25% 档同种子块 100 局配对位移 +0.7（噪声内），15% 档未测 | 近零 | STUB（解除率待真机） / 其余已实现 |
 | 大胃王（构造事件） | `id 5010`（**不模拟真实 ID：马娘事件 ID 每个马娘不同**，通用模拟用固定构造 ID）/ Random `max_time 3` / 选项 1 体力+10 PT+5；选项 2 体力+30 PT+10 + 33% 变胖 | user 2026-11-01（A17 + 补充：不用真实 ID） | `data/events.json` `uma_events` | 各马娘真实事件 ID 不同，本仓只做通用构造；次数 / 概率 / 数值按用户口径冻结 | 会位移（事件池多一条） | RESOLVED（构造口径） |
 | 友人卡事件槽位映射 | `001` first / `032` click / `004` out / `021` newyear / `011–015` 出行 1–5 / `023` end；`002/003/033` R 卡、`022` 未满 5 段结局变体、`031` 随机事件 | user 2026-11-01 核对（按名字 + memo + 温泉同构） | `data/events.json` `friend_events` | 待真机帧复核槽位语义（尤其 `023` 结局 / `004` 出行解锁） | 会位移（若映射错） | TBD（真机复核） |
 | 友人事件数值口径 | memo 值按**基础值**入库，结算时引擎叠卡面「事件效果 +30% / 回复量 +60%」 | user 2026-11-01（A13 / B11 按引擎）+ 推断证据（事件⑤ 56=35×1.6 等） | `data/events.json` `friend_events` + 引擎 `apply_friend_bonus` | 若「事件⑤」观测值证明 memo 是终值，则需关闭加成并修正全部友人事件 | 会位移 | STUB（口径推断） |
