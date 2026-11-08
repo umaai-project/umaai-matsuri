@@ -46,6 +46,7 @@ URA 自身的便携判定是 `exe 旁 .portable 目录`，与启动器传入的 
 ```text
 matsuri-ai/
   matsuri-ai.exe          # 启动器（发布唯一入口）
+  LICENSE                 # 许可证（CC BY-NC-SA 4.0，随包分发）
   data/
     config.toml           # 启动器配置（本计划新增）
     ai_config.toml        # 引擎默认层

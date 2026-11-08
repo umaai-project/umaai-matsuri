@@ -24,4 +24,5 @@ anyhow.workspace = true
 log.workspace = true
 rand.workspace = true
 inquire = "0.9.4"
+rayon.workspace = true
 serde_json.workspace = true

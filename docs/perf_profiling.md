@@ -67,7 +67,9 @@
 - `micro` 是热循环口径（同局面反复调用），绝对值低于真实 rollout 中的冷调用；跨版本比较用同一口径。
 - `root` 的 `rollout_noop` 用「永远选 0」的空训练员，把引擎机制成本与训练员决策成本拆开。
 - 固定根用生产配置装配（`build_game + with_config`），不能用 `testing::sample_game`（它是默认档）。
-- 线程数用 `RAYON_NUM_THREADS` 在进程启动前固定；radical 取配置层（当前 0）。
+- 线程数用 `RAYON_NUM_THREADS` 在进程启动前固定；在线 / 离线主入口另可用
+  `matsuri_config [search].threads` 配默认值（`0` = 自动，环境变量优先），测量工具仍用
+  `RAYON_NUM_THREADS` / `--threads`；radical 取配置层（当前 0）。
 - `stages` / `allocs` 的基线是「同一固定根的下一次 rollout」：阶段耗时含训练员决策，`Train` 段
   扣掉 `trainer.action_us` 才是机制成本。
 - `flat` 用 `std::thread` 每线程串行 rollout，用来区分「引擎嵌套 rayon 调度」与「工作负载本身」

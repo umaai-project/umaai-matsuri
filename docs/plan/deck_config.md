@@ -7,7 +7,7 @@
 
 `matsuri_config.toml` 原来把两类东西放在同一层：
 
-- **全局运行设置**：`[pre]`（局外切 / 心情盾）、`[search]`（搜索预算与作用面）；
+- **全局运行设置**：`[pre]`（局外切 / 心情盾）、`[search]`（搜索预算 / 并行度 / 作用面）；
 - **一套按速主卡组调的剧本参数**：`[fusion]`、`[trainer]`，以及代码里的 `ROUTE_PRIOR` 教诲落位先验。
 
 实测（dev plan #48，3000 局/档）耐 / 根 / 智主卡组比默认档低 3.9k–4.6k，失分集中在速度分项；
@@ -19,7 +19,7 @@
 
 | 层 | 段 | 内容 |
 |---|---|---|
-| 全局运行设置 | `[pre]` / `[search]` | 局外切 / 心情盾、搜索预算与作用面 |
+| 全局运行设置 | `[pre]` / `[search]` | 局外切 / 心情盾、搜索预算 / 并行度 / 作用面 |
 | 卡组参数 | `[decks.<name>]` | `comp` + 可选 `fusion` / `advice` / `trainer` |
 
 - `[decks.default]` 是**完整默认档**（原 speed_build 参数），也是继承基座与未匹配兜底。
@@ -42,6 +42,7 @@ positive_thinking = 0
 
 [search]
 search_n = 8192
+threads = 0  # 搜索 rayon 全局池线程数；0 = 自动（显式 RAYON_NUM_THREADS 优先）
 train = true
 advice = true
 event = true

@@ -40,9 +40,10 @@ pub struct MatsuriConfig {
     pub deck: Arc<DeckParams>,
 }
 
-/// 搜索档作用面：预算 + 每一类决策走搜索还是手写
+/// 搜索档作用面：预算 + 并行度 + 每一类决策走搜索还是手写
 ///
-/// `search_n` 归剧本配置（每候选 rollout 次数，`0` = 手写档，默认 8192）；其余内核参数
+/// `search_n` 归剧本配置（每候选 rollout 次数，`0` = 手写档，默认 8192）；`threads`
+/// 是搜索 rayon 全局池线程数（`0` = 自动，由入口在首次搜索前应用）；其余内核参数
 /// （`max_depth` / UCB / 激进度）仍取引擎 `[search]`。候选剪枝宽度不进配置，
 /// 由搜索训练员的常量决定（Train 全量、教诲 16）。
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -50,6 +51,8 @@ pub struct MatsuriConfig {
 pub struct SearchScopeConfig {
     /// 每个候选的 rollout 次数（0 = 手写档；测试 1/1024；默认 8192）
     pub search_n: usize,
+    /// 搜索 rayon 全局池线程数（0 = 自动；显式 `RAYON_NUM_THREADS` 优先）
+    pub threads: usize,
     /// Train 主动作是否走搜索
     pub train: bool,
     /// 教诲分配是否走搜索（120 候选先按手写分剪枝）
@@ -63,6 +66,7 @@ impl Default for SearchScopeConfig {
     fn default() -> Self {
         Self {
             search_n: 8192,
+            threads: 0,
             train: true,
             advice: true,
             event: true,
@@ -252,11 +256,13 @@ mod tests {
     #[test]
     fn overlay_replaces_pre_and_search() {
         let overlay = "[pre]\nqie = \"xiaoqie\"\npositive_thinking = 2\n\
-                       [search]\nsearch_n = 1024\ntrain = false\nadvice = false\nevent = false\n";
+                       [search]\nsearch_n = 1024\nthreads = 8\n\
+                       train = false\nadvice = false\nevent = false\n";
         let cfg = MatsuriConfig::parse(&repo_text(), Some(overlay)).expect("覆盖层应可合并");
         assert_eq!(cfg.pre.qie, Qie::Xiaoqie);
         assert_eq!(cfg.pre.positive_thinking, 2);
         assert_eq!(cfg.search.search_n, 1024);
+        assert_eq!(cfg.search.threads, 8, "覆盖层可指定搜索线程数");
         assert!(!cfg.search.train);
         assert_eq!(*cfg.deck, DeckParams::default(), "卡组档不受覆盖层影响");
     }
@@ -285,6 +291,10 @@ mod tests {
                        event = false\n";
         let cfg = MatsuriConfig::parse(&repo_text(), Some(overlay)).expect("整段覆盖应可合并");
         assert_eq!(cfg.search.search_n, 1024);
+        assert_eq!(
+            cfg.search.threads, 0,
+            "[search] 整段覆盖时未写 threads 回落为自动"
+        );
         assert!(!cfg.search.train);
 
         let bad_key = repo_text().replace("[search]", "[search]\nunknown = 1");

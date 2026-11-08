@@ -28,7 +28,9 @@ workspace 六 crate：
   其他档深合并；未匹配 comp 走 default；`variant = true` 仅显式选择。
   当前只保留 `wisdom` 一套非默认档（教诲落位四窗口 + `status_weights` 均已定档）；
   `stamina / guts` 于 2026-11-07 退役，备份与加回步骤见 `logs/deckselect/retired_2026-11-07/`。
-- **搜索**：`[search].search_n` 为每候选 rollout 数（默认 **8192**，`0` = 手写档）；Train / 教诲 / 事件分开关；
+- **搜索**：`[search].search_n` 为每候选 rollout 数（默认 **8192**，`0` = 手写档）；
+  `[search].threads` 固定 rayon 全局池线程数（默认 **0** = 自动，显式 `RAYON_NUM_THREADS` 优先），
+  在在线 / 离线入口首次搜索前应用；Train / 教诲 / 事件分开关；
   教诲候选按 801 硬约束去重后再剪枝 / 搜索。
 - **在线决策**：`matsuri online` 支持真机帧监听与回放；输出局面面板、运气分、融合固定决策、Top 5 候选、
   教诲完整映射与 `AdvicePreset` 差异；**同回合每张新帧都重新决策**（只有内容完全相同的重复帧按摘要跳过），
@@ -126,3 +128,8 @@ umaai-cli  = { path = "../umaai_next/crates/umaai-cli" }
 # 稳定期：同一 repo / tag
 # umaai = { git = "<engine repo>", tag = "engine-v0.1.0" }
 ```
+
+## 许可证
+
+本仓以 **CC BY-NC-SA 4.0**（署名–非商业性使用–相同方式共享）发布，全文见 [`LICENSE`](LICENSE)。
+Windows 发布包由 `scripts/package_launcher.py` 随附同一份许可证文件。

@@ -101,6 +101,24 @@ where
     }
 }
 
+/// `[search].threads` → rayon 全局池；须在首次搜索前调用（进程内只能初始化一次）
+///
+/// `0` = 自动（逻辑核数）；显式设了 `RAYON_NUM_THREADS` 时以环境变量为准。
+/// 返回是否实际设置了全局池。
+pub(crate) fn apply_search_threads(threads: usize) -> bool {
+    if threads == 0 || std::env::var_os("RAYON_NUM_THREADS").is_some() {
+        return false;
+    }
+    if let Err(err) = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build_global()
+    {
+        eprintln!("警告：搜索线程池初始化失败（{err}），沿用默认线程数");
+        return false;
+    }
+    true
+}
+
 /// 装配一局并跑到底（数据根为代码级配置；命令行只选训练员）
 fn run(trainer: Option<&str>, deck_profile: Option<String>, explain_flag: bool) -> Result<()> {
     let trainer_name = trainer.unwrap_or("matsuri");
@@ -115,6 +133,7 @@ fn run(trainer: Option<&str>, deck_profile: Option<String>, explain_flag: bool) 
     let data = Arc::new(MatsuriData::load(DATA_ROOT).context("载入剧本数据失败")?);
     let mut matsuri_cfg =
         MatsuriConfig::load_with_overlay_file(DATA_ROOT, ".").context("载入剧本配置失败")?;
+    apply_search_threads(matsuri_cfg.search.threads);
     let comp = matsuri_core::deck_comp(&cfg.sim.cards).context("卡组构成解析失败")?;
     matsuri_cfg = matsuri_cfg.for_deck(comp);
     if let Some(name) = &deck_profile {
@@ -187,4 +206,15 @@ fn run(trainer: Option<&str>, deck_profile: Option<String>, explain_flag: bool) 
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `threads = 0` = 自动：不初始化 rayon 全局池
+    #[test]
+    fn auto_threads_keeps_rayon_default() {
+        assert!(!apply_search_threads(0));
+    }
 }

@@ -246,6 +246,8 @@ cargo test --workspace --release --offline
 
 | 2026-11-08 | **跳过帧提示收敛 + 期望分 / 档次 / JSON 统一投影（user 拍板）**：跳过帧不再打印帧提示（黄色跳过行已说明原因，JSON 保留 `story_id` / `reason`）；`E₀ + (77−t)×luck_turn_bonus` 的投影统一在 `matsuri-ai::output::projected_summary` 做，档次按投影后的 E 重查 `rank_names`，JSON 三字段与终端共用同一份投影值，σ 不变 | 帧提示与黄色跳过行重复；期望分需与「本局/本轮」同量纲；user 明确要求档次 / JSON 也跟着投影，不接受三者口径分裂 | 离线零影响；只改呈现层；`luck_turn_bonus` 仍为 100，`render_luck` 分档阈值（<0/<500/<1500）仍是旧标定，待同步 |
 
+| 2026-11-08 | **搜索线程数配置项 `[search].threads`（user 拍板）**：与 `search_n` 同段，默认 0 = 自动；首次搜索前初始化 rayon 全局池，显式 `RAYON_NUM_THREADS` 优先 | 用户希望在配置文件里调线程数，而不是每次记环境变量；测量工具已有 `--threads`，故只覆盖在线 / 离线主入口 | 默认零影响；仅新增可选配置键 |
+
 ## 4. 待决事项
 
 | # | 事项 | 现状 / 待确认点 | 阻塞级别 |

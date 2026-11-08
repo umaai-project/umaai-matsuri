@@ -64,6 +64,7 @@ pub fn run(args: Args) -> Result<()> {
     let data = Arc::new(MatsuriData::load(crate::DATA_ROOT).context("载入剧本数据失败")?);
     let mut matsuri_cfg =
         MatsuriConfig::load_with_overlay_file(crate::DATA_ROOT, ".").context("载入剧本配置失败")?;
+    crate::apply_search_threads(matsuri_cfg.search.threads);
     let comp = matsuri_core::deck_comp(&cfg.sim.cards).context("卡组构成解析失败")?;
     matsuri_cfg = matsuri_cfg.for_deck(comp);
     // 在线档与离线档读同一套配置：预算取 `matsuri_config [search].search_n`，

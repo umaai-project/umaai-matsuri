@@ -7,7 +7,7 @@
     python3 scripts/package_launcher.py --release-dir target/release --out dist/matsuri-ai
 
 约定：
-- 产物布局：matsuri-ai.exe / bin/matsuri.exe / data/<九个运行时文件>。
+- 产物布局：matsuri-ai.exe / bin/matsuri.exe / data/<九个运行时文件> / LICENSE（仓根许可证）。
 - 附加资源默认取 dist/extra/（被 /dist/ 忽略）：**整个目录递归**拷到发布包根目录，
   保留相对路径与空目录（.portable/PluginData/SendGameStatusPlugin 必须是目录，
   否则核心 CLI 的 FileChannel::open 会报「小黑板数据目录不存在」）。
@@ -41,6 +41,9 @@ DATA_FILES = (
     "constants.json",
 )
 
+# 随包分发的许可证（仓根唯一真源；CC BY-NC-SA 4.0）
+LICENSE_FILE = "LICENSE"
+
 
 def exe_name(stem: str) -> str:
     """可执行文件文件名（Windows 带 .exe）。"""
@@ -61,6 +64,9 @@ def collect(release_dir: Path, out: Path, extra: Path) -> list[str]:
     missing_data = [name for name in DATA_FILES if not (data_src / name).is_file()]
     if missing_data:
         raise FileNotFoundError("缺少运行时数据文件：" + ", ".join(missing_data))
+    license_src = REPO / LICENSE_FILE
+    if not license_src.is_file():
+        raise FileNotFoundError(f"缺少许可证文件：{license_src}")
 
     out.mkdir(parents=True, exist_ok=True)
     (out / "bin").mkdir(exist_ok=True)
@@ -68,6 +74,7 @@ def collect(release_dir: Path, out: Path, extra: Path) -> list[str]:
 
     shutil.copy2(launcher, out / launcher.name)
     shutil.copy2(core, out / "bin" / core.name)
+    shutil.copy2(license_src, out / LICENSE_FILE)
     for name in DATA_FILES:
         shutil.copy2(data_src / name, out / "data" / name)
 
@@ -111,7 +118,7 @@ def collect(release_dir: Path, out: Path, extra: Path) -> list[str]:
             "启动器「启动小黑板」将提示程序缺失"
         )
 
-    expected = {launcher.name, "bin", "data", *extra_names}
+    expected = {launcher.name, "bin", "data", LICENSE_FILE, *extra_names}
     messages += [
         f"警告：输出目录存在非白名单条目（未删除）：{path.relative_to(out)}"
         for path in out.iterdir()

@@ -33,6 +33,10 @@ positive_thinking = 0
 [search]
 # 每个候选的 rollout 次数：0 = 手写档
 search_n = 8192
+# 搜索 rayon 全局池线程数：0 = 自动（逻辑核数）；显式设了 RAYON_NUM_THREADS 时以环境变量为准
+# 只对在线 / 离线主入口生效；bench / cardtest / sweep 仍用各自的 --threads
+# 注意：覆盖层若写了 [search] 段就整段替换，未写 threads 会回落为 0（自动）
+threads = 0
 # 三类决策是否走 FlatSearch
 train = true
 advice = true
