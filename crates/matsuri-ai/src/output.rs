@@ -9,9 +9,10 @@
 //! 候选打分表仍在 `candidate_scores` / `candidate_descriptions` 里（供小黑板显示），
 //! 由 `scenario_extra.score_source` 标明来源。
 
-use matsuri_core::{Action, MatsuriGame, MatsuriView, SearchSummary};
+use matsuri_core::{Action, MAX_TURN, MatsuriGame, MatsuriView, SearchSummary};
 use serde_json::{Value, json};
 use umaai::DecisionRecord;
+use umaai_core::Data;
 
 /// 一帧处理后的走向
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -282,5 +283,67 @@ impl TrainingDeviation {
     #[must_use]
     pub fn is_match(&self) -> bool {
         self.delta.iter().all(|delta| *delta == 0)
+    }
+}
+
+/// 搜索摘要投到显示分口径：`E` 与档次都按投影值（终端与 JSON 共用同一份）
+///
+/// `E = E₀ + (MAX_TURN − turn) × bonus`；档次按投影后的 E 重查 `rank_names`。
+/// σ 是确定性平移下的方差，保持不变；`Data` 未初始化时档次沿用原值。
+#[must_use]
+pub fn projected_summary(summary: &SearchSummary, turn: i32, bonus: i32) -> SearchSummary {
+    let score = summary.expected_score + (MAX_TURN - turn) as f64 * f64::from(bonus);
+    let rank = Data::get()
+        .ok()
+        .map(|data| data.consts.get_rank_name(score.round() as i32).to_string())
+        .unwrap_or_else(|| summary.expected_rank.clone());
+    SearchSummary {
+        expected_score: score,
+        expected_rank: rank,
+        ..summary.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample(score: f64, rank: &str) -> SearchSummary {
+        SearchSummary {
+            expected_score: score,
+            expected_rank: rank.to_string(),
+            baseline_stdev: 3000.0,
+            ..SearchSummary::default()
+        }
+    }
+
+    /// 投影只平移 E：随回合递减，σ / 基线 / 候选都不变
+    #[test]
+    fn projected_summary_shifts_score_only() {
+        let early = projected_summary(&sample(82140.0, "LG9"), 0, 100);
+        assert_eq!(early.expected_score, 89840.0);
+        assert_eq!(early.baseline_stdev, 3000.0);
+        assert_eq!(early.baseline, 0.0);
+        assert!(early.candidates.is_empty());
+
+        let late = projected_summary(&sample(82140.0, "LG9"), 76, 100);
+        assert_eq!(late.expected_score, 82240.0);
+
+        let raw = projected_summary(&sample(82140.0, "LG9"), 32, 0);
+        assert_eq!(raw.expected_score, 82140.0);
+    }
+
+    /// 档次按投影后的 E 重查 rank_names（不再沿用官方口径档次）
+    #[test]
+    fn projected_summary_relabels_rank() {
+        Data::init(matsuri_core::testing::data_dir()).expect("静态数据初始化");
+        let data = Data::get().expect("Data 已初始化");
+        let raw_rank = data.consts.get_rank_name(82140).to_string();
+        let shifted_rank = data.consts.get_rank_name(89840).to_string();
+        assert_ne!(raw_rank, shifted_rank, "两档分数应命中不同档次");
+
+        let s = projected_summary(&sample(82140.0, &raw_rank), 0, 100);
+        assert_eq!(s.expected_score, 89840.0);
+        assert_eq!(s.expected_rank, shifted_rank);
     }
 }

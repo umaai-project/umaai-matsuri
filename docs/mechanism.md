@@ -784,21 +784,23 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
   —— `本局/本轮` 沿用引擎 `LuckScoreTracker`（显示分口径 `raw + (max_turn − turn) × luck_turn_bonus`，
   2026-11-08 标定后取 **100**，见下条）；
   `E` = 官方口径期望分 `E₀`（`SearchSummary::expected_score`）**按回合计入显示分加成**：
-  `E = E₀ + (77 − t) × luck_turn_bonus`，与 `本局/本轮` 落在同一显示分空间（2026-11-08 user 拍板）。
+  `E = E₀ + (77 − t) × luck_turn_bonus`，与 `本局/本轮` 落在同一显示分空间。
   注意搜索基线本身不是官方分数：
   搜索分把 PT 项放大 `pt_favor_rate` 倍，换算口径为
   `official = search − PT加权均值 × pt_score_rate × 切者/小切因子 × (favor − 1)`
   （`favor` = `[decks.*.trainer].pt_favor_rate`，默认 1.7271；本剧本 11k PT 时约差 1.6 万），
-  这样 `E` 才与终局得分同量纲；**`SearchSummary::baseline` 仍留在搜索口径**（运气分与候选分差都用它）；
-  `S` = 单局终局标准差（`baseline_stdev`，候选样本方差按样本数加权合并，不随预算收敛）；
-  `档` = `constants.get_rank_name(E₀)`（仍按官方口径查；投影值不是终局分，直接查会虚高档次）。
+  这样 `E₀` 才与终局得分同量纲；**`SearchSummary::baseline` 仍留在搜索口径**（运气分与候选分差都用它）；
+  `S` = 单局终局标准差（`baseline_stdev`，候选样本方差按样本数加权合并，不随预算收敛），
+  投影是确定性平移，**S 不变**；
+  `档` = `constants.get_rank_name(E)` —— **按投影后的 E 查**（2026-11-08 user 拍板：档次与终端 / JSON
+  三者口径一致）。注意投影值不是终局分，用它查官方评分表会显示偏高档次（例：T0 的 82,123 → 89,823）。
   呈现：`E` 与 `档` 亮青（`96`），`S` 不着色。
   `S = 0` / 手写档 / 搜索 fallback 时不显示该段（手写档连运气行本身都不出，因为没有搜索终局分）。
   同回合重复决策时 `本局/本轮` 用同回合缓存快照，`E` 用当前最新摘要刷新。
-  JSON 仍写官方口径 `E₀` / `S` / `档`（`scenario_extra.expected_score` / `expected_stdev` / `expected_rank`），
-  不叠显示分加成。
-  **只在显示层投影**：`render_luck` 改的是终端显示值，`SearchSummary::expected_score` 与 JSON 保持官方口径；
-  决策 / 搜索排序 / 基线零影响。档次仍按 `E₀` 查，避免拿投影值查表虚高档次。
+  JSON 写同一份投影值：`scenario_extra.expected_score` / `expected_stdev` / `expected_rank`。
+  **投影统一在在线层做**：`matsuri-ai::output::projected_summary` 在 session 组装 `OnlineTurnOutput`
+  时把 `SearchSummary` 的 `expected_score` / `expected_rank` 一起改好，终端 `render_luck` 与
+  `json_payload` 只消费、不再各算一遍；决策 / 搜索排序 / 基线零影响。
 
 - **运气显示分标定（2026-11-08，`luck_turn_bonus` 70 → 100）**：`ai_config [record]`。
   搜索期望分（终局口径）随回合 **系统性上升**：MCTS 自博弈实测（N=1024、uma 105902、

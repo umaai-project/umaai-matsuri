@@ -24,7 +24,7 @@ use matsuri_core::game::advice::advice_display_name;
 use matsuri_core::game::restore::RestoreInput;
 use matsuri_core::{
     Action, MAX_TURN, MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer,
-    MatsuriTrainer, Stage,
+    MatsuriTrainer, SearchSummary, Stage,
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -36,10 +36,15 @@ use umasim::game::{Game, SupportCard, Trainer};
 use crate::final_score::parse_final_score;
 use crate::frame::ParsedFrame;
 use crate::online::{self, Route};
-use crate::output::{FinalTurnOutput, OnlineTurnOutput, TurnKind};
+use crate::output::{FinalTurnOutput, OnlineTurnOutput, TurnKind, projected_summary};
 
 /// 剧本友人（吾妻）首次点击事件 id（`BaseParams.friend_first_event`；0 = 未知则跳过判定）
 pub const FRIEND_FIRST_EVENT: i32 = 809052001;
+
+/// 搜索摘要投到显示分口径：E 与档次都按投影值（终端 / JSON 共用同一份）
+fn display_summary(summary: Option<SearchSummary>, turn: i32, bonus: i32) -> Option<SearchSummary> {
+    summary.map(|s| projected_summary(&s, turn, bonus))
+}
 
 /// 训练员档位
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -294,6 +299,7 @@ impl OnlineSession {
                     TrainerChoice::Search(trainer) => trainer.last_search(),
                     TrainerChoice::Hand(_) => None,
                 };
+                let summary = display_summary(summary, turn, self.luck.bonus());
                 let scores: Option<Vec<(usize, f64, u32)>> = summary.as_ref().map(|summary| {
                     summary
                         .candidates
@@ -400,6 +406,7 @@ impl OnlineSession {
                     TrainerChoice::Search(trainer) => trainer.last_search(),
                     TrainerChoice::Hand(_) => None,
                 };
+                let summary = display_summary(summary, turn, self.luck.bonus());
                 let search_backed = summary.is_some();
                 let candidate_scores = summary.as_ref().map_or_else(Vec::new, |summary| {
                     summary
@@ -573,6 +580,7 @@ impl OnlineSession {
                         ),
                     },
                 };
+                let summary = display_summary(summary, turn, self.luck.bonus());
                 // 运气分只统计搜索终局分，且只在主行动（训练 / 比赛）上推进；
                 // 同回合重复决策复用本回合快照，免得把基线抖动记进「本轮」
                 if search_backed {

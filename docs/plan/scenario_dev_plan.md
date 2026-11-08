@@ -244,7 +244,7 @@ cargo test --workspace --release --offline
 | 2026-11-07 | **wisdom 五维系数定档 + stamina / guts 退役（user 拍板）**：`[decks.wisdom_build.trainer] status_weights = [0.808125, 1.111613, 0.629025, 0.15, 1.31085]`；移除 `decks/stamina_build.csv` / `decks/guts_build.csv` 与配置中两段 `[decks.*]`（含 advice 四窗口） | 五维系数独立块 +630.6 ±145.4、影子 +606.3；stamina / guts 五维系数复核不通过、机制旋钮 278 变体 0/6 通过且全部显著为负，残余失分是构成性的（1 张速卡 / 0 张耐卡），等构成搜索后再加入 | 有（仅 wisdom 数值位移；默认档 seed 61444 86053 / PT 11864 逐位不变，不重录基线）。备份与加回步骤见 `logs/deckselect/retired_2026-11-07/`；教诲定档成果仍在 `logs/advscan/` |
 | 2026-11-08 | **线上状态字段 `illEffects` → `charaEffects`（全量状态数组，user 拍板）**：插件只透传全量状态 ID（去 0 / 去重 / 保序、恒输出），病种语义由接收端按文本库 142 表自行判断；`isIll` 独立按「存在 1–6」计算。接收端 `frame.rs` / `session.rs` / `restore.rs` / 测试夹具同步改名，`ill_from_effects` 显式映射不变；新增全量数组解析与还原用例 | 发布前契约通用化，插件不再替消费端判病种；数组不做语义分类 / 排序 / 白名单过滤，避免 142 表未收录的新状态被丢掉 | 离线零影响（无帧）；线上需插件 DLL 与接收端同步部署；交接见 `URA_Plugins/handoff-2026-11-08.md` |
 
-| 2026-11-08 | **跳过帧提示收敛 + 期望分显示投影（user 拍板）**：跳过帧不再打印帧提示（黄色跳过行已说明原因，JSON 保留 `story_id` / `reason`）；终端「期望 E」按 `E₀ + (77−t)×luck_turn_bonus` 投影到显示分空间，档次与 JSON 保持官方口径 | 帧提示与黄色跳过行重复；期望分需与「本局/本轮」同量纲 | 离线零影响；只改呈现层；`luck_turn_bonus` 仍为 100，`render_luck` 分档阈值（<0/<500/<1500）仍是旧标定，待同步 |
+| 2026-11-08 | **跳过帧提示收敛 + 期望分 / 档次 / JSON 统一投影（user 拍板）**：跳过帧不再打印帧提示（黄色跳过行已说明原因，JSON 保留 `story_id` / `reason`）；`E₀ + (77−t)×luck_turn_bonus` 的投影统一在 `matsuri-ai::output::projected_summary` 做，档次按投影后的 E 重查 `rank_names`，JSON 三字段与终端共用同一份投影值，σ 不变 | 帧提示与黄色跳过行重复；期望分需与「本局/本轮」同量纲；user 明确要求档次 / JSON 也跟着投影，不接受三者口径分裂 | 离线零影响；只改呈现层；`luck_turn_bonus` 仍为 100，`render_luck` 分档阈值（<0/<500/<1500）仍是旧标定，待同步 |
 
 ## 4. 待决事项
 
