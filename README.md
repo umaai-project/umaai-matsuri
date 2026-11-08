@@ -26,7 +26,7 @@ workspace 六 crate：
   「追加訓練」选项 1 定点治；线上病种由帧 `charaEffects`（全量状态 ID，按文本库 142 表挑 1–6）精确还原。
 - **卡组配置**：`data/matsuri_config.toml` 分 `[decks.*]`；`[decks.default]` 为完整默认档（GA 冠军 `g0269`，21101），
   其他档深合并；未匹配 comp 走 default；`variant = true` 仅显式选择。
-  非默认档 `stamina_build`（12101）/ `wisdom_build`（11102）为 GA 独立调参的完整档，按构成自动触发；
+  非默认档 `stamina_build`（12101）/ `wisdom_build`（11102）为 GA 独立调参的完整档，按构成自动触发（在线按帧内实际卡组）；
   guts 20111 未建档，回落 default。
 - **搜索**：`[search].search_n` 为每候选 rollout 数（默认 **8192**，`0` = 手写档）；
   `[search].threads` 固定 rayon 全局池线程数（默认 **0** = 自动，显式 `RAYON_NUM_THREADS` 优先），

@@ -221,6 +221,7 @@ impl Default for MatsuriConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::deck_config::DEFAULT_DECK;
 
     /// 仓内默认层文本
     fn repo_text() -> String {
@@ -253,8 +254,10 @@ mod tests {
                 params,
                 "{name} 应按构成自动触发"
             );
+            assert_eq!(cfg.decks.profile_name(comp), name, "{name} 档名按构成可查");
             assert_ne!(params, &DeckParams::default(), "{name} 不应等同 default");
         }
+        assert_eq!(cfg.decks.profile_name([2, 1, 1, 0, 1]), DEFAULT_DECK);
     }
 
     #[test]
@@ -319,6 +322,7 @@ mod tests {
         assert_eq!(*resolved.deck, DeckParams::default());
         let unknown = cfg.for_deck([1, 2, 1, 0, 1]);
         assert_eq!(*unknown.deck, DeckParams::default());
+        assert_eq!(cfg.decks.profile_name([1, 2, 1, 0, 1]), DEFAULT_DECK);
     }
 
     #[test]

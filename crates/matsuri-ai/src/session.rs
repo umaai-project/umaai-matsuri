@@ -13,6 +13,9 @@
 //!
 //! 三者都按**局号**（`single_mode_chara_id`）隔离：换局自动清空。
 //!
+//! 卡组档按**帧内 `cardId` 的构成**选（与离线跑局同口径）：构成变化（换局 / 重开）时
+//! 重新选档并重建训练员；还原、融合与训练员共用同一份生效配置。
+//!
 //! **同回合允许多次决策**：真机上玩家可能反复进出同一状态（选完又取消、重进训练屏），
 //! 每来一张新帧就重新决策并重新输出，不做「本回合已给过」去重。
 
@@ -23,8 +26,8 @@ use anyhow::{Context, Result, anyhow};
 use matsuri_core::game::advice::advice_display_name;
 use matsuri_core::game::restore::RestoreInput;
 use matsuri_core::{
-    Action, MAX_TURN, MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer,
-    MatsuriTrainer, SearchSummary, Stage,
+    Action, DEFAULT_DECK, MAX_TURN, MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer,
+    MatsuriTrainer, SearchSummary, Stage, deck_comp,
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -32,6 +35,7 @@ use umaai::{BaseParams, FrameOutcome, LuckAttach, LuckScorer};
 use umaai_core::rng::{StreamTag, derive_seed};
 use umaai_core::{Array5, Array6, Data};
 use umasim::game::{Game, SupportCard, Trainer};
+use umasim::search::SearchConfig;
 
 use crate::final_score::parse_final_score;
 use crate::frame::ParsedFrame;
@@ -82,6 +86,17 @@ enum TrainerChoice {
 }
 
 impl TrainerChoice {
+    /// 按档位与生效配置装配（搜索档另需引擎搜索内核参数）
+    fn build(kind: TrainerKind, config: &MatsuriConfig, search: &SearchConfig) -> Result<Self> {
+        Ok(match kind {
+            TrainerKind::Hand => Self::Hand(Box::new(MatsuriTrainer::new(config.clone()))),
+            TrainerKind::Search => Self::Search(Box::new(MatsuriSearchTrainer::new(
+                config.clone(),
+                search.clone(),
+            )?)),
+        })
+    }
+
     fn as_dyn(&self) -> &dyn Trainer<MatsuriGame> {
         match self {
             Self::Hand(trainer) => trainer.as_ref(),
@@ -90,12 +105,27 @@ impl TrainerChoice {
     }
 }
 
+/// 生效卡组档：帧内卡组构成 → `[decks.*]` 档名
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeckProfile {
+    /// 构成（速 / 耐 / 力 / 根 / 智卡数）；算不出为 `None`（按 default，还原层随后按编成门禁拒绝）
+    pub comp: Option<[usize; 5]>,
+    /// 档名
+    pub name: String,
+}
+
 /// 在线会话：装配一次、逐帧喂入
 pub struct OnlineSession {
     /// 剧本资产
     data: Arc<MatsuriData>,
-    /// 剧本配置（融合预设等）
+    /// 生效剧本配置（含全部 `[decks.*]`；`deck` 为按帧内卡组选定的档）
     config: MatsuriConfig,
+    /// 生效卡组档（首帧前为 `None`）
+    profile: Option<DeckProfile>,
+    /// 训练员档位（换档重建用）
+    kind: TrainerKind,
+    /// 引擎搜索内核参数（换档重建搜索训练员用）
+    search: SearchConfig,
     /// 宿主注入的继承额外属性
     extra_count: Array6,
     /// 比赛等级表（`BaseParams` 借用）
@@ -126,7 +156,8 @@ impl OnlineSession {
     /// 装配会话
     ///
     /// `cfg` 提供继承额外属性 / 比赛等级表 / 搜索内核参数；`matsuri_cfg` 提供剧本侧
-    /// 配置（含 `[search].search_n`）。两者都由宿主提前载入，本层不读文件。
+    /// 配置（含 `[search].search_n` 与全部卡组档，按帧内卡组选档）。两者都由宿主提前载入，
+    /// 本层不读文件。训练员先按传入配置装配（启动即校验），首帧再按卡组选档重建。
     pub fn new(
         cfg: &umaai::Config,
         data: Arc<MatsuriData>,
@@ -143,18 +174,14 @@ impl OnlineSession {
             .filter_map(|id| SupportCard::new(*id).ok())
             .find(|card| card.card_type >= 5)
             .map_or(0, |card| card.data.chara_id);
-        let trainer = match trainer {
-            TrainerKind::Hand => {
-                TrainerChoice::Hand(Box::new(MatsuriTrainer::new(matsuri_cfg.clone())))
-            }
-            TrainerKind::Search => TrainerChoice::Search(Box::new(MatsuriSearchTrainer::new(
-                matsuri_cfg.clone(),
-                cfg.search.clone(),
-            )?)),
-        };
+        let kind = trainer;
+        let trainer = TrainerChoice::build(kind, &matsuri_cfg, &cfg.search)?;
         Ok(Self {
             data,
             config: matsuri_cfg,
+            profile: None,
+            kind,
+            search: cfg.search.clone(),
             extra_count: cfg.inherit().extra_count,
             race_grades: cfg.race_grades()?.to_vec(),
             friend_chara_id,
@@ -176,6 +203,12 @@ impl OnlineSession {
         self.epoch
     }
 
+    /// 生效卡组档（首帧前为 `None`）
+    #[must_use]
+    pub fn deck_profile(&self) -> Option<&DeckProfile> {
+        self.profile.as_ref()
+    }
+
     /// 处理一帧（**一帧一决策**；不推进局面，不改真机）
     pub fn handle_frame(&mut self, contents: &str) -> Result<OnlineTurnOutput> {
         self.handle_frame_with(contents, |_, _| Ok(()))
@@ -194,6 +227,7 @@ impl OnlineSession {
     {
         let frame = ParsedFrame::parse(contents)?;
         self.sync_epoch(frame.epoch_key());
+        self.sync_deck(&frame.status.card_id)?;
         // 帧内事件选项文本（呈现用；无 `story` 时为空 → 前端退化成「选项N」）
         let story_options: Vec<String> = frame
             .status
@@ -725,6 +759,29 @@ impl OnlineSession {
         self.luck_attach = None;
     }
 
+    /// 帧内卡组构成变化 → 重新选档并重建训练员（同构成直接返回）
+    ///
+    /// 不跟局号绑定：缺 `single_mode_chara_id` 时局号退化为马娘 ID，同马娘换卡组也要换档。
+    /// 构成算不出时按 default，还原层随后按编成门禁拒绝本帧并给出具体原因。
+    fn sync_deck(&mut self, cards: &[u32]) -> Result<()> {
+        let comp = deck_comp(cards).ok();
+        if self
+            .profile
+            .as_ref()
+            .is_some_and(|profile| profile.comp == comp)
+        {
+            return Ok(());
+        }
+        let name = comp
+            .map_or(DEFAULT_DECK, |comp| self.config.decks.profile_name(comp))
+            .to_string();
+        let config = self.config.for_profile(&name)?;
+        self.trainer = TrainerChoice::build(self.kind, &config, &self.search)?;
+        self.config = config;
+        self.profile = Some(DeckProfile { comp, name });
+        Ok(())
+    }
+
     /// 本帧的决策随机流（按 `(master, turn)` 派生：同帧可复现，不跨帧位移）
     ///
     /// 用 `Probe` 标签另开一条流：既不与引擎的回合固定流 / 事件流共用，也不动策略流的序列。
@@ -769,4 +826,52 @@ pub fn ensure_data(data_root: impl AsRef<std::path::Path>) -> Result<()> {
     Data::init(data_root)
         .map(|_| ())
         .context("引擎静态数据初始化失败")
+}
+
+#[cfg(test)]
+mod tests {
+    use matsuri_core::testing::data_dir;
+
+    use super::*;
+
+    /// 会话装配（数据根 = 仓内 `data/`，手写档）
+    fn session() -> OnlineSession {
+        let root = data_dir();
+        ensure_data(&root).expect("引擎静态数据");
+        let cfg = umaai::Config::load_with_overlay_file(&root, ".").expect("引擎配置");
+        let matsuri_cfg = MatsuriConfig::load_with_overlay_file(&root, ".").expect("剧本配置");
+        let data = Arc::new(MatsuriData::load(&root).expect("剧本数据"));
+        OnlineSession::new(&cfg, data, matsuri_cfg, TrainerKind::Hand, false).expect("装配会话")
+    }
+
+    /// 选档跟随帧内卡组：21101 / 12101 / 11102 各命中本档并可来回切换；构成算不出按 default
+    #[test]
+    fn deck_profile_follows_frame_cards() {
+        let mut session = session();
+        let decks = Arc::clone(&session.config.decks);
+        let stamina: &[u32] = &[303114, 303074, 303004, 303224, 303194, 303234];
+        let wisdom: &[u32] = &[303114, 303044, 303224, 303194, 302384, 303234];
+        let speed: &[u32] = &[303174, 303114, 303004, 303224, 303204, 303234];
+        let empty: &[u32] = &[];
+        let cases = [
+            (stamina, Some([1, 2, 1, 0, 1]), "stamina_build"),
+            (wisdom, Some([1, 1, 1, 0, 2]), "wisdom_build"),
+            (speed, Some([2, 1, 1, 0, 1]), DEFAULT_DECK),
+            (stamina, Some([1, 2, 1, 0, 1]), "stamina_build"),
+            (empty, None, DEFAULT_DECK),
+        ];
+        for (cards, comp, name) in cases {
+            session.sync_deck(cards).expect("选档");
+            let expected = DeckProfile {
+                comp,
+                name: name.to_string(),
+            };
+            assert_eq!(session.deck_profile(), Some(&expected));
+            assert_eq!(
+                session.config.deck.as_ref(),
+                decks.resolve_name(name).expect("档应存在"),
+                "{name}：还原 / 融合 / 训练员共用生效档"
+            );
+        }
+    }
 }

@@ -654,6 +654,8 @@
   是完整默认档（原 speed_build 参数），未匹配卡组走 default；`variant = true` 只用于扫参。
   `settle.rs` 读 `config.deck.fusion`，`Model` 读 `config.deck.advice` / `config.deck.trainer`；
   详见 [`plan/deck_config.md`](plan/deck_config.md)。
+- **在线选档（2026-11-09）**：在线按帧 `cardId` 的构成选档（与离线按本局卡组同口径），
+  构成变化时重建训练员；见 [`plan/online_wiring.md`](plan/online_wiring.md) §9.10 ③。
 
 **分配：每窗口独立，`5! = 120` 全枚举**
 

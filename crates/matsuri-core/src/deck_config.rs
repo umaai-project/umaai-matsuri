@@ -405,8 +405,8 @@ impl Default for TrainerConfig {
 pub struct DeckTable {
     /// 完整默认档（继承基座 + 未匹配兜底）
     default: DeckParams,
-    /// 非 variant 档：comp → 参数（自动匹配）
-    by_comp: BTreeMap<[usize; 5], DeckParams>,
+    /// 非 variant 档：comp → 档名（自动匹配）
+    by_comp: BTreeMap<[usize; 5], String>,
     /// 全部档（含 default / variant）：名字 → 参数（显式选择）
     by_name: BTreeMap<String, DeckParams>,
     /// 档名 → note（展示用）
@@ -425,7 +425,15 @@ impl DeckTable {
     /// 自动匹配：按 comp 查非 variant 档；找不到返回 default
     #[must_use]
     pub fn resolve_comp(&self, comp: [usize; 5]) -> &DeckParams {
-        self.by_comp.get(&comp).unwrap_or(&self.default)
+        self.by_name
+            .get(self.profile_name(comp))
+            .unwrap_or(&self.default)
+    }
+
+    /// 自动匹配的档名：按 comp 查非 variant 档；找不到返回 `default`
+    #[must_use]
+    pub fn profile_name(&self, comp: [usize; 5]) -> &str {
+        self.by_comp.get(&comp).map_or(DEFAULT_DECK, String::as_str)
     }
 
     /// 显式选择：按名字查（含 default / variant）
@@ -480,7 +488,7 @@ impl DeckTable {
         let mut notes = BTreeMap::new();
         let mut variants = BTreeSet::new();
         by_name.insert(DEFAULT_DECK.to_string(), default.clone());
-        by_comp.insert(default_entry.comp, default.clone());
+        by_comp.insert(default_entry.comp, DEFAULT_DECK.to_string());
         notes.insert(DEFAULT_DECK.to_string(), default_entry.note.clone());
 
         for (name, entry) in raw {
@@ -494,7 +502,7 @@ impl DeckTable {
                 .with_context(|| format!("[decks.{name}] 校验失败"))?;
             if entry.variant {
                 variants.insert(name.clone());
-            } else if by_comp.insert(entry.comp, params.clone()).is_some() {
+            } else if by_comp.insert(entry.comp, name.clone()).is_some() {
                 bail!(
                     "[decks.{name}] comp {:?} 与非 variant 档重复（用 variant = true 区分扫参变体）",
                     entry.comp

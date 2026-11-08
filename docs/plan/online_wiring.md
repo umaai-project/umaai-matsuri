@@ -915,6 +915,11 @@ PT（`status_pt[5]`）与体力不参与这条上限（T69 帧 PT 288 = 本仓 2
 - `--trainer` 未显式给出时按 `[search].search_n` 决定：`0` = 手写，`>0` = 搜索（与离线
   `matsuri` 训练员一致）；`MATSURI_SEARCH_N` / `MATSURI_SEARCH_RADICAL` 仍可临时覆盖。
 - **不新增 `--search-n`**：在线预算与离线共用配置文件。
+- **卡组档按帧内实际卡组选（2026-11-09）**：`OnlineSession` 每帧用 `deck_comp(baseGame.cardId)`
+  算构成，构成变化（换局 / 重开）时按 `DeckTable::profile_name` 重选档并重建训练员；还原、融合与
+  训练员共用这份生效配置。构成算不出时按 default，由还原层的编成门禁拒绝本帧。终端在每局开头
+  （及换档时）打一行「卡组 12101 → 档 stamina_build」。`ai_config [sim].cards` 只用于离线跑局；
+  修正前在线一律按它（21101）选档，12101 / 11102 卡组在线从未用上自己的档。
 
 **④ JSON 接入可观测性**
 
