@@ -98,8 +98,8 @@ cargo clippy --workspace --all-targets --offline -- -D warnings
 [`docs/tests_overview.md`](docs/tests_overview.md) 与 [`docs/perf_profiling.md`](docs/perf_profiling.md)。
 clippy 只在 Windows 侧跑；CI 也是 `-D warnings` 硬门禁。
 
-基线快照（2026-11-09，GA 定档后按当前配置重录）：手写 `a-normal` 83420.6 / `b-ideal` 88094.0，
-搜索 N=8192 `a-normal` 87750.4 / `b-ideal` 91289.4 —— **MCTS 比手写高 +3195 ~ +4330 分**（详见
+基线快照（2026-11-09，守门 ④ / 锁位 CRN 修复后重录）：手写 `a-normal` 83793.9 / `b-ideal` 88385.3，
+搜索 N=8192 `a-normal` 87557.1 / `b-ideal` 91535.7 —— **MCTS 比手写高 +3150 ~ +3763 分**（详见
 [`docs/tests_overview.md`](docs/tests_overview.md) §4.2）。
 
 ## 文档

@@ -9,12 +9,13 @@
 //! - 分身（協力 801 / 転成 101 合宿 / URA 本番演出）：同一担当在**另一个训练位**再加一处登场
 //!   （不叠在排练位），逐占位计人数与槽。
 //!
-//! 随机走 `Distribute` 阶段的回合固定流（与引擎基础局同轴）。
+//! 随机走 `Distribute` 阶段的回合固定流（与引擎基础局同轴）；演目满槽锁位时按
+//! 「未锁位时 distribute_person 会抽多少」补消费，避免后续人头抽取游标整体错位。
 
 use anyhow::Result;
 use rand::Rng;
 use umaai_core::Data;
-use umasim::game::{Game, Person, PersonType};
+use umasim::game::{Game, Person, PersonType, sample_bucket};
 
 use super::MatsuriGame;
 use super::person::PersonOrigin;
@@ -27,6 +28,43 @@ impl MatsuriGame {
     /// 本回合是否需要分布（比赛 / 强制休息回合不训练，不分布）
     pub(crate) fn needs_distribution(&self) -> bool {
         !self.plan.race && !self.forced_rest
+    }
+
+    /// 锁位分支补消费：按未锁位时 `Game::distribute_person` 的抽签次数推进共享随机流
+    ///
+    /// 只推进随机流、不改分布：让后续人头在「某演目满槽锁位」与「未满槽」两条 rollout
+    /// 分支上抽到同一组随机数，恢复 CRN 配对；锁位本身仍由 `place_locked` 固定落位。
+    fn burn_locked_person(&mut self, person_index: usize, rng: &mut impl Rng) -> Result<()> {
+        let train_type = self.persons[person_index].train_type() as usize;
+        let is_friend = self.persons[person_index].is_friend();
+        let absent_rate = self.absent_weight(person_index);
+        if absent_rate > 0 && rng.random_bool(absent_rate as f64 / (500 + absent_rate) as f64) {
+            return Ok(());
+        }
+        let mut weights = [100, 100, 100, 100, 100];
+        if train_type <= 4 {
+            weights[train_type] += self.deyilv(person_index as i32) as i32;
+        }
+        let mut retries = 0;
+        while retries < 10 {
+            let train = sample_bucket(&weights, rng)?;
+            retries += 1;
+            // 与 distribute_person 的落位校验同口径；锁位分支只消费随机、不写入分布
+            if self.base.distribution[train].len() >= TRAIN_CAP
+                || self.base.distribution[train].contains(&(person_index as i32))
+            {
+                continue;
+            }
+            if is_friend
+                && self.base.distribution[train]
+                    .iter()
+                    .any(|index| self.persons[*index as usize].is_friend())
+            {
+                continue;
+            }
+            break;
+        }
+        Ok(())
     }
 
     /// 本回合分布入口（`Distribute` 阶段调用）
@@ -141,6 +179,9 @@ impl MatsuriGame {
                 if let Some(act) = self.persons[person_index].act
                     && practice[act]
                 {
+                    // 锁位分支补消费：按「未锁位时 distribute_person 会抽多少」推进随机流，
+                    // 避免后续人头的抽取游标整体错位（不改变落位结果）
+                    self.burn_locked_person(person_index, rng)?;
                     continue;
                 }
                 if matches!(ty, PersonType::Yayoi | PersonType::Reporter) {
@@ -636,5 +677,47 @@ mod tests {
         assert!(!game.persons()[friend].hint(), "友人不产生灵感图标");
         let npc = person_of_type(&game, PersonType::Npc);
         assert!(!game.persons()[npc].hint(), "神驹不产生灵感图标");
+    }
+
+    /// 演目满槽锁位不应改变其他人头的随机落位（人头级独立流 / CRN）
+    #[test]
+    fn locked_act_keeps_other_person_placement_aligned() {
+        let mut base = crate::testing::sample_game();
+        base.base.turn = 10;
+        base.plan = base.derive_plan();
+        base.set_rule_master(42);
+
+        let mut locked = base.clone();
+        locked.acts.gauge[0] = locked.act_gauge_max();
+        let mut open = base.clone();
+        open.acts.gauge[0] = 0;
+
+        let mut rng_a = StdRng::seed_from_u64(1);
+        let mut rng_b = StdRng::seed_from_u64(1);
+        locked.distribute_round(&mut rng_a).expect("锁位分布失败");
+        open.distribute_round(&mut rng_b).expect("普通分布失败");
+
+        let person = base
+            .persons
+            .iter()
+            .enumerate()
+            .find(|(index, person)| {
+                person.person_type() == PersonType::Card
+                    && person.act != Some(0)
+                    && base.person_is_available(*index)
+            })
+            .map(|(index, _)| index)
+            .expect("非演目 0 的支援卡");
+        let slot = |game: &MatsuriGame| {
+            game.base
+                .distribution
+                .iter()
+                .position(|row| row.contains(&(person as i32)))
+        };
+        assert_eq!(
+            slot(&locked),
+            slot(&open),
+            "锁位不应把其他人头的随机落位整体错位"
+        );
     }
 }

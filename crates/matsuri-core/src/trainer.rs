@@ -37,6 +37,22 @@ impl MatsuriTrainer {
         let flags = &game.uma().flags;
         flags.bad_trainer || flags.ill.bits() & !Ill::FAT.bits() != 0
     }
+
+    /// 是否存在失败率为 0 的普通训练（901 不屈 / 剧本失败率下降 ≥100）
+    ///
+    /// 只用于守门 ④：有 0% 失败率训练时不再无条件强制休息。失败率计算失败时保守按
+    /// 「不存在」处理，维持原来的强制休息行为。
+    fn has_zero_failure_train(game: &MatsuriGame) -> Result<bool> {
+        for train in 0..5 {
+            let advice = game.participant_advice(train);
+            let buffs = game.calc_training_buff(train)?;
+            let rate = game.calc_training_failure_rate_inner(&buffs, train, &advice)?;
+            if rate <= 0.0 {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
 }
 
 /// 一次决策的解释（只读；手动核对 / 离线分析用，正常跑局不调用）
@@ -212,22 +228,31 @@ impl MatsuriTrainer {
         }
 
         // 守门 ④：体力危险线（vital < 32 且非合宿 → 强制休息）
+        // 例外：存在 0% 失败率的训练（901 不屈 / 剧本失败率下降 ≥100）时放行打分，
+        // 否则会把「压体力 + 不屈保底连训」策略系统性排除。
         if game.uma().vital < 32
             && !game.plan.camp_train(game.forced_rest)
             && let Some(index) = actions.iter().position(|action| *action == Action::Rest)
         {
+            if !Self::has_zero_failure_train(game).unwrap_or(false) {
+                diag!(
+                    "【决策】T{} 守门·体力危险（{}<32）强制休息",
+                    game.turn(),
+                    game.uma().vital
+                );
+                return Ok((
+                    index,
+                    reason(
+                        explain,
+                        format_args!("守门·体力危险（{}<32）强制休息", game.uma().vital),
+                    ),
+                ));
+            }
             diag!(
-                "【决策】T{} 守门·体力危险（{}<32）强制休息",
+                "【决策】T{} 守门·体力危险（{}<32）但存在 0% 失败率训练，放行打分",
                 game.turn(),
                 game.uma().vital
             );
-            return Ok((
-                index,
-                reason(
-                    explain,
-                    format_args!("守门·体力危险（{}<32）强制休息", game.uma().vital),
-                ),
-            ));
         }
 
         // 守门 ⑤：心情崩坏（干劲≤2 且体力>50 → 强制出行修心情）
@@ -453,6 +478,68 @@ mod tests {
             .select_action(&game, &actions, &mut rng)
             .expect("选择动作");
         assert_eq!(actions[index], Action::Clinic, "不擅长训练时优先治病");
+    }
+
+    /// 守门 ④ 例外：901 不屈把失败率压到 0 时，低体力不再强制休息
+    #[test]
+    fn low_vital_rest_waived_by_zero_failure_advice() {
+        let mut game = crate::testing::sample_game();
+        game.base.turn = 10;
+        game.plan = game.derive_plan();
+        game.uma_mut().vital = 20;
+        game.acts.level[0] = 10;
+        game.advice.acquired = true;
+        game.advice.slots = [901, 0, 0, 0, 0];
+        game.advice.fused = [0; 5];
+        let person = game
+            .persons
+            .iter()
+            .position(|person| person.act == Some(0))
+            .expect("演目 0 的担当");
+        game.base.distribution = vec![Vec::new(); 5];
+        game.base.distribution[0] = vec![person as i32];
+
+        assert!(
+            MatsuriTrainer::has_zero_failure_train(&game).expect("失败率计算"),
+            "901 Lv10 应把参与训练的失败率压到 0"
+        );
+        let trainer = MatsuriTrainer::new(MatsuriConfig::default());
+        let actions = vec![Action::Train(0), Action::Rest];
+        let explanation = trainer.explain_action(&game, &actions).expect("解释决策");
+        assert!(
+            !explanation.reason.contains("守门·体力危险"),
+            "存在 0% 失败率训练时应放行打分表，而不是强制休息：{}",
+            explanation.reason
+        );
+    }
+
+    /// 对照：没有 0% 失败率训练时，低体力仍强制休息
+    #[test]
+    fn low_vital_still_rests_without_zero_failure_advice() {
+        let mut game = crate::testing::sample_game();
+        game.base.turn = 10;
+        game.plan = game.derive_plan();
+        game.uma_mut().vital = 20;
+        game.acts.level[0] = 10;
+        game.advice.acquired = true;
+        game.advice.slots = [101, 0, 0, 0, 0];
+        game.advice.fused = [0; 5];
+        let person = game
+            .persons
+            .iter()
+            .position(|person| person.act == Some(0))
+            .expect("演目 0 的担当");
+        game.base.distribution = vec![Vec::new(); 5];
+        game.base.distribution[0] = vec![person as i32];
+
+        let trainer = MatsuriTrainer::new(MatsuriConfig::default());
+        let actions = vec![Action::Train(0), Action::Rest];
+        let explanation = trainer.explain_action(&game, &actions).expect("解释决策");
+        assert!(
+            explanation.reason.contains("守门·体力危险"),
+            "无保底训练时仍应强制休息：{}",
+            explanation.reason
+        );
     }
 
     /// 解释 API：候选评分与中选同源；守门原因可读；教诲分配 120 候选全有方案分
