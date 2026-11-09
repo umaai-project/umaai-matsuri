@@ -43,10 +43,20 @@ workspace 六 crate：
   本仓数据覆盖帧数据、帧只提供选项文本；决策前回显事件与逐选项效果，查不到则跳过（不给训练建议）。
 - **CLI**：`matsuri` / `matsuri online` 已迁移 clap，提供 `--help` / `--version`；`matsuri-tools` 仍用手写解析。
 - **发布**：Windows 启动器已实现（`crates/matsuri-launcher`，bin `matsuri-ai`）：
-  菜单为在线模式（默认）/ 启动小黑板 / 通道体检 / 退出；小黑板取同目录 `UmamusumeResponseAnalyzer.exe`，
-  用 `CREATE_NEW_CONSOLE` 另开窗口拉起（URA 是 Terminal.Gui TUI，与在线模式需同时常驻）。
+  菜单为在线模式（默认）/ 启动小黑板 / 通道体检 / 更新数据（联网）/ 更新程序（联网）/ 退出；
+  小黑板取同目录 `UmamusumeResponseAnalyzer.exe`，用 `CREATE_NEW_CONSOLE` 另开窗口拉起
+  （URA 是 Terminal.Gui TUI，与在线模式需同时常驻）。
+  更新数据按 `ai_data`（`data/` 三张基础表）与 `ura_data`（`.portable/` 的 `.br`）两个频道，
+  走引擎 `umaai-update` 的 `update.json` 协议（逐文件 sha256、失败回滚）；`ai_data` 严格白名单，
+  不覆盖 `events.json` / `constants.json` / 配置 / 剧本资产。`update.json` 由 UmaSimData 的
+  `make_version.py` 生成并随 COS 上传。
+  更新程序走 `program` 频道整包 zip（`matsuri-ai.exe` + `bin/matsuri.exe` + 6 个程序资产，
+  约 3.3 MB），校验逐文件 sha256 与两份 exe 的 Authenticode 指纹后备份替换，启动器有变化时自重启；
+  **不含小黑板本体与 `.portable/`**。发布侧 `scripts/package_launcher.py --sign --program`
+  先签名再生成 `dist/program/`（证书与口令只走环境变量）。
   头部为标题 + 分隔线 + 四行只读信息（安装目录 / 游戏根 / 小黑板 / 核心程序，标签按显示宽度对齐、
-  状态点按文件在位染色）；不写配置、不落日志。
+  状态点按文件在位染色）；每次操作返回主菜单前清屏（输出被重定向时不动，避免污染脚本日志）；
+  不写配置、不落日志。
   发布包为 `matsuri-ai.exe` + `bin/matsuri.exe` + `data/`，打包与附加资源见
   `scripts/package_launcher.py`、`dist/extra/`；完整版计划与差异见
   [`docs/plan/release_launcher.md`](docs/plan/release_launcher.md) §0。

@@ -17,6 +17,7 @@
 | `matsuri-cli` | 内联（呈现件纯函数）+ `tests/manual_smoke.rs` + `tests/explain_smoke.rs` + `tests/search_smoke.rs` | 内联 **14** 个 + 冒烟 **3** 个（manual / explain / search）；基线待补 |
 | `matsuri-ai` | 内联 17 + `tests/replay.rs` 2 + `tests/w2.rs` 3（诊断）+ `tests/layers.rs` 1（诊断） | 帧解析（含 `charaEffects` 全量状态 / `storyId`）/ **按帧内卡组选档** / **路由（事件帧查不到数据 → 跳过，不回落训练）** / 终局帧门禁 / 回放顺序与局末终局帧 / 一帧一决策 / 训练验算与偏差拆解 |
 | `matsuri-tools` | 性能测量 bin `bench`（整局 / 分段 / rollout 分布 / 固定根） | 无单测（测量工具，按 docs/perf_profiling.md 复现） |
+| `matsuri-launcher` | 内联（更新频道守卫 / 程序包清单、解压与替换守卫） | 内联 **11** 个：`ai_data` 严格三表白名单、`ura_data` 仅 `.br` 根文件；程序清单白名单 / 包名 / 协议 / 待更新判定 / 备份名 / 拒绝清单外 zip 条目 / 备份保留 / 失败回滚 |
 
 ## 2. 单元测试（内联）
 
@@ -29,6 +30,8 @@
 | `core/src/game/stage.rs` | `next_chain` / `stage_ids_are_stable` / `camp_starts_only_at_window_start` / `camp_basic_window` / `camp_race_turn_extends` / `camp_race_at_window_start_extends` / `camp_forced_rest_turn_extends` / `camp_consecutive_races_keep_extending` / `camp_rest_version_only_in_original_window` / `check_point_index_matches_schedule` / `advice_window_index_matches` / `ura_race_turns` / `ura_boundaries_and_interlude` | 五阶段链 / 阶段号稳定；合宿窗口起点、基础 4 回合、比赛 / 强制休息顺延、连续顺延、合宿版休息只限原窗口；発表会 / 教诲窗口；**URA 边界：68–71 空窗期 / 72–77 URA 回合 / 73·75·77 决赛** |
 | `core/src/trainer.rs` | `trainer_prefers_heal_when_bad_trainer` / `explain_action_reports_candidates_and_reason` | 手写训练员守门链：不擅长优先治病；解释 API 与决策同源 |
 | `core/src/game/advice.rs` | `microbench_participant_advice`（`#[ignore]`） | 参与教诲聚合微基准：`participant_advice` / `advice_slot_effect` / `shining_count` 的 ns/op（性能轮次立项依据，不参与常规测试） |
+| `launcher/src/update.rs` | `ai_data_guard_is_strict` / `ura_data_guard_rejects_non_br` | 更新清单守卫：`ai_data` 必须严格等于三张基础表；`ura_data` 拒绝非 `.br` 与子目录路径 |
+| `launcher/src/program.rs` | `program_files_sorted` / `validate_rejects_extra_or_missing` / `validate_rejects_bad_package_name` / `validate_rejects_protocol` / `pending_detects_missing_and_matching` / `old_path_is_sibling` / `extract_rejects_entry_outside_whitelist` / `install_keeps_old_backup` / `install_rolls_back_on_failure` | 程序包守卫：白名单字典序与集合严格相等、包名单段 zip、协议版本、无状态待更新判定、`.old` 备份名、解压拒绝清单外条目、替换保留备份、中途失败回滚 |
 | `core/src/search.rs` | `event_token_roundtrip` / `score_leaf_returns_search_score` / `search_consumes_one_decision_draw` / `search_summary_matches_selected_candidate` / `baseline_and_stdev_weight_by_samples` / `deadline_turn_searches_race_only` | 事件搜索 dummy token 往返；叶估占位接口与搜索分同口径；**搜索恰好消费一个决策流随机字（ramen 口径），局面规则流独立派生**；**期望分与单局终局 σ 按样本数加权合并（无样本 → 0）**；**自选比赛期限回合只搜比赛（中选不变、只取一个决策流随机字、基线 = 比赛分）** |
 | `cli/src/online.rs` | `candidate_color_has_three_tiers` / `render_luck_appends_expected_score` / `deck_line_shows_comp_and_profile` | 候选分档配色；**生效档行 `卡组 12101 → 档 …`（构成算不出标「无法识别」）**；**运气行 `期望 E （±S，档）` 的拼装 / 上色（E 与档亮青、σ 不着色）/ 退化（无摘要 / σ=0 / 档位空）** |
 | `core/src/game/traits.rs` | `apply_root_action_uses_strategy_stream` / `search_score_uses_pt_favor_knob_and_actual_failed_score` | 搜索根动作走剧本自持策略流；**搜索分用 `pt_favor_rate` 口径，失败分支按实际分** |

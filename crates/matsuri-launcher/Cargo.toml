@@ -14,3 +14,9 @@ path = "src/main.rs"
 
 [dependencies]
 inquire = "0.9.4"
+# 数据更新：清单协议 / HTTP 传输 / 逐文件校验 / 原子替换与回滚
+umaai-update.workspace = true
+# 程序更新：清单解析与 zip 解压
+serde.workspace = true
+serde_json.workspace = true
+zip.workspace = true

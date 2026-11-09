@@ -1,14 +1,17 @@
-//! 发布启动器 `matsuri-ai`：菜单、子进程装配、小黑板启动与通道只读体检。
+//! 发布启动器 `matsuri-ai`：菜单、子进程装配、小黑板启动、通道只读体检与数据 / 程序更新。
 //!
-//! 只做四件事：解析工作目录与游戏根、按选项启动 `bin/matsuri.exe`、
-//! 另开控制台窗口拉起同目录小黑板（URA）、收尾停留。
-//! 不改核心 CLI、不写任何文件、不落日志。
+//! 只做六件事：解析工作目录与游戏根、按选项启动 `bin/matsuri.exe`、
+//! 另开控制台窗口拉起同目录小黑板（URA）、只读体检、按频道更新数据、整包更新程序。
+//! 不改核心 CLI、不落日志；数据只写 `data/` 与 `.portable/`，程序更新只写程序本体与程序资产。
 //!
 //! 两条数据路径勿混：`data/` 由核心 CLI 的 `DATA_ROOT="data"` 按子进程 cwd 解析；
 //! 真机帧由 `--root` 指向的游戏根拼 `.portable/PluginData/SendGameStatusPlugin`。
 //!
 //! 小黑板是 Terminal.Gui 常驻 TUI（stdin / stdout 被重定向即报错退出），
 //! 必须用 `CREATE_NEW_CONSOLE` 独立窗口启动，否则菜单与在线模式互相占屏。
+
+mod program;
+mod update;
 
 use std::fs;
 use std::io::{self, IsTerminal, Write};
@@ -19,7 +22,14 @@ use std::time::{Duration, SystemTime};
 use inquire::Select;
 
 /// 菜单项：TTY 下由 inquire 渲染，非 TTY 下按 `key()` 编号打印
-const ITEMS: [Item; 4] = [Item::Online, Item::Blackboard, Item::Check, Item::Quit];
+const ITEMS: [Item; 6] = [
+    Item::Online,
+    Item::Blackboard,
+    Item::Check,
+    Item::Update,
+    Item::Program,
+    Item::Quit,
+];
 
 /// 菜单选项（枚举化，避免标签 / 索引 / 编号三处各写一遍而失步）
 #[derive(Clone, Copy)]
@@ -30,6 +40,10 @@ enum Item {
     Blackboard,
     /// 小黑板通道只读体检
     Check,
+    /// 按频道更新 AI / 小黑板数据
+    Update,
+    /// 整包更新程序本体与程序资产
+    Program,
     /// 退出启动器
     Quit,
 }
@@ -41,6 +55,8 @@ impl Item {
             Item::Online => "在线模式（默认，回车）",
             Item::Blackboard => "启动小黑板",
             Item::Check => "检查小黑板连接",
+            Item::Update => "更新数据（联网）",
+            Item::Program => "更新程序（联网）",
             Item::Quit => "退出",
         }
     }
@@ -51,6 +67,8 @@ impl Item {
             Item::Online => "1",
             Item::Blackboard => "2",
             Item::Check => "3",
+            Item::Update => "4",
+            Item::Program => "5",
             Item::Quit => "0",
         }
     }
@@ -79,6 +97,11 @@ const FRESH_SECS: u64 = 120;
 /// 本 crate 的错误类型（不引第三方 error 库）
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+/// 以文本构造启动器错误（用于无底层 IO 错误的语义失败）
+fn fail(message: impl Into<String>) -> Box<dyn std::error::Error> {
+    io::Error::other(message.into()).into()
+}
+
 /// 启动器解析出的全部路径（固定结构，避免裸元组）
 struct Paths {
     /// 安装根：exe 所在目录，也是子进程 cwd（`data/` 在此）
@@ -91,9 +114,36 @@ struct Paths {
     game_root: Option<PathBuf>,
 }
 
-/// Windows 控制台 UTF-8 代码页 / 窗口标题 / VT 转义（非 Windows 走空实现，保 Linux CI 四门）
+/// Windows 控制台 UTF-8 代码页 / 窗口标题 / VT 转义 / 清屏（非 Windows 走空实现，保 Linux CI 四门）
 #[cfg(windows)]
 mod console {
+    /// 控制台字符坐标
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct Coord {
+        x: i16,
+        y: i16,
+    }
+
+    /// 控制台矩形（仅用于取缓冲区信息）
+    #[repr(C)]
+    struct SmallRect {
+        left: i16,
+        top: i16,
+        right: i16,
+        bottom: i16,
+    }
+
+    /// `CONSOLE_SCREEN_BUFFER_INFO`
+    #[repr(C)]
+    struct ScreenBufferInfo {
+        size: Coord,
+        cursor: Coord,
+        attributes: u16,
+        window: SmallRect,
+        max_window: Coord,
+    }
+
     #[link(name = "kernel32")]
     unsafe extern "system" {
         fn SetConsoleCP(code: u32) -> i32;
@@ -102,6 +152,15 @@ mod console {
         fn GetStdHandle(std: u32) -> isize;
         fn GetConsoleMode(handle: isize, mode: *mut u32) -> i32;
         fn SetConsoleMode(handle: isize, mode: u32) -> i32;
+        fn GetConsoleScreenBufferInfo(handle: isize, info: *mut ScreenBufferInfo) -> i32;
+        fn FillConsoleOutputCharacterW(
+            handle: isize,
+            ch: u16,
+            len: u32,
+            at: Coord,
+            written: *mut u32,
+        ) -> i32;
+        fn SetConsoleCursorPosition(handle: isize, at: Coord) -> i32;
     }
 
     /// 标准输出句柄编号（`(DWORD)-11`）
@@ -131,6 +190,24 @@ mod console {
             let _ = SetConsoleTitleW(wide.as_ptr());
         }
     }
+
+    /// 用空格填满整个缓冲区并把光标归位（VT 不可用时的清屏兜底）
+    pub fn clear() {
+        // SAFETY: 缓冲区信息来自系统调用；填充长度取自该信息，坐标为原点。
+        unsafe {
+            let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+            let mut info: ScreenBufferInfo = std::mem::zeroed();
+            if GetConsoleScreenBufferInfo(handle, &mut info) == 0 {
+                return;
+            }
+            let cells = u32::from(info.size.x.max(0) as u16) * u32::from(info.size.y.max(0) as u16);
+            let origin = Coord { x: 0, y: 0 };
+            let mut written = 0u32;
+            let _ =
+                FillConsoleOutputCharacterW(handle, u16::from(b' '), cells, origin, &mut written);
+            let _ = SetConsoleCursorPosition(handle, origin);
+        }
+    }
 }
 
 /// 非 Windows：标题为空实现，上色只在真终端里开（避免重定向输出混入转义）
@@ -145,6 +222,13 @@ mod console {
 
     /// 空实现
     pub fn set_title(_title: &str) {}
+
+    /// 真终端里用 VT 清屏；重定向输出时不动，避免脚本日志混入转义
+    pub fn clear() {
+        if std::io::stdout().is_terminal() {
+            print!("\u{1b}[2J\u{1b}[H");
+        }
+    }
 }
 
 /// 终端上色：VT 不可用时全部退化为原文，老 conhost 不出转义残留
@@ -192,6 +276,16 @@ impl Paint {
     fn yellow(&self, text: &str) -> String {
         self.with("33", text)
     }
+
+    /// 清屏：VT 可用走转义序列，否则交给控制台兜底
+    fn clear(&self) {
+        if self.vt {
+            print!("\u{1b}[2J\u{1b}[H");
+            let _ = io::stdout().flush();
+        } else {
+            console::clear();
+        }
+    }
 }
 
 /// 启动器入口：控制台能力准备 → 路径解析 → 菜单循环
@@ -208,6 +302,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    program::startup(&paths.install_dir);
     menu_loop(&paths, &paint)
 }
 
@@ -273,10 +368,16 @@ fn core_version(paths: &Paths) -> String {
     }
 }
 
-/// 主菜单循环：头部只读信息 + 在线 / 小黑板 / 体检 / 退出
+/// 主菜单循环：头部只读信息 + 在线 / 小黑板 / 体检 / 更新 / 退出
 fn menu_loop(paths: &Paths, paint: &Paint) -> ExitCode {
     let core_ver = core_version(paths);
+    let mut first = true;
     loop {
+        // 每次操作回到菜单前清屏，避免上一轮输出堆叠
+        if !first {
+            paint.clear();
+        }
+        first = false;
         print_header(paths, paint, &core_ver);
         let Some(item) = choose() else {
             return ExitCode::SUCCESS;
@@ -297,6 +398,18 @@ fn menu_loop(paths: &Paths, paint: &Paint) -> ExitCode {
             Item::Check => {
                 if let Err(err) = check_channel(paths) {
                     eprintln!("体检：{err}");
+                }
+                pause("按回车返回菜单…");
+            }
+            Item::Update => {
+                if let Err(err) = update::run(paths, paint) {
+                    eprintln!("更新数据：{err}");
+                }
+                pause("按回车返回菜单…");
+            }
+            Item::Program => {
+                if let Err(err) = program::run(paths, paint) {
+                    eprintln!("更新程序：{err}");
                 }
                 pause("按回车返回菜单…");
             }
@@ -416,7 +529,7 @@ fn choose_plain() -> Option<Item> {
                 if let Some(item) = ITEMS.iter().copied().find(|item| item.key() == key) {
                     return Some(item);
                 }
-                println!("无此选项，请输入 1 / 2 / 3 / 0。");
+                println!("无此选项，请输入 1 / 2 / 3 / 4 / 5 / 0。");
             }
         }
     }

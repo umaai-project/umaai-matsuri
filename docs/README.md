@@ -15,7 +15,8 @@
 | [`plan/deck_param_scan.md`](plan/deck_param_scan.md) | **卡组参数扫描方案**：四套 build 的定卡（单卡控制变量 + 类型排名）、speed 换卡与重录基准、`fusion` / `advice` / 手写旋钮的扫参顺序、测试专用 `--matsuri-config` 入口 | 定卡 / 扫参推进、结果落档时 |
 | [`plan/online_wiring.md`](plan/online_wiring.md) | **在线接线方案**：`MatsuriGame` 剧本专属状态盘点与还原来源分类（协议直读 / 插件收集 / 插件计算 / 本侧重算）、`thisTurn.json` 的 `matsuri` 段草案、两端改动清单与待核清单 `G1–G10` | 在线外壳（S8）推进、`G#` 有结论时 |
 | [`plan/round_2026-11-09.md`](plan/round_2026-11-09.md) | **本轮修改与待办**：已改项 / 验证结果 / 已定位但未修改项 / 基线快照 / 后续顺序 | 每轮收尾 |
-| [`plan/release_launcher.md`](plan/release_launcher.md) | **发布启动器（`matsuri-ai`）计划 + 基础版实现记录**：完整版布局 / 菜单计划、§0 基础版差异与落点；核心 CLI 不改；首版不做更新/GUI | 发布形态变更时 |
+| [`plan/search_sh.md`](plan/search_sh.md) | **搜索分配方案（设计稿，未实施）**：UCB 不等样本终局倒挂、固定组 Successive Halving / Racing、单旋钮 `search_n=4096`、引擎/剧本落点与验收计划 | 方案评审 / 实施时 |
+| [`plan/release_launcher.md`](plan/release_launcher.md) | **发布启动器（`matsuri-ai`）计划 + 实现记录**：完整版布局 / 菜单计划、§0 基础版差异、§0.1 数据更新（`ai_data` / `ura_data`）、§0.2 程序更新与 Authenticode 签名（`program` 频道整包 zip）；核心 CLI 不改；不做 GUI | 发布形态变更时 |
 | [`mechanism.md`](mechanism.md) | 机制文档：公式 / 流程 / 实现落点 / 测试对应 | 机制实现或修正 |
 | [`matsuri_memo_cn.md`](matsuri_memo_cn.md) | 中文机制备忘：按机制类型逐条记录（骨架 / 演目 / 排练 / 教诲 / 汇报会 / 合宿 / 比赛 / 事件）；**§2.2 为担当编排规则**（五步流水线 + 卡落位 / NPC 摊法 / 追加负责人 / 形态穷举）；**§3.5 为分身机制**（教诲 +1 人的落点与打法）；§14 为 **未决清单**（P0–P2 未定 13 条：`△` 3 / `□` 10，P0 已清空（U02 收口）；§14.8 另有 U41 / U44 / U45；已定条与已核实项移到 §14.4 / §14.5 备查） | 上游日文备忘或真机口径更新 |
 | [`glossary.md`](glossary.md) | 术语单一事实源 + 口径与用语决定记录 | 每次口径决定 |

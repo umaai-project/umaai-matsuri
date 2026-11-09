@@ -27,6 +27,8 @@ umaai-core = { path = "../umaai_next/crates/umaai-core" }
 umasim = { path = "../umaai_next/crates/umasim" }
 umaai = { path = "../umaai_next/crates/umaai" }
 umaai-cli = { path = "../umaai_next/crates/umaai-cli" }
+# 分发客户端（数据更新）：零引擎依赖，启动器只做频道声明与呈现
+umaai-update = { path = "../umaai_next/crates/umaai-update" }
 clap = { version = "4.6", features = ["derive"] }
 
 # 本仓内部 crate（有消费者时再登记下一个）
@@ -43,3 +45,5 @@ serde_json = "1.0.154"
 toml = "0.9.12"
 # 搜索并行后端（与引擎 umasim 同版，已在 Cargo.lock）
 rayon = "1.12.0"
+# 程序更新包（zip）解压：只读、纯 Rust deflate 后端
+zip = { version = "8.6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
