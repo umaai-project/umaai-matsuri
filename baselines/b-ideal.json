@@ -5,7 +5,7 @@
   "qie": "xiaoqie",
   "shield": 2,
   "config": {
-    "pt_favor_rate": 1.7271,
+    "pt_favor_rate": 1.931954,
     "search_n": 8192,
     "search_group_size": 1024,
     "expected_search_stdev": 3300.0
@@ -16,20 +16,20 @@
       "search_n": 0,
       "seed0": 73200,
       "games": 100,
-      "score_mean": 86004.3,
-      "score_sd": 3423.2,
-      "pt_mean": 11892.4,
-      "pt_sd": 449.5
+      "score_mean": 88094.0,
+      "score_sd": 2097.6,
+      "pt_mean": 12236.8,
+      "pt_sd": 347.7
     },
     {
       "trainer": "search",
       "search_n": 8192,
       "seed0": 73200,
       "games": 10,
-      "score_mean": 90455.4,
-      "score_sd": 861.1,
-      "pt_mean": 12790.4,
-      "pt_sd": 282.4
+      "score_mean": 91289.4,
+      "score_sd": 703.9,
+      "pt_mean": 13252.5,
+      "pt_sd": 185.1
     }
   ]
 }

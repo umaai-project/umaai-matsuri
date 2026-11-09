@@ -5,7 +5,7 @@
   "qie": "none",
   "shield": 0,
   "config": {
-    "pt_favor_rate": 1.7271,
+    "pt_favor_rate": 1.931954,
     "search_n": 8192,
     "search_group_size": 1024,
     "expected_search_stdev": 3300.0
@@ -16,20 +16,20 @@
       "search_n": 0,
       "seed0": 73200,
       "games": 100,
-      "score_mean": 80701.2,
-      "score_sd": 3513.9,
-      "pt_mean": 11267.5,
-      "pt_sd": 413.7
+      "score_mean": 83420.6,
+      "score_sd": 3178.2,
+      "pt_mean": 11720.4,
+      "pt_sd": 367.6
     },
     {
       "trainer": "search",
       "search_n": 8192,
       "seed0": 73200,
       "games": 10,
-      "score_mean": 86392.4,
-      "score_sd": 1757.0,
-      "pt_mean": 12167.5,
-      "pt_sd": 292.2
+      "score_mean": 87750.4,
+      "score_sd": 2012.8,
+      "pt_mean": 12647.8,
+      "pt_sd": 343.6
     }
   ]
 }

@@ -14,7 +14,7 @@ use std::cell::OnceCell;
 use anyhow::Result;
 use umaai_core::gamedata::{ActionValue, EventChoice, ExtraStatus, GameConstants};
 use umaai_core::{Data, Ill, UmaFlags};
-use umasim::game::{Game, Person, PersonType};
+use umasim::game::{Game, Person, PersonType, UmaFlagsExt};
 
 use crate::deck_config::{AdviceWeights, TrainerConfig, ValueWeights};
 use crate::game::advice::{AdviceAssignment, AdviceSlotEffect};
@@ -300,7 +300,9 @@ impl<'a> Model<'a> {
             game,
             consts,
             cfg,
-            pt_value: f64::from(consts.pt_score_rate) * cfg.pt_favor_rate,
+            pt_value: f64::from(consts.pt_score_rate)
+                * cfg.pt_favor_rate
+                * f64::from(game.uma().flags.pt_score_rate_factor()),
             weights: cfg.weights.clone(),
             advice: cfg.advice.clone(),
             status_weights: cfg.status_weights,

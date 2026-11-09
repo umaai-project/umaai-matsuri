@@ -23,7 +23,7 @@ use umasim::search::{FlatSearch, FlatSearchGame, RolloutOutcome, SearchConfig, S
 
 use crate::config::{MatsuriConfig, SearchScopeConfig};
 use crate::diag;
-use crate::game::{Action, MatsuriGame, Stage};
+use crate::game::{Action, MatsuriGame};
 use crate::trainer::MatsuriTrainer;
 
 /// 教诲候选剪枝宽度：120 排列全搜不可行，按 lab / 本轮定档取 16
@@ -461,17 +461,9 @@ impl MatsuriSearchTrainer {
                 sim.event_queue.clear();
                 sim.event_cursor = 0;
                 sim.base.put_rule_streams(streams);
-                // 事件在 Begin 内部结算：`next()` 会直接进入下一阶段，不补跑 Begin 尾部
-                // 就会丢掉 turn 2 的教诲授予与首分配，rollout 到融合窗口即报「尚未获得
-                // 教诲」→ 该候选全部 rollout 失败 → 整次搜索 bail。
-                if sim.stage == Stage::Begin {
-                    let mut strategy = sim.strategy.take().ok_or_else(|| {
-                        anyhow::anyhow!("策略流缺失：rollout 分支应由 fork_for_rollout 派生")
-                    })?;
-                    let tail = sim.begin_tail(fallback, &mut sim_rng, &mut strategy);
-                    sim.strategy = Some(strategy);
-                    tail?;
-                }
+                // 事件可能在 Begin / End 内部结算：由剧本按根动作补完当前阶段
+                // （Begin 补 begin_tail，End 补教诲窗口与尾部），再推进到下一阶段。
+                sim.finish_root_stage(token, fallback, &mut sim_rng)?;
                 while sim.next() {
                     sim.run_stage(fallback, &mut sim_rng)?;
                 }
@@ -562,7 +554,19 @@ impl Trainer<MatsuriGame> for MatsuriSearchTrainer {
         {
             return self.fallback.select_event_choice(game, event, choices, rng);
         }
-        self.search_event(game, event, choices, rng)
+        match self.search_event(game, event, choices, rng) {
+            Ok(index) => Ok(index),
+            Err(err) => {
+                // 在线单帧决策不能因一次搜索失败而中断：回落手写并留下诊断
+                diag!(
+                    "【搜索】T{} 事件#{} 搜索失败，回退手写：{err:#}",
+                    game.turn(),
+                    event.id
+                );
+                self.clear_last();
+                self.fallback.select_event_choice(game, event, choices, rng)
+            }
+        }
     }
 }
 
@@ -589,6 +593,7 @@ mod tests {
     use rand::RngCore;
 
     use super::*;
+    use crate::game::Stage;
 
     /// 期望分与单局终局 σ：候选按样本数加权合并
     #[test]

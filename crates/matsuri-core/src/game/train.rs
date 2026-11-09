@@ -372,6 +372,10 @@ impl MatsuriGame {
         self.clip_lower_gain(&mut lower);
         let upper = self.training_upper_with(train, &lower, keiko, &advice);
         let mut total = self.merge_upper(&lower, &upper, keiko);
+        // 【变胖】与正式结算 / 普通预览同口径：训练 / 排练速度增量归零
+        if self.is_fat() {
+            total.status_pt[0] = 0;
+        }
         // 单次训练上限：超过「属性上限 − 当前值」的部分会被游戏裁掉
         let clipped = self.clip_to_status_limit(&total.status_pt);
         let mut clip = [0i32; 5];

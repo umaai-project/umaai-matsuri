@@ -42,7 +42,8 @@
 - 阶段机（内部强类型，对外 `StageId`）：S3 定为五阶段 `Begin(0) → Distribute(3) → Train(1) →
   AfterTrain(4) → End(2)`（**号只增不改**）；比赛 / 合宿 / 発表会 / 本番 / 空窗期 / URA 回合是**回合类型**
   （`TurnPlan`），不各开阶段；`Race / ActTrain / Outing` 是 `Train` 阶段里的动作，`CheckPoint` /
-  合宿 +1 / 教诲分配都在 `End`。**担当分配是建局 / NPC 加入时的一次性动作，不是阶段**（见 §2.1）。
+  合宿 +1 / T23·T47 的教诲融合与重排在 `End`；T2 / T11 / T35 / T59 的教诲授予或改派在训练前的
+  `Begin` 收尾。**担当分配是建局 / NPC 加入时的一次性动作，不是阶段**（见 §2.1）。
 
 **回合结构（S3 已落地）**
 
@@ -63,8 +64,9 @@
   回合仍按 `plan.race = true` 分类，但**不产生比赛事件 / 奖励**，实际动作是休息；
   目前只登记凯斯奇迹 T65（键 = `chara_id = uma_id / 100`）。引擎当前没有「马娘特殊事件记录」
   数据结构（2026-11-04 确认），保留临时表；新增异常事件时手工补表。
-- **结算时机统一在 `End`（用户 2026-11-01 确认）**：発表会 / 本番 buff 与一次性奖励、合宿全演目 +1，
-  以及**教诲分配 / 调整（含 turn 23/47 的転成）全部在 `End`**；顺序是**先剧本结算、后教诲分配 / 调整**。
+- **结算时机统一在 `End`（用户 2026-11-01 确认）**：発表会 / 本番 buff 与一次性奖励、合宿全演目 +1；
+  **T23 / T47 的教诲融合与重排在 `End`、剧本结算之后**。T2 / T11 / T35 / T59 的教诲授予 / 改派
+  在训练前的 `Begin` 收尾（2026-11-09 按真机 replay 帧对齐）。
   turn 67（本番）是**正常回合**，本番结算在 `End` 阶段。
 - **合宿回合**：5 个训练动作**全部变演目稽古**（不受 gauge 是否满影响）；这些稽古**不改变演目 Lv、
   不进演目槽**；Lv 只在该年固定结算点 +1。
@@ -423,9 +425,9 @@
 - **早期窗口独立**：turn 2 / 11 / 35 的分配不为未来融合做铺垫（融合同时重排），每个窗口只按当前槽位效果优化。
 - **教诲效果等级（2026-10-31 确认）**：效果等级 = **所绑定演目的 Lv**；改派后随新演目改变。
   **「演目担当交代まで N ターン」不作为周期轮换**：担当分配仍是建局 / NPC 加入时的一次性动作。
-- **处理时机（2026-11-01 确认 / 同日修正）**：**turn 2 的首次授予在 `Begin` 阶段、NPC / 友人加入后立即完成**
-  （不再等到 `End`），教诲效果对 T2 的分布 / 训练生效；其余窗口（11 / 23 / 35 / 47 / 59）的分配 / 调整仍在
-  该回合 **`End` 阶段、剧本结算之后**处理。融合在 turn 23 / 47 的 `End` 剧本结算后先应用、再 5 槽重排。
+- **处理时机（2026-11-01 确认 / 2026-11-09 按真机帧修正）**：**T2 / T11 / T35 / T59 的授予 / 改派
+  在 `Begin` 阶段**（T2 在 NPC / 友人加入后、训练前；T11/35/59 合宿直前、训练前），教诲效果对本回合
+  分布 / 训练生效；**T23 / T47 的融合 + 重排仍在 `End`、剧本结算之后**。融合先应用、再 5 槽重排。
 - **决策空间**：默认融合固定，每个窗口只有 `5! = 120`（改派可 +1 保持）；仅运行时融合选择 / auto 才是
   `C(5,2) × 2! × 5! = 2,400` / `3! × 5! = 720`。完整枚举可行，不需要百万级搜索。
 - 転成效果逐条见 [`plan/intake.md`](plan/intake.md) §3.5；升级后的基础效果取 `fusion_effect` 固定档，
@@ -699,9 +701,9 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
 
 | 机制点 | 数据字段 | 阶段 / 动作 | 结算函数 | 测试 | 文档 |
 |---|---|---|---|---|---|
-| 手写训练员 | `[decks.*.trainer]` | `Train` / `T2 Begin` / `End` | `trainer::select_action`（守门链 + 打分表 + 分配择优）/ `select_event_choice` | `trainer.rs` / `value.rs` 内联 + `handwritten_trainer_*` 机制集成 | §6 / §6.2 |
+| 手写训练员 | `[decks.*.trainer]` | `Train` / `T2/T11/T35/T59 Begin` / `T23/T47 End` | `trainer::select_action`（守门链 + 打分表 + 分配择优）/ `select_event_choice` | `trainer.rs` / `value.rs` 内联 + `handwritten_trainer_*` 机制集成 | §6 / §6.2 |
 | 融合配置 | `[decks.*.fusion]` | turn 23/47（`End`） | `settle_advice_window` / `apply_fusion_pairs`（S5） | `settle.rs` / `advice.rs` 内联 | §6.1 |
-| 教诲分配 | 教诲槽账本（S3/S5） | `T2 Begin` + `End`（剧本结算后） | `decide_advice_assignment`（交 Trainer 择优，S7）/ `assignment_candidates` / `apply_assignment` | `advice.rs` / `value.rs` / `settle.rs` 内联 + `handwritten_trainer_covers_all_decision_points` | §6.1 / §6.2 |
+| 教诲分配 | 教诲槽账本（S3/S5） | `T2/T11/T35/T59 Begin`（训练前）+ `T23/T47 End`（剧本结算后） | `decide_advice_assignment`（交 Trainer 择优，S7）/ `assignment_candidates` / `apply_assignment` | `advice.rs` / `value.rs` / `settle.rs` 内联 + `handwritten_trainer_covers_all_decision_points` | §6.1 / §6.2 |
 
 ### 6.2 手写训练员（S7，2026-11-02）
 
@@ -755,7 +757,7 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
 
 **教诲分配决策（`decide_advice_assignment`）**
 
-- 决策点：T2 `Begin`（授予后）+ turn 11/23/35/47/59 的 `End`（23/47 先应用配置融合再分配）；
+- 决策点：`T2/T11/T35/T59 Begin`（训练前）+ `T23/T47 End`（23/47 先应用配置融合再分配）；
 - 每窗口把 120 个排列一次性作为 `Action::AssignAdvice` 候选交 `Trainer::select_action`（合并方案，
   不拆 5 步）；选择确定性、不耗决策随机流（回放 / CRN 可复现）；
 - 价值矩阵：对每个候选逐演目求 `槽效果 × 演目上下文`（预计训练 / 稽古次数、担当数、卡数、平均羁绊、

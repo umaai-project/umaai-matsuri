@@ -464,7 +464,7 @@ cargo test --workspace --release --offline
 
 | 项 | 需要确认的内容 | 确认后落点 | 状态 |
 |---|---|---|---|
-| 阶段与决策点 | 五阶段机 + `TurnPlan` 已落（S3）；**担当分配为建局 / NPC 加入时的一次性动作，不是阶段**；`Distribute` 走真实分布（S5）；**稽古为独立 `ActTrain`**；结算与教诲分配均在 `End` | `game/stage.rs`、`game/mod.rs` | S3 / S4 / S5 已落地 |
+| 阶段与决策点 | 五阶段机 + `TurnPlan` 已落（S3）；**担当分配为建局 / NPC 加入时的一次性动作，不是阶段**；`Distribute` 走真实分布（S5）；**稽古为独立 `ActTrain`**；结算在 `End`；教诲 T2/T11/T35/T59 在 `Begin`、T23/T47 在 `End`（2026-11-09 按真机帧修正） | `game/stage.rs`、`game/mod.rs` | S3 / S4 / S5 已落地 |
 | 事件管线 | 固定回合 / 随机分布 / 合宿抑制 / 友人链 / 剧本特例 / 通用回合后事件；S6 已落地（`Begin` 事件链 + `apply_event` 扩展 + 追加稽古事件化 + 变胖） | `game/event.rs` | S6 已落地；马娘特殊事件记录 / 事件⑤ / 抑制基线层 TBD |
 | 训练管线 | 命令与基础表已解码；**下层 = 基础库原始公式，剧本加成走上层**；教え按参与人数叠加（牵绊 `+3` 平摊例外）；**排练失败完全无效（槽不动、Lv 不升）**；上下层 / 主副 SP 拆分 / 上昇量上限 / 稽古 +10 / 失败率（不屈・本番）已落 | `game/train.rs` | 已落地（S4 下层 + S5 上层） |
 | 人头与比赛 | `MatsuriPerson`（act / origin / 可用回合）+ 名单构建 + 担当分配 + 建局门禁（S4 前置）；比赛结算（目标赛 / URA / 自选 → `push_race_event`）；**每回合分布**（亮起锁担当 / 神驹不在率 / 吾妻补位 / 分身 / 得意率）已落（S5） | `game/person.rs`、`game/roster.rs`、`game/distribute.rs`、`game/action.rs` | 已落地（S4 前置 + S5 分布） |

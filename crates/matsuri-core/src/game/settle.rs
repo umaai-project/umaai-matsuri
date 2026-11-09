@@ -172,8 +172,9 @@ impl MatsuriGame {
 
     /// 教诲窗口（`End` 阶段、剧本结算之后）：融合（配置预设）→ 分配（交给 Trainer）
     ///
-    /// 窗口表 = turn 2 / 11 / 23 / 35 / 47 / 59；turn 2 的首次授予与分配在 `Begin`
-    /// （`stage.rs`），End 的窗口 0 不再重复处理。
+    /// 窗口表 = turn 2 / 11 / 23 / 35 / 47 / 59；真机时机：
+    /// - `0/1/3/5`（T2 / T11 / T35 / T59）在训练前，由 `stage.rs::begin_tail` 处理；
+    /// - 只有 `2/4`（T23 / T47，発表会结算后）留在 `End`。
     pub(crate) fn settle_advice_window<T: Trainer<Self>>(
         &mut self,
         trainer: &T,
@@ -182,7 +183,7 @@ impl MatsuriGame {
         let Some(window) = self.plan.advice_window else {
             return Ok(());
         };
-        if window == 0 {
+        if !matches!(window, 2 | 4) {
             return Ok(());
         }
         // 先融合（turn 23 / 47），再让 Trainer 选 5 槽分配；其他窗口只做分配

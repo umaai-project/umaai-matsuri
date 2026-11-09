@@ -321,9 +321,15 @@ impl OnlineSession {
             Route::Event => {
                 let event = online::pending_event(&game)
                     .ok_or_else(|| anyhow!("路由判定为事件帧，但取不到待选事件"))?;
+                // 搜索局面按真实阶段还原：回合初事件 Begin、训练后 AfterTrain、
+                // 已结算 End；并把当前事件放进队列，激活事件搜索（决策点帧本队为空）。
+                let mut search_game = game.clone();
+                search_game.stage = online::event_stage(&game, &frame);
+                search_game.event_queue = vec![event.clone()];
+                search_game.event_cursor = 0;
                 let mut rng = self.decision_rng(turn);
                 let choice = self.trainer.as_dyn().select_event_choice(
-                    &game,
+                    &search_game,
                     event,
                     &event.choices,
                     &mut rng,
@@ -429,9 +435,10 @@ impl OnlineSession {
                     });
                 }
                 let mut rng = self.decision_rng(turn);
-                // 搜索从「本次分配之后」继续：清掉窗口标记，避免 End 阶段再次融合 / 分配
+                // 教诲窗口：真机 T2/T11/T35/T59 在训练前（Begin），T23/T47 在発表会后（End）。
+                // 保留 `plan.advice_window`，让在线与离线的落位先验同口径。
                 let mut search_game = game.clone();
-                search_game.plan.advice_window = None;
+                search_game.stage = online::advice_stage(&frame);
                 let index =
                     self.trainer
                         .as_dyn()

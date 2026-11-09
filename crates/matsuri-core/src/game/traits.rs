@@ -609,6 +609,12 @@ impl MatsuriGame {
         self.strategy = Some(strategy);
         res
     }
+
+    /// `End` 阶段在教诲处理之后的剩余收尾（进化技能提示 + 追加稽古作废）
+    fn finish_end_tail(&mut self) {
+        self.apply_evolution_hint();
+        self.kensan_pending = false;
+    }
 }
 
 impl FlatSearchGame for MatsuriGame {
@@ -627,6 +633,47 @@ impl FlatSearchGame for MatsuriGame {
         // 必须与 `run_stage` 内执行动作的方式逐字一致：走本局面自持的策略流，
         // 不能用调用方的决策流（否则根动作随机来源不一致，CRN 在根节点分叉）
         self.apply_selected_action(action)
+    }
+
+    /// 根动作后的阶段收尾：教诲分配停 `Begin` / `End` 内部，必须补跑剩余逻辑
+    ///
+    /// - `Begin + AssignAdvice`：只重掷追加稽古（授予 / 分配已由根动作完成）；
+    /// - `Begin + 事件`：补跑完整 `begin_tail`；
+    /// - `End + AssignAdvice`：补跑进化提示 + 追加稽古作废；
+    /// - `End + 事件`：先补教诲窗口（事件在 `End` 中早于教诲处理），再补尾部。
+    fn finish_root_stage(
+        &mut self,
+        action: &Self::Action,
+        trainer: &Self::RolloutTrainer,
+        decision: &mut StdRng,
+    ) -> Result<()> {
+        match self.stage {
+            Stage::Begin => {
+                let Some(mut strategy) = self.strategy.take() else {
+                    return Err(anyhow!(
+                        "策略流缺失：根动作收尾应由 fork_for_rollout 派生策略流"
+                    ));
+                };
+                let result = if matches!(action, Action::AssignAdvice(_)) {
+                    self.roll_kensan(&mut strategy);
+                    Ok(())
+                } else {
+                    self.begin_tail(trainer, decision, &mut strategy)
+                };
+                self.strategy = Some(strategy);
+                result
+            }
+            Stage::End => {
+                let result = if matches!(action, Action::AssignAdvice(_)) {
+                    Ok(())
+                } else {
+                    self.settle_advice_window(trainer, decision)
+                };
+                self.finish_end_tail();
+                result
+            }
+            _ => Ok(()),
+        }
     }
 
     fn fork_for_rollout(&self, rollout_seed: u64) -> Self {

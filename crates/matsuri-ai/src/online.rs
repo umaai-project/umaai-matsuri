@@ -20,6 +20,7 @@
 //! 才算需要决策——单选项事件只是一个结果，不问。
 
 use anyhow::Result;
+use matsuri_core::data::CheckPointResult;
 use matsuri_core::game::MatsuriGame;
 use matsuri_core::{Action, Stage};
 use umaai::decision::{Candidate, DecisionRecord};
@@ -105,6 +106,46 @@ pub fn pending_event(game: &MatsuriGame) -> Option<&EventData> {
         .unresolved_events
         .iter()
         .find(|event| event.player_select && event.choices.len() > 1)
+}
+
+/// 在线教诲搜索的根阶段
+///
+/// 真机时机：T2 / T11 / T35 / T59 在训练前（`Begin`）；T23 / T47 在発表会结算后（`End`）。
+#[must_use]
+pub fn advice_stage(frame: &ParsedFrame) -> Stage {
+    if frame.is_after_training() {
+        Stage::End
+    } else {
+        Stage::Begin
+    }
+}
+
+/// 在线事件搜索的根阶段
+///
+/// 回合初事件在 `Begin`；训练后事件在 `AfterTrain`；本回合発表会 / 本番已结算的
+/// `End` 事件才落 `End`。
+#[must_use]
+pub fn event_stage(game: &MatsuriGame, frame: &ParsedFrame) -> Stage {
+    if !frame.is_after_training() {
+        Stage::Begin
+    } else if checkpoint_settled(game) {
+        Stage::End
+    } else {
+        Stage::AfterTrain
+    }
+}
+
+/// 本回合的発表会 / 本番是否已结算
+fn checkpoint_settled(game: &MatsuriGame) -> bool {
+    game.data
+        .schedule
+        .iter()
+        .position(|item| item.turn == game.base.turn)
+        .is_some_and(|index| {
+            game.check_points
+                .get(index)
+                .is_some_and(|result| *result != CheckPointResult::NotReached)
+        })
 }
 
 /// 手写档的决策解释（打分表 + 中选 + 理由；守门链命中时打分表为空）
@@ -469,5 +510,29 @@ mod tests {
             route(&game, &frame("event", None)),
             Route::Skip(_)
         ));
+    }
+
+    /// 教诲根阶段按帧的 `isAfterTraining`：T11/T59 false → Begin；T23/T47 true → End
+    #[test]
+    fn advice_stage_follows_frame_phase() {
+        let mut frame = frame("special", None);
+        frame.status.is_after_training = false;
+        assert_eq!(advice_stage(&frame), Stage::Begin);
+        frame.status.is_after_training = true;
+        assert_eq!(advice_stage(&frame), Stage::End);
+    }
+
+    /// 事件根阶段：回合初 Begin；训练后 AfterTrain；已结算 End
+    #[test]
+    fn event_stage_uses_checkpoint_settlement() {
+        let mut game = sample_game();
+        game.base.turn = game.data.schedule[0].turn;
+        let mut frame = frame("event", Some(400015106));
+        frame.status.is_after_training = false;
+        assert_eq!(event_stage(&game, &frame), Stage::Begin);
+        frame.status.is_after_training = true;
+        assert_eq!(event_stage(&game, &frame), Stage::AfterTrain);
+        game.check_points[0] = CheckPointResult::Success;
+        assert_eq!(event_stage(&game, &frame), Stage::End);
     }
 }

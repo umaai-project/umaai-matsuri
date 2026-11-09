@@ -3,8 +3,8 @@
 //! 纪律：**无数据、无引用、可 `Copy`**；中间状态（gauge / 合宿进度 / 教诲槽）放局面字段。
 //! 阶段只表示回合内的**执行位置**；比赛 / 合宿 / 発表会 / 本番 / 空窗期 / URA 回合是回合类型或自动
 //! 结算（由 [`TurnPlan`] 与局面字段表达），不各开一个阶段。比赛 / 稽古 / 出行是 `Train` 阶段
-//! 里的动作；発表会 / 本番 / 合宿 +1 与教诲分配 / 调整都是 `End` 阶段的自动结算 /
-//! 决策（其中教诲在剧本结算之后处理）。
+//! 里的动作；発表会 / 本番 / 合宿 +1 与 T23/T47 的教诲融合 / 重排是 `End` 阶段的自动结算 /
+//! 决策；T2/T11/T35/T59 的教诲授予 / 改派在训练前的 `Begin` 收尾。
 
 use anyhow::{Result, anyhow};
 use rand::rngs::StdRng;
@@ -253,9 +253,12 @@ impl MatsuriGame {
 
     /// Begin 阶段在事件链之后的固定收尾
     ///
-    /// 从 `stage_body` 抽出，供两处共用：真实推进，以及事件搜索的 rollout——后者从
+    /// 从 `stage_body` 抽出，供两处共用：真实推进，以及搜索 rollout——后者从
     /// Begin 内部的事件处 fork，`next()` 会直接进入下一阶段，不补跑本段就会丢掉
     /// turn 2 的教诲授予（后续融合窗口即报「尚未获得教诲」）。
+    ///
+    /// 教诲窗口按真机时机：`0`（T2）与 `1/3/5`（T11/35/59 合宿直前）都在训练前的
+    /// `Begin`；`2/4`（T23/47 発表会后）仍在 `End`，见 `settle_advice_window`。
     pub(crate) fn begin_tail<T: Trainer<Self>>(
         &mut self,
         trainer: &T,
@@ -264,10 +267,14 @@ impl MatsuriGame {
     ) -> Result<()> {
         // turn 2：NPC / 友人加入（本回合起可用）后立即授予 5 个基础教诲；
         // 教诲效果须从本回合的分布 / 训练起生效（memo §4）。
-        if self.base.turn == crate::SCENARIO_START_TURN {
-            self.acquire_advice();
-            // 首次分配也交给 Trainer（合并 120 候选；确定性、不耗结算随机）
-            self.decide_advice_assignment(trainer, decision)?;
+        // T11/35/59 是「合宿直前改派」，同样在训练前决定，效果作用于当回合训练。
+        match self.plan.advice_window {
+            Some(0) => {
+                self.acquire_advice();
+                self.decide_advice_assignment(trainer, decision)?;
+            }
+            Some(1 | 3 | 5) => self.decide_advice_assignment(trainer, decision)?,
+            _ => {}
         }
         // 研鑽「追加の稽古」：回合开始用策略流预掷（掷中后未点对应训练则作废）
         self.roll_kensan(strategy);
@@ -393,7 +400,74 @@ impl MatsuriGame {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use rand::SeedableRng;
+    use umaai_core::gamedata::EventChoice;
+
     use super::*;
+    use crate::game::Action;
+
+    /// 只数 `select_action` 次数的训练员：验证教诲窗口在 `Begin` 收尾里被决策
+    #[derive(Default)]
+    struct CountingTrainer {
+        calls: AtomicUsize,
+    }
+
+    impl Trainer<MatsuriGame> for CountingTrainer {
+        fn select_action(
+            &self,
+            _game: &MatsuriGame,
+            _actions: &[Action],
+            _rng: &mut StdRng,
+        ) -> Result<usize> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(0)
+        }
+
+        fn select_choice(
+            &self,
+            _game: &MatsuriGame,
+            _choices: &[Vec<EventChoice>],
+            _rng: &mut StdRng,
+        ) -> Result<usize> {
+            Ok(0)
+        }
+
+        fn select_event_choice(
+            &self,
+            _game: &MatsuriGame,
+            _event: &EventData,
+            _choices: &[Vec<EventChoice>],
+            _rng: &mut StdRng,
+        ) -> Result<usize> {
+            Ok(0)
+        }
+    }
+
+    /// T2 / T11 / T35 / T59 在 Begin 决策教诲；T23/T47 留给 End
+    #[test]
+    fn advice_windows_decide_in_begin_tail() {
+        let mut game = crate::testing::sample_game();
+        game.advice.acquired = true;
+        game.advice.slots = [101, 201, 301, 401, 501];
+        game.advice.fused = [0; 5];
+        let trainer = CountingTrainer::default();
+        for (turn, expected) in [(2, 1), (10, 0), (11, 1), (23, 0), (35, 1), (59, 1)] {
+            game.base.turn = turn;
+            game.plan = game.derive_plan();
+            trainer.calls.store(0, Ordering::SeqCst);
+            let mut decision = StdRng::seed_from_u64(1);
+            let mut strategy = StrategyRng::new(7);
+            game.begin_tail(&trainer, &mut decision, &mut strategy)
+                .expect("Begin 收尾");
+            assert_eq!(
+                trainer.calls.load(Ordering::SeqCst),
+                expected,
+                "turn {turn} 的教诲决策次数"
+            );
+        }
+    }
 
     /// 仓内资产的三个合宿窗口（12–15 / 36–39 / 60–63）
     fn camp_windows() -> Vec<CampWindow> {
