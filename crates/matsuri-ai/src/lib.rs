@@ -44,5 +44,5 @@ pub use output::{
     FinalTurnOutput, OnlineTurnOutput, TrainingDeviation, TrainingReport, TurnKind,
     connected_payload, error_payload,
 };
-pub use session::{FRIEND_FIRST_EVENT, OnlineSession, TrainerKind};
+pub use session::{DeckProfile, FRIEND_FIRST_EVENT, OnlineSession, TrainerKind};
 pub use urafile::{FrameSource, ROOT_ENV, ReplaySource, resolve_live_root};

@@ -22,8 +22,8 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow};
 use matsuri_ai::output::{FinalTurnOutput, OnlineTurnOutput};
 use matsuri_ai::{
-    FrameSource, OnlineSession, TrainerKind, TurnKind, connected_payload, error_payload,
-    resolve_live_root,
+    DeckProfile, FrameSource, OnlineSession, TrainerKind, TurnKind, connected_payload,
+    error_payload, resolve_live_root,
 };
 use matsuri_core::{MatsuriConfig, MatsuriData, SearchCandidate};
 use umaai::{Config, DecisionRecord, FrameKind, LuckAttach};
@@ -65,8 +65,7 @@ pub fn run(args: Args) -> Result<()> {
     let mut matsuri_cfg =
         MatsuriConfig::load_with_overlay_file(crate::DATA_ROOT, ".").context("载入剧本配置失败")?;
     crate::apply_search_threads(matsuri_cfg.search.threads);
-    let comp = matsuri_core::deck_comp(&cfg.sim.cards).context("卡组构成解析失败")?;
-    matsuri_cfg = matsuri_cfg.for_deck(comp);
+    // 卡组档不在这里选：会话按帧内实际卡组选档（ai_config 的卡组只用于离线跑局）
     // 在线档与离线档读同一套配置：预算取 `matsuri_config [search].search_n`，
     // 环境变量只作为临时覆盖（`MATSURI_SEARCH_N` / `MATSURI_SEARCH_RADICAL`）。
     let search_n =
@@ -124,6 +123,8 @@ pub fn run(args: Args) -> Result<()> {
     let mut decisions = 0usize;
     let mut finals = 0usize;
     let mut errors = 0usize;
+    // 已报过的 (局号, 生效档)：每局开头 / 换档时报一次
+    let mut shown_deck = (None, None);
 
     loop {
         let timeout = if replay {
@@ -156,6 +157,16 @@ pub fn run(args: Args) -> Result<()> {
                     }
                     Ok(())
                 });
+                // 还原失败也照报：便于对照拒绝原因
+                let deck = (session.epoch(), session.deck_profile().cloned());
+                if deck != shown_deck {
+                    if !args.json
+                        && let Some(profile) = &deck.1
+                    {
+                        writeln!(stdout, "{}", paint(&deck_line(profile), Some("96"), color))?;
+                    }
+                    shown_deck = deck;
+                }
                 match handled {
                     Ok(output) => {
                         if output.kind == TurnKind::Decision {
@@ -192,6 +203,15 @@ pub fn run(args: Args) -> Result<()> {
         return Err(anyhow!("回放有 {errors} 帧处理失败"));
     }
     Ok(())
+}
+
+/// 生效档行：`卡组 12101 → 档 stamina_build`（构成按 速 / 耐 / 力 / 根 / 智卡数连写）
+fn deck_line(profile: &DeckProfile) -> String {
+    let comp = profile.comp.map_or_else(
+        || "无法识别".to_string(),
+        |comp| comp.iter().map(ToString::to_string).collect(),
+    );
+    format!("卡组 {comp} → 档 {}", profile.name)
 }
 
 /// 搜索开始前的分隔线与提示（面板之后、决策之前）
@@ -597,7 +617,22 @@ fn render_verify(report: &matsuri_ai::TrainingReport) -> String {
 mod tests {
     use umaai::{LuckAttach, LuckScoreSnapshot};
 
-    use super::{TurnKind, candidate_color, render_luck, render_notes};
+    use super::{DeckProfile, TurnKind, candidate_color, deck_line, render_luck, render_notes};
+
+    /// 生效档行：构成按五类卡数连写；算不出时标「无法识别」
+    #[test]
+    fn deck_line_shows_comp_and_profile() {
+        let profile = DeckProfile {
+            comp: Some([1, 2, 1, 0, 1]),
+            name: "stamina_build".to_string(),
+        };
+        assert_eq!(deck_line(&profile), "卡组 12101 → 档 stamina_build");
+        let unknown = DeckProfile {
+            comp: None,
+            name: "default".to_string(),
+        };
+        assert_eq!(deck_line(&unknown), "卡组 无法识别 → 档 default");
+    }
 
     /// 单一快照（终局显示分口径）：`delta` 为本轮运气
     fn luck(total: f64, delta: Option<f64>) -> LuckAttach {

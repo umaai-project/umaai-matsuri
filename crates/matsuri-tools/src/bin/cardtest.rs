@@ -46,6 +46,8 @@ const DEFAULT_RUN_GAMES: usize = 1000;
 const DEFAULT_BUILD_GAMES: usize = 4000;
 /// 实测档每槽候选宽度（含当前卡）
 const DEFAULT_TOPK: usize = 6;
+/// 友人（SSR 吾妻）出行总段数：`friend_full` 统计走满这么多段的局占比
+const FRIEND_OUTINGS: u32 = 5;
 /// 标准卡组构成（用户给定口径：速耐力根智张数 + SSR 吾妻）
 const PRESETS: [(&str, [usize; 5]); 4] = [
     ("speed_build", [2, 1, 1, 0, 1]),
@@ -601,6 +603,18 @@ impl DeckRun {
         }
         let n = self.observations.len().max(1) as f64;
         sums.map(|sum| sum / n)
+    }
+
+    /// 友人出行：局均次数 + 走满 [`FRIEND_OUTINGS`] 段的局占比
+    fn friend_stats(&self) -> (f64, f64) {
+        let n = self.counts.len().max(1) as f64;
+        let total: u32 = self.counts.iter().map(|counts| counts.friend).sum();
+        let full = self
+            .counts
+            .iter()
+            .filter(|counts| counts.friend >= FRIEND_OUTINGS)
+            .count();
+        (f64::from(total) / n, full as f64 / n)
     }
 
     fn count_mean(&self, map: impl Fn(&Counts) -> [u32; 5]) -> [f64; 5] {
@@ -1191,7 +1205,7 @@ fn write_summary(path: &str, runs: &[DeckRun], correct: &Correct) -> Result<()> 
         "name,comp,pick,deck,n,score_mean,score_sd,pt_mean,skill_mean,\
          five_score0,five_score1,five_score2,five_score3,five_score4,\
          five0,five1,five2,five3,five4,acts0,acts1,acts2,acts3,acts4,\
-         delta,ci95,wins,losses,ties,p_adj,warnings\n",
+         delta,ci95,wins,losses,ties,p_adj,friend_mean,friend_full,warnings\n",
     );
     for (index, run) in runs.iter().enumerate() {
         let scores = run.scores();
@@ -1199,10 +1213,11 @@ fn write_summary(path: &str, runs: &[DeckRun], correct: &Correct) -> Result<()> 
         let five_score = run.axis_mean(|obs| obs.five_score);
         let five = run.axis_mean(|obs| obs.five);
         let acts = run.axis_mean(|obs| obs.acts);
+        let (friend_mean, friend_full) = run.friend_stats();
         out.push_str(&format!(
             "{},{},{},{},{},{:.3},{:.3},{:.3},{:.3},{:.1},{:.1},{:.1},{:.1},{:.1},\
              {:.1},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1},\
-             {:.3},{:.3},{},{},{},{:.6},{}\n",
+             {:.3},{:.3},{},{},{},{:.6},{:.4},{:.4},{}\n",
             run.name,
             run.comp,
             run.pick,
@@ -1242,6 +1257,8 @@ fn write_summary(path: &str, runs: &[DeckRun], correct: &Correct) -> Result<()> 
             comparisons[index].losses,
             comparisons[index].ties,
             row.p_adj,
+            friend_mean,
+            friend_full,
             run.warnings.join(" ")
         ));
     }

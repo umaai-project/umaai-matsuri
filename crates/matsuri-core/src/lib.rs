@@ -21,7 +21,7 @@ mod value;
 
 pub use config::{MatsuriConfig, Qie};
 pub use data::MatsuriData;
-pub use deck_config::{AdvicePreset, DeckParams, DeckTable, deck_comp};
+pub use deck_config::{AdvicePreset, DEFAULT_DECK, DeckParams, DeckTable, deck_comp};
 pub use game::{
     ActLedger, Action, AdviceLedger, BoardView, CampState, CampView, CheckPointNeed,
     DISPLAY_HALF_FROM_STATUS, DeckError, DeckReport, DeckWarning, EVENT_LOG_CAPACITY, EventRecord,

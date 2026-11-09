@@ -6,9 +6,9 @@
 #      其他档只写差异，深合并到 default；variant = true 只用于扫参，必须按名字显式选。
 # 未匹配任何非 variant 档的 comp 自动走 default。
 #
-# 默认档 = lab 实验仓冠军档 `ga-r2`（2026-11-03 合并；留出 seeds 62100–62199 ×100 局 74051.7）：
-#   调参口径 = 玉藻十字 102102 + 卡组 A；迁移到仓内默认卡组实测 100 局 +9936.5（t=22.1）。
-# 追加 2026-11-03 的 `[decks.default.trainer.overflow]` / `[decks.default.trainer.endgame]` 扫描档：行为旋钮，评分中性。
+# 默认档 = GA run2 冠军 g0269（2026-11-09 定档；起点 = lab 冠军 `ga-r2`）：
+#   手写档对 ga-r2 +3758；搜索档 N=8192 配对 39 局 +898 ±259（t 3.47）。
+#   耐 / 智两档同法独立调参，见文件末尾；口径与过程见 docs/plan/deck_param_scan.md §10。
 # 改这里必须同步 `deck_config.rs` 的 `DeckParams::default()`（`tests/data.rs` 断言两者相等）。
 #
 # 融合校验：第 2 年（turn 23 结束）恰 2 组、第 3 年（turn 47 结束）恰 3 组；
@@ -62,96 +62,225 @@ year3 = [
 
 # 教诲落位预设：每行顺序 = 速 / 耐 / 力 / 根 / 智；值 = 基础教诲 id
 [decks.default.advice]
-t2 = [201, 101, 501, 301, 401]
-t11 = [501, 301, 101, 201, 401]
-t23 = [101, 501, 401, 301, 201]
-t35 = [101, 301, 501, 401, 201]
-t47 = [501, 101, 401, 301, 201]
+t2 = [101, 201, 501, 301, 401]
+t11 = [101, 501, 201, 301, 401]
+t23 = [101, 401, 501, 301, 201]
+t35 = [101, 501, 301, 401, 201]
+t47 = [101, 501, 401, 301, 201]
 t59 = [501, 401, 101, 301, 201]
 
-# 手写训练员策略旋钮（默认档 = lab 冠军 ga-r2）
+# 手写训练员策略旋钮
 [decks.default.trainer]
 # 目标函数的 PT 偏好：1.0 = 官方评分；官方计分固定 ×2.0，此处只影响决策优先级。
-# 2026-11-08 扫测（N=2048 × 10 局）：1.0→3.0 总分持平（85.7k~86.3k，SE≈500），
-# PT 单调 +590（11,785 → ~12,400，2.25 后饱和），代价是技能+五维等量下降（−800）——
-# 它是「构成偏好」而非「分数旋钮」，维持 1.7271。
-pt_favor_rate = 1.7271
+# 2026-11-08 扫测（N=2048 × 10 局）：1.0→3.0 总分持平、PT 单调升、技能+五维等量降——
+# 它是「构成偏好」而非「分数旋钮」。
+pt_favor_rate = 1.931954
 # 体力低于此值进入「该休息了」区间（仍由打分表对比收益）
-rest_vital = 64
+rest_vital = 66
 # 発表会 / 本番达标保护的提前回合（0 = 关闭）
-checkpoint_margin = 5
+checkpoint_margin = 4
 # Senior 合宿前把「有编成卡的演目」推到的最小 Lv（0 = 关闭）
-act_level_target = 9
+act_level_target = 2
 # 是否打自选比赛（false = 只在目标赛出手）
 self_race = false
 # 友人外出是否尽早用完（攻略策略；false = 按收益打分）
 friend_outing_early = true
 # 自选比赛（freeRaces 义务区间）补足紧迫度软加分（0 = 关；硬保底不受此开关影响）
-free_race_urgency = 1.0
+free_race_urgency = 1.764718
 # 五维策略权重（速 / 耐 / 力 / 根 / 智；官方评分边际之外的偏好）
-status_weights = [0.6465, 0.9881, 0.8387, 0.3, 2.6217]
+status_weights = [0.994888, 0.542242, 0.407084, 0.156003, 0.860951]
 
 # 属性 / 资源 / 事件折算权重（单位 = 评分点）
 [decks.default.trainer.weights]
-vital = 1.4774
-motivation = 23.6572
-friendship = 0.5559
-hint = 1.1725
-gauge = 27.9217
-act_level = 12.9562
-checkpoint = 1105.0179
-fat = 108.4909
+vital = 5.730157
+motivation = 10.93116
+friendship = 3.339714
+hint = 4.313881
+gauge = 53.094769
+act_level = 58.536224
+checkpoint = 2223.151961
+fat = 193.041812
 
 # 教诲分配价值权重（特征系数；注意与 [decks.default.advice] 的落位预设区分）
 [decks.default.trainer.advice]
-card = 1.4462
-npc = 0.4246
-train = 0.2
-keiko = 0.763
-level = 0.2
-milestone = 0.2
-# 特化上限（601）/ 助力の支え（401）：实测噪声或有害，锁 0
+card = 1.684001
+npc = 0.3559
+train = 0.153215
+keiko = 1.158553
+level = 0.772682
+milestone = 0.028781
+# 特化上限（601）/ 助力の支え（401）：实测噪声或有害，锁 0（GA 不搜）
 status_limit = 0.0
 assist = 0.0
 # 落位先验强度（0 = 关；500 = 命中一格 +500，等价于外部钉位）
-route = 500.0
+route = 392.251041
 
 # 动态权重层（相对剩余空间 / 时间价值 / 稽古节奏；全 0 = 关闭）
 [decks.default.trainer.dynamic]
-status_catchup = 1.3553
-act_catchup = 0.0
-vital_decay = 0.2879
-vital_idle = 0.0
-keiko_tempo = 0.486
+status_catchup = 3.086141
+act_catchup = 0.012934
+vital_decay = 0.005776
+vital_idle = 1.625975
+keiko_tempo = 2.239315
 
-# 溢出处理（按生效上限判定；全 0 = 关闭，扫描后定档）
+# 溢出处理（按生效上限判定；全 0 = 关闭）
 [decks.default.trainer.overflow]
-margin = 0.02
-tilt = 0.5
-keep = 0.15
+margin = 0.076106
+tilt = 3.54432
+keep = 0.018218
 
 # 第三年合宿结束～T71 的稽古兑现（只作用普通回合；全 0 = 关闭，URA 不参与）
 [decks.default.trainer.endgame]
-keiko = 250.0
-scarcity = 1.0
-level = 80.0
-normal_penalty = 120.0
+keiko = 763.274261
+scarcity = 0.45993
+level = 162.659083
+normal_penalty = 462.583525
 
-# 非默认卡组档：当前只保留 wisdom 11102（教诲落位 + 五维系数均已定档）。
-# stamina 12101 / guts 20111 于 2026-11-07 退役（构成性失分，参数调不动，等构成搜索后再加入）；
-# 卡组夹具与两段配置已备份到 logs/deckselect/retired_2026-11-07/。
-# 未匹配 comp 一律回落 [decks.default]；t47 / t59 仍继承 default（本轮未扫）。
-# 详见 docs/plan/deck_param_scan.md §9、logs/advscan/FINAL.md、logs/statusscan/FINAL.md。
+# ---------- 非默认卡组档 ----------
+# 耐 12101 / 智 11102：GA run3 以 g0269 为起点按卡组独立调参，按 comp 自动触发。
+# 两档写全全部旋钮，default 再调也不会连带改动它们。guts 20111 未建档，回落 default。
+
+[decks.stamina_build]
+comp = [1, 2, 1, 0, 1]
+note = "耐主；2026-11-09 定档 GA run3 g0109｜手写对 g0269 +2200、影子 +2850；搜索 N=8192 对 ga-r2 +621 ±262（t 2.37）"
+
+[decks.stamina_build.fusion]
+year2 = [
+    { base = 101, target = 601 },
+    { base = 201, target = 701 },
+]
+year3 = [
+    { base = 501, target = 801 },
+    { base = 301, target = 901 },
+    { base = 401, target = 1001 },
+]
+
+[decks.stamina_build.advice]
+t2 = [201, 101, 501, 301, 401]
+t11 = [501, 101, 201, 301, 401]
+t23 = [101, 401, 501, 301, 201]
+t35 = [501, 101, 401, 301, 201]
+t47 = [101, 501, 401, 301, 201]
+t59 = [101, 501, 401, 301, 201]
+
+[decks.stamina_build.trainer]
+pt_favor_rate = 2.130577
+rest_vital = 63
+checkpoint_margin = 4
+act_level_target = 1
+self_race = false
+friend_outing_early = true
+free_race_urgency = 1.716725
+status_weights = [0.5059, 0.266166, 0.528155, 0.055917, 0.747582]
+
+[decks.stamina_build.trainer.weights]
+vital = 5.188773
+motivation = 9.086837
+friendship = 3.332008
+hint = 3.518255
+gauge = 46.200158
+act_level = 71.878883
+checkpoint = 2138.199587
+fat = 284.888897
+
+[decks.stamina_build.trainer.advice]
+card = 1.593206
+npc = 0.328396
+train = 0.145448
+keiko = 1.342739
+level = 0.633956
+milestone = 0.155985
+status_limit = 0.0
+assist = 0.0
+route = 487.457146
+
+[decks.stamina_build.trainer.dynamic]
+status_catchup = 1.948776
+act_catchup = 0.04151
+vital_decay = 0.026378
+vital_idle = 2.83136
+keiko_tempo = 1.971662
+
+[decks.stamina_build.trainer.overflow]
+margin = 0.033668
+tilt = 3.26761
+keep = 0.262232
+
+[decks.stamina_build.trainer.endgame]
+keiko = 515.503427
+scarcity = 0.812819
+level = 154.744765
+normal_penalty = 448.645844
+
 [decks.wisdom_build]
 comp = [1, 1, 1, 0, 2]
-note = "智主；2026-11-07 定档｜教诲复核 +282.9 ±145.0 (p_adj 0.0000)、影子 +346.8；五维系数复核 +630.6 ±145.4 (p_adj 0.0000)、影子 +606.3"
+note = "智主；2026-11-09 定档 GA run3 g0339｜手写对旧档 +3598、对 g0269 +2092、影子 +2957；搜索 N=8192 对旧档 +553 ±194（t 2.85）"
+
+[decks.wisdom_build.fusion]
+year2 = [
+    { base = 501, target = 601 },
+    { base = 101, target = 701 },
+]
+year3 = [
+    { base = 201, target = 801 },
+    { base = 301, target = 901 },
+    { base = 401, target = 1001 },
+]
 
 [decks.wisdom_build.advice]
-t2 = [401, 201, 301, 501, 101]
-t11 = [101, 201, 301, 501, 401]
-t23 = [101, 301, 501, 401, 201]
-t35 = [101, 501, 201, 301, 401]
+t2 = [101, 201, 501, 301, 401]
+t11 = [101, 301, 501, 201, 401]
+t23 = [101, 501, 401, 301, 201]
+t35 = [501, 301, 101, 201, 401]
+t47 = [501, 101, 401, 201, 301]
+t59 = [501, 101, 401, 201, 301]
 
 [decks.wisdom_build.trainer]
-# 五维策略权重：智 2.6217 → 1.31085、耐 0.9881 → 1.111613；其余仍继承 default
-status_weights = [0.808125, 1.111613, 0.629025, 0.15, 1.31085]
+pt_favor_rate = 1.799203
+rest_vital = 75
+checkpoint_margin = 3
+act_level_target = 3
+self_race = false
+friend_outing_early = true
+free_race_urgency = 1.373165
+# 智 ≈2400 封顶，GA 把智权重压到近 0
+status_weights = [0.614248, 0.573257, 0.542746, 0.077162, 0.024016]
+
+[decks.wisdom_build.trainer.weights]
+vital = 4.488813
+motivation = 7.949619
+friendship = 3.34968
+hint = 5.782744
+gauge = 41.401886
+act_level = 65.335547
+checkpoint = 899.191667
+fat = 318.649848
+
+[decks.wisdom_build.trainer.advice]
+card = 2.301723
+npc = 0.063491
+train = 0.181077
+keiko = 1.817824
+level = 0.774184
+milestone = 0.313946
+status_limit = 0.0
+assist = 0.0
+route = 709.000535
+
+[decks.wisdom_build.trainer.dynamic]
+status_catchup = 1.926988
+act_catchup = 0.072309
+vital_decay = 0.011004
+vital_idle = 1.151637
+keiko_tempo = 1.078349
+
+[decks.wisdom_build.trainer.overflow]
+margin = 0.038995
+tilt = 1.845868
+keep = 0.057113
+
+[decks.wisdom_build.trainer.endgame]
+keiko = 394.9085
+scarcity = 0.715231
+level = 64.830756
+normal_penalty = 294.799509

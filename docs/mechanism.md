@@ -654,6 +654,8 @@
   是完整默认档（原 speed_build 参数），未匹配卡组走 default；`variant = true` 只用于扫参。
   `settle.rs` 读 `config.deck.fusion`，`Model` 读 `config.deck.advice` / `config.deck.trainer`；
   详见 [`plan/deck_config.md`](plan/deck_config.md)。
+- **在线选档（2026-11-09）**：在线按帧 `cardId` 的构成选档（与离线按本局卡组同口径），
+  构成变化时重建训练员；见 [`plan/online_wiring.md`](plan/online_wiring.md) §9.10 ③。
 
 **分配：每窗口独立，`5! = 120` 全枚举**
 
@@ -788,7 +790,7 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
   注意搜索基线本身不是官方分数：
   搜索分把 PT 项放大 `pt_favor_rate` 倍，换算口径为
   `official = search − PT加权均值 × pt_score_rate × 切者/小切因子 × (favor − 1)`
-  （`favor` = `[decks.*.trainer].pt_favor_rate`，默认 1.7271；本剧本 11k PT 时约差 1.6 万），
+  （`favor` = 生效档 `[decks.*.trainer].pt_favor_rate`，默认档 1.931954；本剧本 11k PT 时约差 2 万），
   这样 `E₀` 才与终局得分同量纲；**`SearchSummary::baseline` 仍留在搜索口径**（运气分与候选分差都用它）；
   `S` = 单局终局标准差（`baseline_stdev`，候选样本方差按样本数加权合并，不随预算收敛），
   投影是确定性平移，**S 不变**；
@@ -874,6 +876,10 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
   - **硬保底**：`need ≥ left`（再不打赢不了）→ 守门⓪ 直接选「比赛」，优先于治病 / 合宿 / 友人截止 /
     体力危险 / 心情崩坏等其它守门，且**不受 `self_race=false` 限制**（义务补足与「额外多打」分开）；
   - `self_race=false` 时纯额外自由赛仍不参与比较（`race_value = −∞`）。
+  - **搜索档（2026-11-09）**：同一判定（`MatsuriGame::forced_race`）命中时，Train 搜索只搜「比赛」一个候选：
+    其余动作必然育成失败，不再占搜索预算、也不进期望基线。修正前它们各跑首组 rollout 并计入按样本数加权的
+    期望基线，该回合期望 / 运气骤降、下回合弹回（真机 game3535 T22 本局运气 −48048）。中选与离线结果不变，
+    只改该回合的期望口径（= 打这场比赛的期望分）与算力。
 - **验收数字**：100101（无 `freeRaces`）100 局**逐位不变**（均 73155.0）；
   102102 玉藻（12–28 需 1 场 + 29–48 需 4 场且 ≤G3）100 局 74051.7 → **70876.0（−3175.7）**、
   ≥LG 30 → 2、**无育成失败**（每局补 5 场义务赛）；seed 62100 冒烟 75460 / US9 → **64686 / US1**。
@@ -899,14 +905,14 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
     应用当前选项后，从 `event_queue` 的下一个事件继续（`event_cursor` 留在局面上），
     再跑后续 stage 到终局。
 - **搜索口径**：`MatsuriGame::search_score(pt_favor_rate)` = 技能 + PT×`pt_score_rate`×`pt_favor_rate`
-  + 五维公式；`pt_favor_rate` 取 `[decks.default.trainer].pt_favor_rate`，与手写剪枝同一目标函数。
+  + 五维公式；`pt_favor_rate` 取按构成生效档的 `[decks.*.trainer].pt_favor_rate`，与手写剪枝同一目标函数。
   失败分支（`career_failed`）按实际 `calc_score`，不加额外罚。
 - **`pt_favor_rate` 扫测（2026-11-08，N=2048 × 10 局，seeds 73200–73209）**：1.0 → 3.0 之间
   **总分基本不变**（9 点极差 644，与单点 SE 407–652 同量级、配对差均在 1 SE 内），但 **PT 单调上升**：
   11,785（1.0）→ 12,045（1.7271）→ 12,229（2.0）→ ~12,300–12,400（2.25–3.0 饱和），
   即 1.0 → 3.0 多 **+590 PT（+5.0%）**。代价是 `技能 + 五维`（= 总分 − 2×PT）同步下降
   62,133 → 61,332（−801），两者几乎对冲。**结论：该旋钮是「构成偏好」而非「分数旋钮」**，
-  提高它换来更多 PT（→ 更多技能）但等量丢面板分；默认 1.7271 在噪声内，无需改动。
+  提高它换来更多 PT（→ 更多技能）但等量丢面板分；默认 1.7271 在噪声内，无需单独改动（2026-11-09 起默认档随 GA 联合调参为 1.931954，见 `plan/deck_param_scan.md` §10）。
   采样精度提醒：10 局 N=2048 的分数 SE ≈ 500，±300 级差异分辨不出来（PT 的 SE ≈ 100，故 PT 结论可信）。
 - **排序与激进度**：中选下标用 `weighted_mean(radical_factor)`（`rank_ratio^rf` 加权）。
   `radical_factor_max = 0.0` 即普通均值；越大越偏高尾。理想测试（106301 + 小切 + 心情盾×2，

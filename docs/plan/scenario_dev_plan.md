@@ -247,6 +247,7 @@ cargo test --workspace --release --offline
 | 2026-11-08 | **跳过帧提示收敛 + 期望分 / 档次 / JSON 统一投影（user 拍板）**：跳过帧不再打印帧提示（黄色跳过行已说明原因，JSON 保留 `story_id` / `reason`）；`E₀ + (77−t)×luck_turn_bonus` 的投影统一在 `matsuri-ai::output::projected_summary` 做，档次按投影后的 E 重查 `rank_names`，JSON 三字段与终端共用同一份投影值，σ 不变 | 帧提示与黄色跳过行重复；期望分需与「本局/本轮」同量纲；user 明确要求档次 / JSON 也跟着投影，不接受三者口径分裂 | 离线零影响；只改呈现层；`luck_turn_bonus` 仍为 100，`render_luck` 分档阈值（<0/<500/<1500）仍是旧标定，待同步 |
 
 | 2026-11-08 | **搜索线程数配置项 `[search].threads`（user 拍板）**：与 `search_n` 同段，默认 0 = 自动；首次搜索前初始化 rayon 全局池，显式 `RAYON_NUM_THREADS` 优先 | 用户希望在配置文件里调线程数，而不是每次记环境变量；测量工具已有 `--threads`，故只覆盖在线 / 离线主入口 | 默认零影响；仅新增可选配置键 |
+| 2026-11-09 | **GA 联合调参三档定档（user 拍板）**：default ← g0269（起点 run1 g119，run1 起点 `ga-r2`）；新增 `[decks.stamina_build]`（12101 ← g0109，夹具 `decks/stamina_build.csv` 按 `deck_param_scan.md` §2.1 + §9.1 重建）；`[decks.wisdom_build]` 整段换为 g0339；非默认档写全全部旋钮。种子块：GA 选择 / 复核 / 验收 5,000,000+ / 6,000,000 / 7,000,000（耐 / 智再偏移 +10,000,000 / +20,000,000），搜索档验收 30,000,000–30,000,085 | 手写门禁三档通过；搜索档 N=8192 配对 t 3.47 / 2.37 / 2.85（智补局一次）；详见 `deck_param_scan.md` §10 | 有：三档决策全部位移；基线未重录（由维护者重录） |
 
 ## 4. 待决事项
 

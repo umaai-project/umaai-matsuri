@@ -108,11 +108,8 @@ fn reverse_engineer_lower_multiplier() -> Result<()> {
             {
                 let layers = output.game.preview_training_layers(train, keiko)?;
                 let mut frame_total = row.total();
-                for axis in 0..5 {
-                    frame_total[axis] = matsuri_core::restore_displayed_gain(
-                        output.game.uma.five_status[axis],
-                        frame_total[axis],
-                    );
+                for (value, &status) in frame_total.iter_mut().zip(&output.game.uma.five_status) {
+                    *value = matsuri_core::restore_displayed_gain(status, *value);
                 }
                 if frame_total.iter().any(|v| *v != 0) {
                     let delta: Vec<i32> = (0..6)

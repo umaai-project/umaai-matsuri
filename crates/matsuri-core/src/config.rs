@@ -221,6 +221,7 @@ impl Default for MatsuriConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::deck_config::DEFAULT_DECK;
 
     /// 仓内默认层文本
     fn repo_text() -> String {
@@ -240,10 +241,23 @@ mod tests {
             &DeckParams::default(),
             "[decks.default] 必须与内置兜底一致"
         );
-        assert!(
-            cfg.decks.resolve_name("wisdom_build").is_some(),
-            "默认层应带 wisdom_build 档（stamina / guts 已于 2026-11-07 退役）"
-        );
+        for (name, comp) in [
+            ("stamina_build", [1, 2, 1, 0, 1]),
+            ("wisdom_build", [1, 1, 1, 0, 2]),
+        ] {
+            let params = cfg
+                .decks
+                .resolve_name(name)
+                .expect("默认层应带耐 / 智独立档");
+            assert_eq!(
+                cfg.decks.resolve_comp(comp),
+                params,
+                "{name} 应按构成自动触发"
+            );
+            assert_eq!(cfg.decks.profile_name(comp), name, "{name} 档名按构成可查");
+            assert_ne!(params, &DeckParams::default(), "{name} 不应等同 default");
+        }
+        assert_eq!(cfg.decks.profile_name([2, 1, 1, 0, 1]), DEFAULT_DECK);
     }
 
     #[test]
@@ -308,6 +322,7 @@ mod tests {
         assert_eq!(*resolved.deck, DeckParams::default());
         let unknown = cfg.for_deck([1, 2, 1, 0, 1]);
         assert_eq!(*unknown.deck, DeckParams::default());
+        assert_eq!(cfg.decks.profile_name([1, 2, 1, 0, 1]), DEFAULT_DECK);
     }
 
     #[test]

@@ -434,6 +434,18 @@ impl MatsuriGame {
         Some((need, left))
     }
 
+    /// 自选比赛最后期限：剩余需打场数 ≥ 剩余可赛回合数时只有比赛能避免育成失败
+    ///
+    /// 返回候选里比赛动作的下标；未到期限 / 候选里没有比赛时为 `None`。
+    /// 手写守门 ⓪ 与搜索训练员共用（后者据此只搜比赛，必败候选不进期望基线）。
+    pub(crate) fn forced_race(&self, actions: &[Action]) -> Option<usize> {
+        let (need, left) = self.free_race_progress()?;
+        if need < left {
+            return None;
+        }
+        actions.iter().position(|action| *action == Action::Race)
+    }
+
     /// 普通训练等级上限（剧本资产规则；`train_level` 的夹取来源）
     pub(crate) fn max_normal_train_level(&self) -> usize {
         self.data.rules.normal_train_level_max.max(1) as usize
@@ -850,6 +862,17 @@ mod tests {
             game.base.uma.free_races[1].mask.contains_turn(mask_turn),
             "掩码应命中"
         );
+        // 期限判定：剩余场数 < 可赛回合数时不强制；最后可赛回合只剩比赛；候选无比赛不强制
+        let actions = [Action::Rest, Action::Race];
+        let (need, left) = game.free_race_progress().expect("仍在区间内");
+        assert!(need < left, "T29 未到期限（剩 {need} 场 / {left} 回合）");
+        assert_eq!(game.forced_race(&actions), None, "未到期限不强制比赛");
+        game.turn = (29..=48)
+            .rev()
+            .find(|turn| game.base.uma.free_races[1].mask.contains_turn(*turn))
+            .expect("区间内应有可赛回合");
+        assert_eq!(game.forced_race(&actions), Some(1), "最后可赛回合只剩比赛");
+        assert_eq!(game.forced_race(&[Action::Rest]), None, "候选无比赛");
     }
 
     /// 无 freeRaces 的马娘（100101 特别周）：无义务进度，育成不会被终止

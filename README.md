@@ -24,10 +24,10 @@ workspace 六 crate：
 - **机制闭环**：阶段机 / 人头分布 / 训练两层公式 / 演目稽古 / 教诲与転成 / 発表会·本番·合宿·URA / 事件链 / 手写训练员 / 诊断日志均已接入。
   **变胖（`Ill::FAT`）**：训练 / 排练速度分量归零；每回合 15%（暂定）自解 + 治病 / 合宿休息 /
   「追加訓練」选项 1 定点治；线上病种由帧 `charaEffects`（全量状态 ID，按文本库 142 表挑 1–6）精确还原。
-- **卡组配置**：`data/matsuri_config.toml` 分 `[decks.*]`；`[decks.default]` 为完整默认档（冠军档 `ga-r2`），
+- **卡组配置**：`data/matsuri_config.toml` 分 `[decks.*]`；`[decks.default]` 为完整默认档（GA 冠军 `g0269`，21101），
   其他档深合并；未匹配 comp 走 default；`variant = true` 仅显式选择。
-  当前只保留 `wisdom` 一套非默认档（教诲落位四窗口 + `status_weights` 均已定档）；
-  `stamina / guts` 于 2026-11-07 退役，备份与加回步骤见 `logs/deckselect/retired_2026-11-07/`。
+  非默认档 `stamina_build`（12101）/ `wisdom_build`（11102）为 GA 独立调参的完整档，按构成自动触发（在线按帧内实际卡组）；
+  guts 20111 未建档，回落 default。
 - **搜索**：`[search].search_n` 为每候选 rollout 数（默认 **8192**，`0` = 手写档）；
   `[search].threads` 固定 rayon 全局池线程数（默认 **0** = 自动，显式 `RAYON_NUM_THREADS` 优先），
   在在线 / 离线入口首次搜索前应用；Train / 教诲 / 事件分开关；
@@ -52,9 +52,10 @@ workspace 六 crate：
   [`docs/plan/release_launcher.md`](docs/plan/release_launcher.md) §0。
 - **测卡 / 扫参**：`cardtest` 支持 `--matsuri-config` 显式完整配置入口；单卡定卡、教诲落位、
   五维系数、机制旋钮四轮扫描均已完成（结果见 `logs/deckselect` / `logs/advscan` /
-  `logs/statusscan` / `logs/knobscan`）。仅 wisdom 的五维系数定档；stamina / guts 因构成性失分
-  且参数调不动已退役，等构成搜索后再加入；`fusion` 全枚举与 T47/T59 教诲窗口补扫待做。
-  方案与结果见 [`docs/plan/deck_param_scan.md`](docs/plan/deck_param_scan.md) §9。
+  `logs/statusscan` / `logs/knobscan`）；`cardtest` 汇总带友人出行列（`friend_mean` / `friend_full`）。
+  手写训练员三档（21101 / 12101 / 11102）由 CMA-ES 联合调参（`scripts/ga_trainer.py`，需 numpy），
+  再经搜索档 N=8192 配对验收（`scripts/search_check.py`）后定档。
+  方案与结果见 [`docs/plan/deck_param_scan.md`](docs/plan/deck_param_scan.md) §9–§10。
 
 ## 快速开始
 

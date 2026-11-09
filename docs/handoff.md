@@ -8,7 +8,8 @@
 - **验收**：`cargo fmt --all --check` / `cargo check --workspace --all-targets --offline` /
   `cargo test --workspace --release --offline`；**不跑 `cargo doc`，Linux 下不跑 `cargo clippy`**。
   剧本仓测试全绿；引擎仓 `umasim` / `umaai-core` 测试全绿。
-- **默认档**：`data/matsuri_config.toml` = 冠军档 `ga-r2`（`pt_favor_rate=1.7271`、`search_n=8192`）；
+- **默认档**：`data/matsuri_config.toml` = GA 冠军 `g0269`（`pt_favor_rate=1.931954`、`search_n=8192`），
+  耐 12101 / 智 11102 各有完整独立档；
   默认测试马娘 **105902**；局外状态默认不注入（`[pre] qie="none"`、`positive_thinking=0`）；
   开局预设 `blue=[18,0,0,0,0]` / `extra=[10,10,120,140,0,100]`。
 - **搜索参数**：`search_group_size=1024`（首轮每候选一组，即每候选样本下限）、
@@ -29,8 +30,8 @@
 
 1. 两档搜索基线各补到 100 局（`bench game --games 100 --seed 73200 --uma … --qie … --shield …`），
    把标准误压到 ±150 / ±50 量级。
-2. 转入评分口径与事件质量：搜索排序把 PT 项放大到官方权重的 1.73 倍（`parts.pt` 已含 ×2.0，
-   再乘 `[trainer].pt_favor_rate=1.7271`），是当前已知的系统性偏差点。
+2. 转入评分口径与事件质量：搜索排序把 PT 项放大到官方权重的约 1.9 倍（`parts.pt` 已含 ×2.0，
+   再乘生效档 `pt_favor_rate`：默认 1.931954 / 耐 2.130577 / 智 1.799203），是当前已知的系统性偏差点。
 3. 不要再加搜索预算：8192 与 12288 的分辨率差不到 10 分，加预算的整局收益落在噪声内。
 4. 调参换新种子块：73200–73299 已用，下一块 73300 起。
 

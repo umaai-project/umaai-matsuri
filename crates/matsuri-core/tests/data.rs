@@ -47,9 +47,7 @@ fn newgame_limit_from_scenario_asset() {
     let lim = sample_game().uma().five_status_limit;
     // 开局继承增量只落在速度位：blue_count=[18,0,0,0,0] → floor(18 × 5.33) = 95
     assert_eq!(lim[0], data.limits.five_status_limit_base[0] + 95);
-    for i in 1..5 {
-        assert_eq!(lim[i], data.limits.five_status_limit_base[i]);
-    }
+    assert_eq!(lim[1..], data.limits.five_status_limit_base[1..]);
 }
 
 /// 演目 ↔ 命令 ↔ 训练位 ↔ 神驹（`act_info` + `act_member` + `single_mode_training`）
@@ -523,10 +521,12 @@ fn load_repo_config() -> Result<()> {
         default.decks.default_params(),
         "[decks.default] 必须与内置兜底一致"
     );
-    assert!(
-        cfg.decks.resolve_name("wisdom_build").is_some(),
-        "默认层应带 wisdom_build 档（stamina / guts 已于 2026-11-07 退役）"
-    );
+    for name in ["stamina_build", "wisdom_build"] {
+        assert!(
+            cfg.decks.resolve_name(name).is_some(),
+            "默认层应带 {name} 档"
+        );
+    }
     assert_eq!(cfg.decks.default_params().fusion.year2.len(), 2);
     assert_eq!(cfg.decks.default_params().fusion.year3.len(), 3);
     println!(

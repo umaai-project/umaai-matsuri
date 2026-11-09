@@ -1,0 +1,7 @@
+# 定卡 measured-v2 | 手写档 search_n=0 | 排名块 85000-85499 (500 局/组, --correct holm)
+# p1 采用 槽2 30300 [耐]樱花千代王 替换 30304 (配对 Δ +921.7)；确认块 86000-86499: Δ +919.0 ±297.4
+# 原夹具未入库；按 docs/plan/deck_param_scan.md §2.1 起始卡组 + §9.1 替换重建
+# 影子行取 decks/panel.csv，仅用于参数迁移验证，不参与定卡
+name,comp,pick,slot0,slot1,slot2,slot3,slot4,friend
+stamina_build,12101,measured-v2,303114,303074,303004,303224,303194,303234
+stamina_build_shadow,12101,panel,302754,303044,302814,303144,303194,303234

@@ -343,26 +343,33 @@ impl MatsuriSearchTrainer {
         actions: &[Action],
         rng: &mut StdRng,
     ) -> Result<usize> {
-        // Train 全候选（ramen 口径）；候选剪枝不进配置
+        // Train 全候选（ramen 口径）；唯一例外是自选比赛最后期限：其余动作必然育成失败，
+        // 只搜比赛——必败候选不占预算、不进期望基线（否则该回合期望 / 运气被拉低、下回合弹回）
+        let keep: Vec<usize> = match game.forced_race(actions) {
+            Some(index) => vec![index],
+            None => (0..actions.len()).collect(),
+        };
+        let subset: Vec<Action> = keep.iter().map(|&index| actions[index].clone()).collect();
         let started = Instant::now();
         // 与 ramen 一致：搜索从调用方决策流取种子；局面规则流由 `fork_for_rollout`
         // 独立派生，搜索不读 / 不改真实局面的规则流。
         let out =
             self.search
-                .search::<MatsuriTerminal, _>(game, actions, rng, MatsuriTerminal::of)?;
-        let chosen = out.best_action_idx;
-        let mean = out.action_results[chosen].weighted_mean(out.radical_factor);
+                .search::<MatsuriTerminal, _>(game, &subset, rng, MatsuriTerminal::of)?;
+        let picked = out.best_action_idx;
+        let chosen = keep[picked];
+        let mean = out.action_results[picked].weighted_mean(out.radical_factor);
         self.set_last(self.summary_of(
             game,
             &out,
-            |index| index,
+            |position| keep[position],
             |index| actions[index].decision_label(),
             chosen,
         ));
         diag!(
             "【搜索】T{} Train 候选 {} × {} → #{} {} 均值={:.0} 耗时={}ms",
             game.turn(),
-            actions.len(),
+            subset.len(),
             self.search.config().search_n,
             chosen,
             actions[chosen],
@@ -703,5 +710,44 @@ mod tests {
             probe.next_u64(),
             "搜索应恰好消费一个决策流随机字"
         );
+    }
+
+    /// 自选比赛最后期限：只搜比赛（必败候选不进期望基线）；中选与决策流消费不变
+    #[test]
+    fn deadline_turn_searches_race_only() {
+        let mut cfg = MatsuriConfig::default();
+        cfg.search.search_n = 1;
+        let trainer = MatsuriSearchTrainer::new(cfg, SearchConfig::default().with_search_n(1))
+            .expect("搜索训练员");
+        let mut game = crate::testing::sample_game_with_uma(102102);
+        game.turn = (29..=48)
+            .rev()
+            .find(|turn| game.base.uma.free_races[1].mask.contains_turn(*turn))
+            .expect("第二区间应有可赛回合");
+        game.stage = Stage::Train;
+        game.plan = game.derive_plan();
+        game.base.distribution = vec![Vec::new(); 5];
+        let actions = game.list_actions().expect("候选动作");
+        let race = game
+            .forced_race(&actions)
+            .expect("期限回合只剩比赛可避免育成失败");
+        assert!(actions.len() > 1, "期限回合仍列出其它动作：{actions:?}");
+
+        let mut rng = StdRng::seed_from_u64(123);
+        let mut probe = StdRng::seed_from_u64(123);
+        let chosen = trainer
+            .select_action(&game, &actions, &mut rng)
+            .expect("搜索决策");
+        assert_eq!(chosen, race, "中选仍是比赛");
+        let summary = trainer.last_search().expect("仍走搜索、留下摘要");
+        assert_eq!(summary.candidates.len(), 1, "只搜比赛");
+        assert_eq!(summary.candidates[0].index, race);
+        assert_eq!(summary.chosen, race);
+        assert!(
+            (summary.baseline - summary.candidates[0].score).abs() < 1e-9,
+            "期望基线 = 比赛期望分"
+        );
+        probe.next_u64();
+        assert_eq!(rng.next_u64(), probe.next_u64(), "决策流仍只消费一个随机字");
     }
 }
