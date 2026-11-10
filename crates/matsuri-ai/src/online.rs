@@ -1,6 +1,6 @@
 //! 在线路由与决策：一帧该问什么、问谁、以及 `--verify-training` 的验算
 //!
-//! ## 路由（真机 `playing_state` / `source` / `isAfterTraining` 三者定档）
+//! ## 路由（真机 `playing_state` / `source` 定档）
 //!
 //! | 帧形态 | 走向 | 原因 |
 //! |---|---|---|
@@ -108,15 +108,20 @@ pub fn pending_event(game: &MatsuriGame) -> Option<&EventData> {
         .find(|event| event.player_select && event.choices.len() > 1)
 }
 
-/// 在线教诲搜索的根阶段
+/// 在线教诲搜索的根阶段（只按剧本窗口表定档）
 ///
-/// 真机时机：T2 / T11 / T35 / T59 在训练前（`Begin`）；T23 / T47 在発表会结算后（`End`）。
+/// 教诲时机由 `plan.advice_window` 决定：T2 / T11 / T35 / T59 在训练前（`Begin`），
+/// T23 / T47 在発表会结算后（`End`），与离线 `begin_tail` / `settle_advice_window`
+/// 同源；融合窗口判定复用 `MatsuriGame::is_fusion_window`。
+///
+/// 不看帧 `isAfterTraining`：该字段在真机会「粘」在后续帧上（6311 T7 两帧皆 `true`，
+/// 6312 T2 为 `true` 而 6314 T2 为 `false`），把融合窗口判成 `Begin` 会让 rollout
+/// 在本回合 `End` 重复融合，整批失败。
 #[must_use]
-pub fn advice_stage(frame: &ParsedFrame) -> Stage {
-    if frame.is_after_training() {
-        Stage::End
-    } else {
-        Stage::Begin
+pub fn advice_stage(game: &MatsuriGame) -> Stage {
+    match game.plan.advice_window {
+        Some(window) if game.is_fusion_window(window) => Stage::End,
+        _ => Stage::Begin,
     }
 }
 
@@ -512,14 +517,21 @@ mod tests {
         ));
     }
 
-    /// 教诲根阶段按帧的 `isAfterTraining`：T11/T59 false → Begin；T23/T47 true → End
+    /// 教诲根阶段按窗口表：0/1/3/5 → Begin，2/4 → End（不读帧字段）
     #[test]
-    fn advice_stage_follows_frame_phase() {
-        let mut frame = frame("special", None);
-        frame.status.is_after_training = false;
-        assert_eq!(advice_stage(&frame), Stage::Begin);
-        frame.status.is_after_training = true;
-        assert_eq!(advice_stage(&frame), Stage::End);
+    fn advice_stage_follows_window_table() {
+        let mut game = sample_game();
+        for (window, expected) in [
+            (0, Stage::Begin),
+            (1, Stage::Begin),
+            (2, Stage::End),
+            (3, Stage::Begin),
+            (4, Stage::End),
+            (5, Stage::Begin),
+        ] {
+            game.plan.advice_window = Some(window);
+            assert_eq!(advice_stage(&game), expected, "教诲窗口 {window}");
+        }
     }
 
     /// 事件根阶段：回合初 Begin；训练后 AfterTrain；已结算 End

@@ -297,3 +297,62 @@ fn replay_is_idempotent_for_same_content() -> Result<()> {
     );
     Ok(())
 }
+
+/// 发布包真机帧目录（仓外夹具）：含 6312 / 6314 的教诲窗口帧
+fn release_frames_dir() -> Option<PathBuf> {
+    let root = data_dir().parent()?.parent()?.to_path_buf();
+    let dir = root.join("Matsuri_AI/.portable/PluginData/SendGameStatusPlugin");
+    dir.is_dir().then_some(dir)
+}
+
+/// 搜索档会话（小预算）：教诲根阶段回归用，避免默认 8192 拖慢单测
+fn search_session() -> Result<OnlineSession> {
+    let root = data_dir();
+    Data::init(&root)?;
+    let cfg = umaai::Config::load_with_overlay_file(&root, ".").context("载入引擎配置")?;
+    let mut matsuri_cfg =
+        MatsuriConfig::load_with_overlay_file(&root, ".").context("载入剧本配置")?;
+    matsuri_cfg.search.search_n = 32;
+    let data = Arc::new(MatsuriData::load(&root).context("载入剧本数据")?);
+    OnlineSession::new(&cfg, data, matsuri_cfg, TrainerKind::Search, false)
+}
+
+/// 教诲搜索根阶段按窗口表定档：窗口 2 的帧 `isAfterTraining` 翻转不影响决策
+///
+/// 回归：6312 T23 的 `special ps=51` 帧 `isAfterTraining=false`，旧实现判 `Begin`，
+/// 在线已预融合的槽在 rollout 的本回合 `End` 被再次融合 → 16 候选 × 32 全部失败、
+/// 整帧报「候选动作 0 的全部 rollout 均失败」。
+#[test]
+fn advice_search_ignores_after_training_flag() -> Result<()> {
+    let Some(dir) = release_frames_dir() else {
+        eprintln!("跳过：发布包真机帧目录不存在（Matsuri_AI）");
+        return Ok(());
+    };
+    let path = dir.join("game6312_turn23_5.json");
+    if !path.is_file() {
+        eprintln!("跳过：缺 game6312_turn23_5.json");
+        return Ok(());
+    }
+    let original = std::fs::read_to_string(&path)?;
+    let marker = "\"isAfterTraining\": false";
+    assert!(
+        original.contains(marker),
+        "夹具应为 isAfterTraining=false 的窗口 2 帧"
+    );
+    let flipped = original.replacen(marker, "\"isAfterTraining\": true", 1);
+
+    let mut session = search_session()?;
+    let output = session.handle_frame(&original)?;
+    let mut flipped_session = search_session()?;
+    let flipped_output = flipped_session.handle_frame(&flipped)?;
+    for (label, out) in [("原帧", &output), ("反相帧", &flipped_output)] {
+        assert_eq!(out.kind, TurnKind::Decision, "{label} 应出教诲决策");
+        assert!(out.search_backed, "{label} 应由搜索支撑");
+        assert!(out.record.is_some(), "{label} 应带决策记录");
+    }
+    assert_eq!(
+        output.candidate_scores, flipped_output.candidate_scores,
+        "教诲搜索不应受 isAfterTraining 影响"
+    );
+    Ok(())
+}

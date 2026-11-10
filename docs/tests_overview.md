@@ -15,7 +15,7 @@
 | `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成）+ `tests/restore.rs`（还原层）+ `tests/diag.rs`（诊断守门）+ `tests/search.rs`（搜索档） | 内联单测 **172** 个（含 1 个 `#[ignore]` 微基准）+ L2 数据层 **16** 个 + 机制集成 **36** 个 + 还原层 **17** 个 + 诊断 **1** 个 + 搜索 **4** 个（另 1 个 1024 手动 `#[ignore]`） |
 | `matsuri-sim` | `tests/baseline.rs`（固定种子基线） | 待补 |
 | `matsuri-cli` | 内联（呈现件纯函数）+ `tests/manual_smoke.rs` + `tests/explain_smoke.rs` + `tests/search_smoke.rs` | 内联 **14** 个 + 冒烟 **3** 个（manual / explain / search）；基线待补 |
-| `matsuri-ai` | 内联 17 + `tests/replay.rs` 2 + `tests/w2.rs` 3（诊断）+ `tests/layers.rs` 1（诊断） | 帧解析（含 `charaEffects` 全量状态 / `storyId`）/ **按帧内卡组选档** / **路由（事件帧查不到数据 → 跳过，不回落训练）** / 终局帧门禁 / 回放顺序与局末终局帧 / 一帧一决策 / 训练验算与偏差拆解 |
+| `matsuri-ai` | 内联 17 + `tests/replay.rs` 3 + `tests/advice_boundary.rs` 1 + `tests/w2.rs` 3（诊断）+ `tests/layers.rs` 1（诊断） | 帧解析（含 `charaEffects` 全量状态 / `storyId`）/ **按帧内卡组选档** / **路由（事件帧查不到数据 → 跳过，不回落训练）** / **教诲搜索根阶段按窗口表定档（帧 `isAfterTraining` 翻转不影响决策）** / **教诲选择边界：运气分只挂 Train、教诲帧不挂；选择前后与跨回合 E / 运气波动守 3σ；回合状态按帧真值还原、搜索根不污染输出局面** / 终局帧门禁 / 回放顺序与局末终局帧 / 一帧一决策 / 训练验算与偏差拆解 |
 | `matsuri-tools` | 性能测量 bin `bench`（整局 / 分段 / rollout 分布 / 固定根） | 无单测（测量工具，按 docs/perf_profiling.md 复现） |
 | `matsuri-launcher` | 内联（更新频道守卫 / 程序包清单、解压与替换守卫） | 内联 **11** 个：`ai_data` 严格三表白名单、`ura_data` 仅 `.br` 根文件；程序清单白名单 / 包名 / 协议 / 待更新判定 / 备份名 / 拒绝清单外 zip 条目 / 备份保留 / 失败回滚 |
 

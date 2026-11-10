@@ -435,10 +435,11 @@ impl OnlineSession {
                     });
                 }
                 let mut rng = self.decision_rng(turn);
-                // 教诲窗口：真机 T2/T11/T35/T59 在训练前（Begin），T23/T47 在発表会后（End）。
-                // 保留 `plan.advice_window`，让在线与离线的落位先验同口径。
+                // 根阶段按窗口表定档（T2/T11/T35/T59 → Begin，T23/T47 → End），
+                // 与离线 `begin_tail` / `settle_advice_window` 同源；不看会粘连的
+                // `isAfterTraining`。保留 `plan.advice_window` 让落位先验同口径。
                 let mut search_game = game.clone();
-                search_game.stage = online::advice_stage(&frame);
+                search_game.stage = online::advice_stage(&search_game);
                 let index =
                     self.trainer
                         .as_dyn()
