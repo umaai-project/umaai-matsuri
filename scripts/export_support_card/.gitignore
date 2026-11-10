@@ -1,0 +1,2 @@
+# 翻译数据的联网下载缓存（体积大；配置 [paths] translate_file 指向本地文件时用不到）
+text_data_dict.json

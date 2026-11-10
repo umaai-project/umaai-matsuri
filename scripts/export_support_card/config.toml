@@ -1,0 +1,201 @@
+# export_support_card 运行配置
+#
+# 本文件替代原先硬编码在 main.py 里的所有可调数据，改数据不需要动代码。
+# 路径可写 %USERPROFILE% 之类的环境变量或 ~；相对路径基于本文件所在目录。
+
+[paths]
+# 游戏 master.mdb（可填文件，也可填所在目录）。留空 = 自动检测，顺序为：
+#   1) 命令行 --mdb          2) 本项
+#   3) 环境变量 UMAMUSUME_MASTER_MDB
+#   4) %USERPROFILE%\AppData\LocalLow\Cygames\umamusume\master\master.mdb
+#   5) 脚本目录下的 master.mdb（仅当 fallback_script_dir = true）
+master_mdb = ""
+fallback_script_dir = true
+
+# 翻译数据 text_data_dict.json（hachimi 的 localized_data 产物）。
+# 文件存在时直接读取，不走网络；不存在时回落到 GitHub 下载并缓存到 translate_cache。
+translate_file = "D:/UMA/Umamusume/hachimi/localized_data/text_data_dict.json"
+translate_cache = "text_data_dict.json"
+
+[output]
+# 产物目录（相对本文件所在目录）。默认写仓根 data/，即引擎消费的位置。
+dir = "../../data"
+# 是否把翻译数据一并复制到产物目录（引擎同样读 data/text_data_dict.json）
+copy_translate = true
+
+[support_card]
+# 卡类型简称，下标 = SupportCardType（与 umamodels 一致，勿改顺序）
+short_types = ["", "速", "耐", "力", "根", "智", "友", "团"]
+
+# 直接取值的面板字段（key 与 UmaSim cardValue 一致）
+direct_keys = [
+    "deYiLv",
+    "failRateDrop",
+    "ganJing",
+    "hintProbIncrease",
+    "saiHou",
+    "vitalCostDrop",
+    "wizVitalBonus",
+    "xunLian",
+    "youQing",
+    "initialJiBan",
+    "eventRecoveryAmountUp",
+    "eventEffectUp",
+]
+
+# 固有效果直接并入面板（不按固有类型参数化）的卡：智太阳神、活动力乌拉拉、东商
+direct_merge_cards = [30155, 30171, 30128]
+
+# 无技能卡把 hint 技能点折算为属性时的补偿值，行 = 卡类型（速/耐/力/根/智）
+hint_values = [
+    [6, 0, 2, 0, 0, 0],
+    [0, 6, 0, 2, 0, 0],
+    [0, 2, 6, 0, 0, 0],
+    [1, 0, 1, 6, 0, 0],
+    [2, 0, 0, 0, 6, 0],
+]
+
+# 日文词条 → 下标映射（与 mdb 的 text_data 词条名一一对应）
+[support_card.initial_keys]
+"初期速度アップ" = 0
+"初期持久力アップ" = 1
+"初期パワーアップ" = 2
+"初期根性アップ" = 3
+"初期賢さアップ" = 4
+"初期PTアップ" = 5
+
+[support_card.bonus_keys]
+"速度ボーナス" = 0
+"持久力ボーナス" = 1
+"パワーボーナス" = 2
+"根性ボーナス" = 3
+"賢さボーナス" = 4
+"スキルポイントボーナス" = 5
+
+# 自选比赛条件：name = 日志里的等级名，grade = 写入 umaDB.freeRaces[].grade
+[[race_condition]]
+id = 700
+name = "Pre-OP"
+grade = 4
+
+[[race_condition]]
+id = 100
+name = "G1"
+grade = 1
+
+[[race_condition]]
+id = 300
+name = "G3"
+grade = 3
+
+# ---------------------------------------------------------------------------
+# 生涯比赛特判（能不比就不比；回合数已 -1，即 0 基）
+#   races      = 追加的固定比赛回合
+#   free_races = 追加的自选比赛区间 { start_turn, end_turn, count }
+#   note       = 写进 umaDB.raceNote 的说明，同时打印到日志
+# ---------------------------------------------------------------------------
+
+[[special_races]]
+chara_id = 1005 # 富士奇迹
+races = [32, 45]
+note = "选择英里路线"
+
+[[special_races]]
+chara_id = 1009 # 大和赤骥
+races = [33]
+note = "事件不影响比赛回合"
+
+[[special_races]]
+chara_id = 1016 # 成田白仁
+races = [55, 67, 69, 71]
+note = "事件不影响比赛回合"
+
+[[special_races]]
+chara_id = 1022 # 美妙
+free_races = [{ start_turn = 67, end_turn = 71, count = 1 }]
+note = "第三年最终比赛，AI按自选赛程处理，需要自行决定比赛回合"
+
+[[special_races]]
+chara_id = 1031 # 风神
+free_races = [{ start_turn = 69, end_turn = 71, count = 1 }]
+note = "第三年最终比赛，AI按自选赛程处理，需要自行决定比赛回合"
+
+[[special_races]]
+chara_id = 1032 # 速子
+races = [33]
+note = "正常出战德比（不触发掉心情改比赛事件）"
+
+[[special_races]]
+chara_id = 1056
+races = [29]
+free_races = [{ start_turn = 60, end_turn = 63, count = 1 }]
+note = "抽签比赛，设置为第二年3月下，第三年夏季自选比赛"
+
+[[special_races]]
+chara_id = 1062 # 诗歌剧
+note = "AI按不比第三年日本杯计算"
+
+[[special_races]]
+chara_id = 1069 # 狗狗
+races = [58]
+note = "第三年打安田纪念"
+
+[[special_races]]
+chara_id = 1071 # 阿尔丹
+races = [43]
+note = "事件不影响比赛回合"
+
+[[special_races]]
+chara_id = 1079 # 狂怒
+races = [53]
+note = "事件不影响比赛回合"
+
+[[special_races]]
+chara_id = 1081 # 希望城
+races = [69]
+note = "第三年参加JBC"
+
+[[special_races]]
+chara_id = 1092 # 快驹
+races = [59]
+note = "事件不影响比赛回合"
+
+[[special_races]]
+chara_id = 1093 # 凯斯奇迹
+races = [41]
+note = "AI按生涯比赛处理，实际为强制休息"
+
+[[special_races]]
+chara_id = 1109 # 莱茵
+races = [32]
+note = "第二年改赛NHK"
+
+[[special_races]]
+chara_id = 1116 # 贵妇人
+races = [71]
+note = "第三年增加有马纪念"
+
+[[special_races]]
+chara_id = 1121 # 圣剑
+races = [41]
+note = "第二年参加短距锦标"
+
+[[special_races]]
+chara_id = 1132 # 唯爱
+races = [30, 44]
+note = "第一年底选择樱花赏(+第二年女王杯)"
+
+[[special_races]]
+chara_id = 1134 # 金花
+races = [50, 55]
+note = "第三年参加京都纪念、天春"
+
+[[special_races]]
+chara_id = 1135 # 黄金
+races = [44, 71]
+note = "选择菊花赏，有马纪念"
+
+[[special_races]]
+chara_id = 1144 # 玫瑰帝国
+races = [47]
+note = "选择第二年有马"
