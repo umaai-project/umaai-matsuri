@@ -148,26 +148,32 @@ def cargo_version() -> str:
 
 
 def build_program(out: Path, dest: Path, version: str) -> None:
-    """按 umaai-update 风格清单打包程序更新包（zip + update.json）。"""
+    """按 umaai-update 风格清单打包程序更新包（zip + update.json）。
+
+    文件名带内容 sha256 前 8 位：同名不同内容不会复用 CDN 缓存，也不会与旧清单错配。
+    """
     dest.mkdir(parents=True, exist_ok=True)
-    name = f"matsuri-app-{version}.zip"
-    archive = dest / name
+    staging = dest / f"matsuri-app-{version}.zip"
     files: list[dict[str, object]] = []
-    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(staging, "w", zipfile.ZIP_DEFLATED) as zf:
         for rel in PROGRAM_FILES:
             src = out / rel
             zf.write(src, rel)
             files.append(
                 {"path": rel, "size": src.stat().st_size, "sha256": sha256(src)}
             )
+    digest = sha256(staging)
+    archive = dest / f"matsuri-app-{version}-{digest[:8]}.zip"
+    archive.unlink(missing_ok=True)
+    staging.replace(archive)
     manifest = {
         "protocol": 1,
         "version": version,
         "date": time.strftime("%Y-%m-%d %H:%M:%S"),
         "package": {
-            "name": name,
+            "name": archive.name,
             "size": archive.stat().st_size,
-            "sha256": sha256(archive),
+            "sha256": digest,
         },
         "files": files,
     }

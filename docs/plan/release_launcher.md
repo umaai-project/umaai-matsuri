@@ -58,7 +58,7 @@ URA 自身的便携判定是 `exe 旁 .portable 目录`，与启动器传入的 
 | 落地 | 程序资产 → 核心 exe → 启动器；逐文件备份为 `.old`，任一失败按逆序回滚 |
 | 自更新 | 启动器有变化时 `rename` 自身为 `.old` → 新 exe 就位 → 拉起新进程（`MATSURI_UPDATED=1`）→ 本进程退出；下次启动清理 `.old` |
 | 清理 | 成功后删 `.umaai-update/program` 与空 `.umaai-update`；非启动器 `.old` 当场删除，启动器 `.old` 由新进程重试删除（最多 0.5 s）；失败保留临时目录供排查 |
-| 发布 | `scripts/package_launcher.py --sign --program`：先签名两个 exe，再生成 `dist/program/matsuri-app-<版本>.zip` 与 `update.json`；版本号默认取 `Cargo.toml` 的 `[workspace.package] version`（与界面一致） |
+| 发布 | `scripts/package_launcher.py --sign --program`：先签名两个 exe，再生成 `dist/program/matsuri-app-<版本>-<sha8>.zip` 与 `update.json`；包名带内容哈希，同名不同内容不会命中 CDN 旧缓存；版本号默认取 `Cargo.toml` 的 `[workspace.package] version`（与界面一致） |
 | 签名 | `signtool sign /fd SHA256 /td SHA256 /tr <时间戳> /f <pfx> /p <口令>`；pfx 路径与口令只从环境变量读取，不入库 |
 | 联动 | 数据频道 schema 门控改为读 `data/manifest.json`，程序升级提升 schema 后不再依赖启动器常量 |
 
@@ -81,6 +81,7 @@ powershell -ExecutionPolicy Bypass -File dist/release.ps1
 | 开关 | `-SkipBuild` / `-SkipSign` / `-SkipUpload` / `-SkipData` / `-Zip` / `-ProgramOut` |
 | 完整包 | `-Zip` 产出 `Matsuri_AI-<版本>.zip`：7-Zip AES-256 口令保护（文件名不加密），口令取 `UMA_ZIP_PASSWORD` 或交互输入；版本取 Cargo workspace 版本；程序更新包 zip 保持不加密（客户端内置 zip 读取不支持 AES） |
 | 上传顺序 | 先 zip 后 `update.json`，避免客户端拿到不存在的包 |
+| 远端核对 | 上传后立即回读程序包，比对字节数与 sha256；不一致即失败（典型原因：CDN 缓存了同名旧包） |
 | 校验 | 拉三个频道的 `update.json`，HTTP 200 + 打印版本与文件数 |
 | 失败 | 任一步非零退出即抛错停止；不会产出半套清单 |
 
