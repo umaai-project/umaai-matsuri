@@ -1,6 +1,7 @@
 # 剧本机制文档（骏大祭 / matsuri）
 
-> 只写**公式、流程与实现落点**；术语与口径以 [`glossary.md`](glossary.md) 为准，不在此重复。
+> 只写**公式、流程与实现落点**；术语以 [`glossary.md`](glossary.md) 为准、口径裁定以
+> [`changelog.md`](changelog.md) 为准，不在此重复。
 > 未确认的机制标 `❓`，不要写成结论；数值占位见 [`plan/stubs.md`](plan/stubs.md)。
 > 数值来源：`master.mdb` 静态表 + 游戏内帮助文案；真机协议 / 运行时为「只读初析」，标 `frame*`。
 
@@ -987,4 +988,4 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
 | 技能灵感 / 粉丝（2026-11-01） | 发布会 / 本番 / 出行有具体技能 Lv | **不建模**（本仓无技能 / 粉丝系统）；只少算灵感收益 | 用户口径 | 无（少算） |
 
 
-> 口径决定同时写入 `glossary.md` 的「决定记录」。
+> 口径决定同时写入 [`changelog.md`](changelog.md) 的决定记录。

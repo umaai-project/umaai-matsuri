@@ -442,7 +442,8 @@ Distribute 阶段 486 → 8 次、AfterTrain 1898 → 929 次（剩余大头在�
   它不经过 `perf_event_open`，无需 root / sysctl；内核栈与硬件计数器另用 `perf`（本机已解锁
   `perf_event_paranoid=-1`、`perf_event_mlock_kb=65536`、`kptr_restrict=0`）。
 - 口径同前：同一 Release 构建、同一数据 / 配置；采样默认 997 Hz；`--freq` / `--out` 由 prof 消费。
-  第四轮测量时默认马娘为 100101；当日晚些时候默认测试马娘改为 105902（见 glossary），
+  第四轮测量时默认马娘为 100101；当日晚些时候默认测试马娘改为 105902
+  （见 [`changelog.md`](changelog.md) 2026-11-05「默认测试马娘 100101 → 105902」），
   相对结论不受影响。
 - 本机 Intel Ultra 9 275HX（24 线程）/ powersave；耗时只声明当轮，配对双方交替独立启动。
 

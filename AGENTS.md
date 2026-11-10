@@ -27,11 +27,15 @@
 1. **README 状态**：结构 / 验收命令 / 数据说明的现状变化，不写修改过程。
 2. **接入包**（`docs/plan/intake.md`）：情报位置、机制 / 数值 / 数据表清单、待确认问题；
    S0 核对期间持续更新，结论分流到机制、术语与 stub。
-3. **开发计划**（`docs/plan/scenario_dev_plan.md`）：阶段状态、决策记录、待决事项。
+3. **开发计划**（`docs/plan/scenario_dev_plan.md`）：阶段状态、阶段推进记录、待决事项
+   （跨阶段生效的口径裁定放 `changelog.md`，不在计划里重复）。
 4. **数值占位**（`docs/plan/stubs.md`）：`STUB` / `TBD` 的位置、来源、替换条件与基线影响。
-5. **机制 / 术语 / 测试**：`docs/mechanism.md`、`docs/glossary.md`、`docs/tests_overview.md`
-   分别随机制改动、口径决定、测试增删更新。
-6. **handoff**（`docs/handoff.md`）：上下文很长时，经用户同意后写交接提示词。
+5. **机制 / 术语 / 口径决定 / 测试**：`docs/mechanism.md` 随机制改动、`docs/glossary.md` 随术语与
+   官方译名变动、`docs/changelog.md` 随口径拍板、`docs/tests_overview.md` 随测试增删更新。
+   **四类内容不互抄**：机制只写公式流程、术语只写词条、changelog 只写「为什么这么定」。
+6. **决定记录纪律**（`docs/changelog.md`）：**只追加、不改历史行**；被取代的结论在原「决定」列标注
+   「（已被 YYYY-MM-DD 修正：…）」而不删行；`基线影响` 列必须写影响面。
+7. **handoff**（`docs/handoff.md`）：上下文很长时，经用户同意后写交接提示词。
 
 ## 代码结构
 

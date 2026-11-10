@@ -1,7 +1,8 @@
 # 骏大祭剧本机制备忘（中文 / matsuri）
 
 > **性质**：按剧本机制类型逐条整理的**机制备忘**，用于快速查阅与交叉核对；不是实现规格，也不是  
-> 数值单一事实源。实现落点见 [`mechanism.md`](mechanism.md)，术语与口径以 [`glossary.md`](glossary.md) 为准，  
+> 数值单一事实源。实现落点见 [`mechanism.md`](mechanism.md)，术语以 [`glossary.md`](glossary.md)、
+> 口径裁定以 [`changelog.md`](changelog.md) 为准，  
 > 数值出处与待确认清单见 [`plan/intake.md`](plan/intake.md)；**本文 §14 只列还没定的事项**（已定结论已并入正文），未核项以「临时口径」先行实现。
 >
 > **来源**（按可信度）

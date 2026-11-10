@@ -99,7 +99,7 @@ bench    ... --matsuri-config <完整 matsuri_config.toml>
   1. 更新 `data/ai_config.toml` 的 `[sim].cards`，同步 `decks/measured.csv` 的默认行；
   2. 用同一 73200 块重录 `baselines/a-normal.json` / `b-ideal.json` 的手写 100 局与
      搜索 10 局，量化换卡位移；另用 93000 块做独立复核；
-  3. 更新 README / handoff / glossary 的基线表，重跑 seed 61444 冒烟；
+  3. 更新 README / handoff / changelog 的基线表，重跑 seed 61444 冒烟；
   4. 卡组是全局 `[sim]` 输入，a-normal 与 b-ideal 两条都要重录。
 - 若确认不显著，保留当前默认卡组，只记录排名。
 - 换默认卡组先只重录基准、不动参数；默认档参数是否重扫另开一轮，避免「换卡 + 换参」混在一起。
@@ -168,7 +168,7 @@ cardtest run --decks logs/scan/candidates.csv \
 1. `logs/deckselect/<build>_ranking_<pass>.csv`：按槽位完整排名；
    `logs/deckselect/<build>_ranking.md`：按类型汇总的高→低表。
 2. `decks/<build>.csv`：主卡组 + 影子行；`pick` 标 `measured-v2`，备注种子块与局数。
-3. speed 换卡被采用时：新的 `[sim].cards` + 重录的 `baselines/*.json` + README / glossary 基线表。
+3. speed 换卡被采用时：新的 `[sim].cards` + 重录的 `baselines/*.json` + README / changelog 基线表。
 4. `[decks.<build>]` 只写与 default 的差异；`note` 记录基准、种子、局数、确认结果。
 5. 扫参结果 CSV 与本文的结果小节。
 

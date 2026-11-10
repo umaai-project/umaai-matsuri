@@ -171,7 +171,7 @@ pub struct DeckTable {
 | 入口 | `matsuri` / `bench` / `sweep` / `cardtest` / `audit_search` / `probe_fail` / `online` 在跑局前按 `comp` resolve；`cardtest` 每套卡组单独 resolve |
 | 测试 | `parse_repo_default` / `load_repo_config` 改为「全局段 + default 档」比较；新增合并 / 变体 / 兜底 / 深合并用例 |
 | lab 扫参脚本 | 顶层 `[fusion]` / `[trainer]` 模板改为 `[decks.default.*]`；仓库提供 `scripts/migrate_deck_config.py` 做一次性转换：`python3 scripts/migrate_deck_config.py old.toml --out new.toml`（批量：`--dir olddir --out-dir newdir`）；扫参选档用 `bench --deck-profile <名>` / `cardtest run` 的卡组行名（行名命中 `[decks.*]` 即显式选档） |
-| 文档 | README 结构表、`mechanism.md` §6.1、`glossary.md`、`tests_overview.md` 同步 |
+| 文档 | README 结构表、`mechanism.md` §6.1、`changelog.md`、`tests_overview.md` 同步 |
 
 ## 7. 验收
 

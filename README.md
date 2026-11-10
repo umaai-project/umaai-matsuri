@@ -124,7 +124,8 @@ clippy 只在 Windows 侧跑；CI 也是 `-D warnings` 硬门禁。
 | [`docs/plan/online_wiring.md`](docs/plan/online_wiring.md) | 在线接线路由 / 还原口径 |
 | [`docs/plan/release_launcher.md`](docs/plan/release_launcher.md) | Windows 发布启动器 `matsuri-ai` 计划 |
 | [`docs/mechanism.md`](docs/mechanism.md) | 机制公式 / 流程 / 实现落点 |
-| [`docs/glossary.md`](docs/glossary.md) | 术语与口径决定 |
+| [`docs/glossary.md`](docs/glossary.md) | 术语与官方译名 |
+| [`docs/changelog.md`](docs/changelog.md) | 口径与决定变更记录 |
 | [`docs/tests_overview.md`](docs/tests_overview.md) | 测试一览 |
 | [`docs/perf_profiling.md`](docs/perf_profiling.md) | 性能测量与复现 |
 

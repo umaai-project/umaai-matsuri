@@ -2737,6 +2737,41 @@
     ],
     "star": 5
   },
+  "102903": {
+    "bonusData": [],
+    "fiveStatusBonus": [
+      15,
+      0,
+      5,
+      10,
+      0
+    ],
+    "fiveStatusInitial": [
+      111,
+      117,
+      102,
+      119,
+      101
+    ],
+    "freeRaces": [],
+    "gameId": 102903,
+    "name": "[熟れしめでたし実り姫]雪之美人",
+    "preferRaces": [],
+    "preferReds": [],
+    "races": [
+      11,
+      22,
+      30,
+      33,
+      37,
+      43,
+      53,
+      56,
+      68,
+      69
+    ],
+    "star": 5
+  },
   "103001": {
     "bonusData": [],
     "fiveStatusBonus": [

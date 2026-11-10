@@ -599,7 +599,7 @@ M1 的 round-trip 是**整套方案的核心守门**：它能在没有真机的�
 - 机制口径：`mechanism.md`（何时结算、`plan` 含义）、`matsuri_memo_cn.md` §2.2（担当五步流水线）。
 - 术语：`glossary.md`（`MatsuriView` / 追加稽古 / 助力支撑 / 合宿延长）。
 - 引擎契约：`../../umaai_next/docs/scenario/contracts.md` §5（`Session` 帧驱动）、§7（View DTO）。
-- 进度：`plan/scenario_dev_plan.md` S8「在线外壳」；落地后本文件升为实施记录，`G#` 结论写回 `glossary.md`。
+- 进度：`plan/scenario_dev_plan.md` S8「在线外壳」；落地后本文件升为实施记录，`G#` 结论写回 `changelog.md`。
 
 ---
 

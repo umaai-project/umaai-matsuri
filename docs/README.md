@@ -19,7 +19,8 @@
 | [`plan/release_launcher.md`](plan/release_launcher.md) | **发布启动器（`matsuri-ai`）计划 + 实现记录**：完整版布局 / 菜单计划、§0 基础版差异、§0.1 数据更新（`ai_data` / `ura_data`）、§0.2 程序更新与 Authenticode 签名（`program` 频道整包 zip）；核心 CLI 不改；不做 GUI | 发布形态变更时 |
 | [`mechanism.md`](mechanism.md) | 机制文档：公式 / 流程 / 实现落点 / 测试对应 | 机制实现或修正 |
 | [`matsuri_memo_cn.md`](matsuri_memo_cn.md) | 中文机制备忘：按机制类型逐条记录（骨架 / 演目 / 排练 / 教诲 / 汇报会 / 合宿 / 比赛 / 事件）；**§2.2 为担当编排规则**（五步流水线 + 卡落位 / NPC 摊法 / 追加负责人 / 形态穷举）；**§3.5 为分身机制**（教诲 +1 人的落点与打法）；§14 为 **未决清单**（P0–P2 未定 13 条：`△` 3 / `□` 10，P0 已清空（U02 收口）；§14.8 另有 U41 / U44 / U45；已定条与已核实项移到 §14.4 / §14.5 备查） | 上游日文备忘或真机口径更新 |
-| [`glossary.md`](glossary.md) | 术语单一事实源 + 口径与用语决定记录 | 每次口径决定 |
+| [`glossary.md`](glossary.md) | 术语与官方译名的单一事实源（词条表 §1–§8 + 译名来源 §9） | 术语 / 译名变动 |
+| [`changelog.md`](changelog.md) | **口径与决定变更记录**：按日期升序的裁定日志 + 与旧实现 / 资料的分歧 | 每次口径拍板、基线重录 |
 | [`tests_overview.md`](tests_overview.md) | 测试一览（单元 / 机制 / 冒烟 / 基线） | 测试增删 |
 | [`perf_profiling.md`](perf_profiling.md) | 性能分析与优化：测量工具 / 热点拆解 / 改动清单 / 配对测量 / 复现命令 | 性能轮次、测量工具变化 |
 | [`handoff.md`](handoff.md) | 交接提示词（上下文很长时） | 用户同意交接时 |
@@ -35,11 +36,12 @@
 | [`../../umaai_next/docs/scenario/contracts.md`](../../umaai_next/docs/scenario/contracts.md) | 契约逐项清单（`Game` / `Person` / `ActionEnum` / `Trainer` / `Frontend` / 装配 / `StageId` / View） |
 | [`../../umaai_next/docs/notes/matsuri_scenario_preview.md`](../../umaai_next/docs/notes/matsuri_scenario_preview.md) | 预告情报汇总（开发代号 `matsuri`；持续更新的未确认情报） |
 
-- 本仓文档与引擎文档冲突时：**契约以引擎 `contracts.md` 为准**，本剧本口径以本仓 `glossary.md` 为准。
+- 本仓文档与引擎文档冲突时：**契约以引擎 `contracts.md` 为准**，本剧本术语以本仓 `glossary.md`、
+  口径决定以本仓 `changelog.md` 为准。
 
 ## 3. 更新纪律
 
-- 机制结论先落 `mechanism.md`，术语与口径落 `glossary.md`；两者不互相抄。
+- 机制结论先落 `mechanism.md`，术语落 `glossary.md`，口径裁定落 `changelog.md`；三者不互相抄。
 - 未确认的机制不写成结论（标 `❓`），数值占位进 `stubs.md`。
-- 数值占位替换后重录基线，并在 `glossary.md` 的决定记录写明影响面。
+- 数值占位替换后重录基线，并在 `changelog.md` 的决定记录写明影响面。
 - 文档不放绝对路径；链接用仓内相对路径或引擎文档占位路径。
