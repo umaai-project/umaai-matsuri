@@ -2,6 +2,8 @@
 //!
 //! 用法（仓根执行，先 cargo build --release --offline -p matsuri-tools）：
 //! - bench game --games 20 --seed 61444 --search-n 0  整局耗时 + 终局 CSV（手写档；缺省走配置 search_n=8192）
+//! - bench luck --games 20 --seed 73200 --search-n 2048  MCTS 自博弈逐决策 expected_score，
+//!   输出每局首末回合估分差与 `luck_turn_bonus` 补偿斜率
 //! - bench micro --turn 32 --iters 2000            决策链分段 ns/op
 //! - bench root --turn 32 --search-n 512 --repeat 3 固定根搜索耗时 + 探针计数
 //! - bench stages --turn 32                        单次 rollout 按阶段机拆分
@@ -409,6 +411,7 @@ fn main() -> Result<()> {
     apply_fixture(&mut env, &args)?;
     match command {
         "game" => cmd_game(&env, &args),
+        "luck" => cmd_luck(&env, &args),
         "micro" => cmd_micro(&env, &args),
         "root" => cmd_root(&env, &args),
         "trace" => cmd_trace(&env, &args),
@@ -420,7 +423,7 @@ fn main() -> Result<()> {
         #[cfg(feature = "profile")]
         "prof" => prof::cmd_prof(&env, &args),
         other => bail!(
-            "未知子命令: {other}（可选 game / micro / root / trace / stages / parts / flat / allocs）"
+            "未知子命令: {other}（可选 game / luck / micro / root / trace / stages / parts / flat / allocs）"
         ),
     }
 }
@@ -660,6 +663,185 @@ fn run_batch<T: Trainer<MatsuriGame>>(
         scores.iter().sum::<i32>() as f64 / games as f64,
         pts.iter().sum::<i32>() as f64 / games as f64
     );
+    Ok(())
+}
+
+/// 单次搜索决策的估分快照（官方口径 `expected_score`）
+#[derive(Clone)]
+struct LuckRow {
+    turn: i32,
+    expected: f64,
+}
+
+/// 采集 MCTS 自博弈估分轨迹的训练员包装（只记主行动决策，不含教诲 / 事件）
+struct LuckTrainer {
+    inner: MatsuriSearchTrainer,
+    rows: Mutex<Vec<LuckRow>>,
+}
+
+impl LuckTrainer {
+    fn new(inner: MatsuriSearchTrainer) -> Self {
+        Self {
+            inner,
+            rows: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn rows(&self) -> Vec<LuckRow> {
+        self.rows
+            .lock()
+            .map(|rows| rows.clone())
+            .unwrap_or_default()
+    }
+}
+
+impl Trainer<MatsuriGame> for LuckTrainer {
+    fn select_action(
+        &self,
+        game: &MatsuriGame,
+        actions: &[Action],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        let advice = actions
+            .iter()
+            .all(|action| matches!(action, Action::AssignAdvice(_)));
+        let chosen = self.inner.select_action(game, actions, rng)?;
+        if !advice
+            && let Some(summary) = self.inner.last_search()
+            && let Ok(mut rows) = self.rows.lock()
+        {
+            rows.push(LuckRow {
+                turn: game.turn(),
+                expected: summary.expected_score,
+            });
+        }
+        Ok(chosen)
+    }
+
+    fn select_choice(
+        &self,
+        game: &MatsuriGame,
+        choices: &[Vec<EventChoice>],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        self.inner.select_choice(game, choices, rng)
+    }
+
+    fn select_event_choice(
+        &self,
+        game: &MatsuriGame,
+        event: &EventData,
+        choices: &[Vec<EventChoice>],
+        rng: &mut StdRng,
+    ) -> Result<usize> {
+        self.inner.select_event_choice(game, event, choices, rng)
+    }
+}
+
+/// 最小二乘斜率（x = turn，y = expected）
+fn ols_slope(rows: &[LuckRow]) -> Option<f64> {
+    if rows.len() < 2 {
+        return None;
+    }
+    let n = rows.len() as f64;
+    let mean_x = rows.iter().map(|row| f64::from(row.turn)).sum::<f64>() / n;
+    let mean_y = rows.iter().map(|row| row.expected).sum::<f64>() / n;
+    let (mut sxy, mut sxx) = (0.0, 0.0);
+    for row in rows {
+        let dx = f64::from(row.turn) - mean_x;
+        sxy += dx * (row.expected - mean_y);
+        sxx += dx * dx;
+    }
+    (sxx > 0.0).then_some(sxy / sxx)
+}
+
+/// 估分随回合漂移：`bench luck --games 20 --seed 73200 --search-n 2048`
+///
+/// 整局用搜索训练员推进，记录每次主行动决策的官方口径 `expected_score`；
+/// 每局取首 / 末搜索决策的差与跨度得到 `luck_turn_bonus` 补偿斜率
+/// `b = ΔE / Δturn`（显示分 = `expected + (MAX_TURN − turn) × b`）。
+fn cmd_luck(env: &Env, args: &[String]) -> Result<()> {
+    let games = parse_usize(args, "--games", 20)?;
+    let seed0 = parse_usize(args, "--seed", 73200)? as u64;
+    let search_n = parse_usize(args, "--search-n", env.config.search.search_n)?;
+    anyhow::ensure!(
+        search_n > 0,
+        "--search-n 必须大于 0（0 = 手写档，无搜索估分）"
+    );
+    let mut config = env.config.clone();
+    config.search.search_n = search_n;
+    println!(
+        "# games={games} seed0={seed0} search_n={search_n} max_turn={} uma={}",
+        matsuri_core::MAX_TURN,
+        env.engine.sim.uma
+    );
+    println!("seed,first_turn,first_E,last_turn,last_E,delta,b,reg_slope,decisions,score,pt");
+    let mut firsts = Vec::with_capacity(games);
+    let mut lasts = Vec::with_capacity(games);
+    let mut deltas = Vec::with_capacity(games);
+    let mut slopes = Vec::with_capacity(games);
+    let mut regs = Vec::with_capacity(games);
+    for index in 0..games {
+        let seed = seed0 + index as u64;
+        let trainer = LuckTrainer::new(MatsuriSearchTrainer::new(
+            config.clone(),
+            env.engine.search.clone().with_search_n(search_n),
+        )?);
+        let mut game = env.build(&config)?;
+        game.set_rule_master(seed);
+        let mut rng = StdRng::seed_from_u64(seed);
+        game.run_stage(&trainer, &mut rng)?;
+        while game.next() {
+            game.run_stage(&trainer, &mut rng)?;
+        }
+        game.on_simulation_end(&trainer, &mut rng)?;
+        let rows = trainer.rows();
+        let Some(first) = rows.first() else {
+            bail!("seed {seed} 未记录到任何搜索决策");
+        };
+        let Some(last) = rows.last() else {
+            bail!("seed {seed} 未记录到任何搜索决策");
+        };
+        let span = last.turn - first.turn;
+        anyhow::ensure!(span > 0, "seed {seed} 首末回合相同（T{}）", first.turn);
+        let delta = last.expected - first.expected;
+        let b = delta / f64::from(span);
+        let reg = ols_slope(&rows).unwrap_or(0.0);
+        let score = game.uma().calc_score()?;
+        let pt = game.uma().total_pt()?;
+        println!(
+            "{seed},{},{:.1},{},{:.1},{:+.1},{:.3},{:.3},{},{score},{pt}",
+            first.turn,
+            first.expected,
+            last.turn,
+            last.expected,
+            delta,
+            b,
+            reg,
+            rows.len()
+        );
+        firsts.push(first.expected);
+        lasts.push(last.expected);
+        deltas.push(delta);
+        slopes.push(b);
+        regs.push(reg);
+    }
+    let report = |name: &str, values: &[f64]| {
+        let mean = umaai_core::stats::mean(values);
+        let sd = umaai_core::stats::stdev(values);
+        let se = sd / (values.len() as f64).sqrt();
+        let ci = 1.96 * se;
+        let t = if se > 0.0 { mean / se } else { 0.0 };
+        println!(
+            "# {name}: mean={mean:.3} sd={sd:.3} se={se:.3} ci95=±{ci:.3} t={t:.2} n={}",
+            values.len()
+        );
+    };
+    report("first_E", &firsts);
+    report("last_E", &lasts);
+    report("delta", &deltas);
+    report("b_gap", &slopes);
+    report("b_regression", &regs);
     Ok(())
 }
 

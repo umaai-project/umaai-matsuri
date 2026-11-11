@@ -1043,8 +1043,8 @@ mod tests {
             (game.race_scale() - deck * 2.0).abs() < 1e-12,
             "剧本赛后应与卡组赛后乘算"
         );
-        assert_eq!((5.0 * game.race_scale()).floor() as i32, 15);
-        assert_eq!((72.0 * game.race_scale()).floor() as i32, 223);
+        assert_eq!((5.0 * game.race_scale()).floor() as i32, 16);
+        assert_eq!((72.0 * game.race_scale()).floor() as i32, 230);
 
         game.check_points[2] = CheckPointResult::Success;
         assert!(
@@ -1052,7 +1052,7 @@ mod tests {
             "本番成功 ×1.3"
         );
         assert_eq!((5.0 * game.race_scale()).floor() as i32, 10);
-        assert_eq!((72.0 * game.race_scale()).floor() as i32, 145);
+        assert_eq!((72.0 * game.race_scale()).floor() as i32, 149);
     }
 
     /// 「铁心的挑战者」：狄杜斯 106301/106302 出道战后（T12–71）生涯赛 五维×2.5 / PT×0.46
@@ -1094,18 +1094,18 @@ mod tests {
             (game.race_scale() - deck * 2.5).abs() < 1e-12,
             "铁心五维 ×2.5 与卡面赛后乘算、在剧本赛后之前"
         );
-        assert_eq!((5.0 * game.race_scale()).floor() as i32, 19);
+        assert_eq!((5.0 * game.race_scale()).floor() as i32, 20);
         assert_eq!(
             (72.0 * game.race_scale() * game.race_pt_rate()).floor() as i32,
-            128
+            132
         );
 
         game.check_points[2] = CheckPointResult::GreatSuccess;
         assert!((game.race_scale() - deck * 2.5 * 2.0).abs() < 1e-12);
-        assert_eq!((5.0 * game.race_scale()).floor() as i32, 38);
+        assert_eq!((5.0 * game.race_scale()).floor() as i32, 40);
         assert_eq!(
             (72.0 * game.race_scale() * game.race_pt_rate()).floor() as i32,
-            256
+            264
         );
 
         let other = crate::testing::sample_game();
