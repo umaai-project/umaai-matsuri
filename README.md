@@ -13,7 +13,7 @@ workspace 六 crate：
 | `matsuri-ai` | 在线帧解析、一帧一决策会话、路由与输出 DTO |
 | `matsuri-cli` | 终端入口：离线跑局、在线帧 / 回放、手动核对、面板与日志 |
 | `matsuri-tools` | 外围测量：`bench` / `sweep` / `cardtest` 与诊断工具 |
-| `matsuri-launcher` | Windows 发布启动器 `matsuri-ai`（菜单 / 子进程装配 / 通道体检；交互选择用 `inquire`，不依赖业务 crate） |
+| `matsuri-launcher` | Windows 发布启动器 `matsuri-ai`（菜单 / 子进程装配 / 通道体检 / 启动自检更新；交互选择用 `inquire`，不依赖业务 crate） |
 
 - 引擎以 path 引用 `../umaai_next` 的 `umaai-core` / `umasim` / `umaai`；不 fork 引擎、不在引擎仓加剧本 crate。
 - 数据根为 `data/`：引擎静态表 + `scenario_matsuri.json` + 默认层 `matsuri_config.toml` / `ai_config.toml`。
@@ -47,18 +47,28 @@ workspace 六 crate：
   本仓数据覆盖帧数据、帧只提供选项文本；决策前回显事件与逐选项效果，查不到则跳过（不给训练建议）。
 - **CLI**：`matsuri` / `matsuri online` 已迁移 clap，提供 `--help` / `--version`；`matsuri-tools` 仍用手写解析。
 - **发布**：Windows 启动器已实现（`crates/matsuri-launcher`，bin `matsuri-ai`）：
-  菜单为在线模式（默认）/ 启动小黑板 / 通道体检 / 更新数据（联网）/ 更新程序（联网）/ 退出；
+  菜单为在线模式（默认）/ 启动小黑板 / 通道体检 / 更新与插件（联网，子菜单）/ 退出；
   小黑板取同目录 `UmamusumeResponseAnalyzer.exe`，用 `CREATE_NEW_CONSOLE` 另开窗口拉起
   （URA 是 Terminal.Gui TUI，与在线模式需同时常驻）。
-  更新数据按 `ai_data`（`data/` 三张基础表）与 `ura_data`（`.portable/` 的 `.br`）两个频道，
+  更新子菜单为检查更新（只读刷新）/ 更新 AI 数据 / 更新小黑板数据 / 更新小黑板插件 / 更新程序本体 / 返回。
+  数据侧按三个频道：`ai_data`（`data/` 三张基础表）、`ura_data`（`.portable/` 根下的 `.br`）、
+  `ura_plugins`（`.portable/Plugins/*.zip` + `.portable/version.json`），
   走引擎 `umaai-update` 的 `update.json` 协议（逐文件 sha256、失败回滚）；`ai_data` 严格白名单，
-  不覆盖 `events.json` / `constants.json` / 配置 / 剧本资产。`update.json` 由 UmaSimData 的
-  `make_version.py` 生成并随 COS 上传。
+  不覆盖 `events.json` / `constants.json` / 配置 / 剧本资产；`ura_plugins` 不收 `.br`，
+  `.portable/PluginData/`（运行时帧与 native 缓存）永不纳入。三个数据频道的清单统一由
+  UmaSimData 的 `make_version.py` 生成：`ai_data` / `ura_data` 用显式 `filelist`，
+  `ura_plugins` 用 `glob = ["Plugins/*.zip"]` 展开并写回 `version.toml`，同时生成版本标记
+  `ura_plugins/version.json`（内容 `{channel, version}`，只由目录 mtime 决定，重跑不制造假更新）。
   更新程序走 `program` 频道整包 zip（`matsuri-ai.exe` + `bin/matsuri.exe` + 6 个程序资产，
   约 3.3 MB），校验逐文件 sha256 与两份 exe 的 Authenticode 指纹后备份替换，启动器有变化时自重启；
   **不含小黑板本体与 `.portable/`**。发布侧 `scripts/package_launcher.py --sign --program`
   先签名再生成 `dist/program/`（证书与口令只走环境变量）。
-  头部为标题 + 分隔线 + 四行只读信息（安装目录 / 游戏根 / 小黑板 / 核心程序，标签按显示宽度对齐、
+  **启动自检**：进菜单前并发只读比对 `program` / `ai_data` / `ura_data` / `ura_plugins` 四份清单
+  （连接 5 s、单请求 8 s，正常网络约 1.6 s），结论只显示不改行为——头部第 5 行「更新」给状态点与版本，
+  「更新与插件」与子菜单各项按对应频道追加「· 有更新」/「· N 项可更新」；不下载、不弹询问、
+  不写状态文件，失败只降级显示且不阻断启动，频道清单 404 记「未上线」；
+  非交互运行或 `MATSURI_NO_UPDATE_CHECK` 时整段跳过（见 `docs/plan/release_launcher.md` §0.4）。
+  头部为标题 + 分隔线 + 五行只读信息（安装目录 / 游戏根 / 小黑板 / 核心程序 / 更新，标签按显示宽度对齐、
   状态点按文件在位染色）；每次操作返回主菜单前清屏（输出被重定向时不动，避免污染脚本日志）；
   不写配置、不落日志。
   发布包为 `matsuri-ai.exe` + `bin/matsuri.exe` + `data/`，打包与附加资源见
@@ -108,7 +118,7 @@ cargo test --workspace --release --offline
 cargo clippy --workspace --all-targets --offline -- -D warnings
 ```
 
-当前：workspace **全绿**（2026-11-09 新增 3 例）+ 2 手动 `#[ignore]`；clippy `-D warnings` 全绿（2026-11-08 清零）；基线 / 性能复现见
+当前：workspace **全绿**（2026-11-11 启动器新增 8 例）+ 3 手动 `#[ignore]`；clippy `-D warnings` 全绿（2026-11-08 清零）；基线 / 性能复现见
 [`docs/tests_overview.md`](docs/tests_overview.md) 与 [`docs/perf_profiling.md`](docs/perf_profiling.md)。
 clippy 只在 Windows 侧跑；CI 也是 `-D warnings` 硬门禁。
 

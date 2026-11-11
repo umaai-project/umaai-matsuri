@@ -64,7 +64,7 @@
 | `crates/matsuri-cli/src/manual.rs` | 手动核对面板（人工核对机制）：状态取 `MatsuriView`（纯呈现）+ 育成配置 + 彩色训练明细表 + 剧本资源 / 教诲分配结果 + 动作槽增量预览 + Inquire 动作 / 事件选择 |
 | `crates/matsuri-cli/src/logging.rs` | stderr 日志器：消费 `[output] log_level`，承接 `diag!` 记录 |
 | `crates/matsuri-tools` | 外围工具（一个子面一个 bin）：`bench` / `sweep` / `cardtest`（测卡）/ `audit_search` / `probe_fail`；复盘待补 |
-| `crates/matsuri-launcher` | 发布启动器 bin `matsuri-ai`：菜单 / 子进程装配 / 小黑板启动（同目录 URA，`CREATE_NEW_CONSOLE` 另开窗口）/ 小黑板通道只读体检（交互选择用 `inquire`，非 TTY 有编号输入兜底；不依赖本仓业务 crate） |
+| `crates/matsuri-launcher` | 发布启动器 bin `matsuri-ai`：菜单 / 子进程装配 / 小黑板启动（同目录 URA，`CREATE_NEW_CONSOLE` 另开窗口）/ 小黑板通道只读体检 / 更新子菜单（AI 数据 · 小黑板数据 · 小黑板插件 · 程序本体）/ 启动时四频道清单只读自检（只显示，不自动装）（交互选择用 `inquire`，非 TTY 有编号输入兜底；不依赖本仓业务 crate） |
 
 - **契约 trait impl 不可拆文件**：一个 trait 的 `impl` 必须整体落在同一文件。
 - **可见性**：crate 内跨模块调用标 `pub(crate)`；跨 crate 消费面标 `pub`。

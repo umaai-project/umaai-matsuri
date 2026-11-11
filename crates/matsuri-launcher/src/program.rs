@@ -16,7 +16,6 @@ use std::process::Command;
 use serde::Deserialize;
 use umaai_update::{FileEntry, HttpTransport, Source, Transport, hash, sha256_file};
 
-use super::update::{UPDATE_BASE, UPDATE_REFERER};
 use super::{Paint, Paths, Result, fail, platform_exe};
 
 /// 远端频道目录名
@@ -49,7 +48,7 @@ const CORE_REL: &str = "bin/matsuri.exe";
 
 /// 程序更新清单（`program/update.json`）
 #[derive(Debug, Deserialize)]
-struct ProgramManifest {
+pub(super) struct ProgramManifest {
     /// 清单协议版本
     protocol: u32,
     /// 发布版本（仅显示）
@@ -77,7 +76,7 @@ struct Package {
 
 /// 执行一次检查、确认、更新；启动器有变化时重启并退出
 pub(super) fn run(paths: &Paths, paint: &Paint) -> Result<()> {
-    let source = Source::new(UPDATE_BASE)?.with_header("Referer", UPDATE_REFERER);
+    let source = super::update::source()?;
     let transport = HttpTransport::new();
 
     println!();
@@ -183,7 +182,7 @@ fn remove_with_retry(path: &Path) {
 }
 
 /// 版本显示文本
-fn version_text(manifest: &ProgramManifest) -> String {
+pub(super) fn version_text(manifest: &ProgramManifest) -> String {
     match &manifest.date {
         Some(date) if !manifest.version.is_empty() => format!("{}（{date}）", manifest.version),
         Some(date) => date.clone(),
@@ -192,8 +191,25 @@ fn version_text(manifest: &ProgramManifest) -> String {
     }
 }
 
-/// 拉取并校验清单
-fn fetch_manifest(source: &Source, transport: &dyn Transport) -> Result<ProgramManifest> {
+/// 版本号（不含日期，供头部一行等紧凑场景使用）
+pub(super) fn version_label(manifest: &ProgramManifest) -> String {
+    if manifest.version.is_empty() {
+        "未知版本".to_string()
+    } else {
+        manifest.version.clone()
+    }
+}
+
+/// 整包字节数（程序频道一次更新的实际下载量）
+pub(super) fn package_size(manifest: &ProgramManifest) -> u64 {
+    manifest.package.size
+}
+
+/// 拉取并校验清单（启动自检只走到这一步，不下载整包）
+pub(super) fn fetch_manifest(
+    source: &Source,
+    transport: &dyn Transport,
+) -> Result<ProgramManifest> {
     let url = source.manifest_url(CHANNEL);
     let mut buf = Vec::new();
     transport
@@ -243,7 +259,10 @@ fn validate(manifest: &ProgramManifest) -> Result<()> {
 }
 
 /// 待更新文件（本地缺失或摘要不同）
-fn pending_files<'a>(install: &Path, manifest: &'a ProgramManifest) -> Vec<&'a FileEntry> {
+pub(super) fn pending_files<'a>(
+    install: &Path,
+    manifest: &'a ProgramManifest,
+) -> Vec<&'a FileEntry> {
     manifest
         .files
         .iter()

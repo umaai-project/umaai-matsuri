@@ -1,7 +1,8 @@
-//! 发布启动器 `matsuri-ai`：菜单、子进程装配、小黑板启动、通道只读体检与数据 / 程序更新。
+//! 发布启动器 `matsuri-ai`：菜单、子进程装配、小黑板启动、通道只读体检、更新子菜单与启动自检。
 //!
-//! 只做六件事：解析工作目录与游戏根、按选项启动 `bin/matsuri.exe`、
-//! 另开控制台窗口拉起同目录小黑板（URA）、只读体检、按频道更新数据、整包更新程序。
+//! 只做七件事：解析工作目录与游戏根、按选项启动 `bin/matsuri.exe`、
+//! 另开控制台窗口拉起同目录小黑板（URA）、只读体检、按频道更新（AI 数据 / 小黑板数据 /
+//! 小黑板插件 / 程序本体，收在更新子菜单里）、启动时只读自检四份清单（只显示结论）。
 //! 不改核心 CLI、不落日志；数据只写 `data/` 与 `.portable/`，程序更新只写程序本体与程序资产。
 //!
 //! 两条数据路径勿混：`data/` 由核心 CLI 的 `DATA_ROOT="data"` 按子进程 cwd 解析；
@@ -11,6 +12,7 @@
 //! 必须用 `CREATE_NEW_CONSOLE` 独立窗口启动，否则菜单与在线模式互相占屏。
 
 mod program;
+mod startup;
 mod update;
 
 use std::fs;
@@ -21,17 +23,35 @@ use std::time::{Duration, SystemTime};
 
 use inquire::Select;
 
-/// 菜单项：TTY 下由 inquire 渲染，非 TTY 下按 `key()` 编号打印
-const ITEMS: [Item; 6] = [
+/// 主菜单项：TTY 下由 inquire 渲染，非 TTY 下按 `key()` 编号打印
+const ITEMS: [Item; 5] = [
     Item::Online,
     Item::Blackboard,
     Item::Check,
-    Item::Update,
-    Item::Program,
+    Item::Updates,
     Item::Quit,
 ];
 
-/// 菜单选项（枚举化，避免标签 / 索引 / 编号三处各写一遍而失步）
+/// 更新子菜单项（各项只跑自己的频道）
+const UPDATE_ITEMS: [UpdateItem; 6] = [
+    UpdateItem::Check,
+    UpdateItem::AiData,
+    UpdateItem::UraData,
+    UpdateItem::Plugins,
+    UpdateItem::Program,
+    UpdateItem::Back,
+];
+
+/// 一份可渲染的菜单项：`key()` 供非 TTY 编号输入，`label()` 按自检结论追加后缀
+trait MenuEntry: Copy {
+    /// 非 TTY 兜底编号（末项为 0）
+    fn key(self) -> &'static str;
+
+    /// 菜单显示文本
+    fn label(self, up: &startup::Status) -> String;
+}
+
+/// 主菜单选项（枚举化，避免标签 / 索引 / 编号三处各写一遍而失步）
 #[derive(Clone, Copy)]
 enum Item {
     /// 在线模式：长驻监听真机帧
@@ -40,36 +60,113 @@ enum Item {
     Blackboard,
     /// 小黑板通道只读体检
     Check,
-    /// 按频道更新 AI / 小黑板数据
-    Update,
-    /// 整包更新程序本体与程序资产
-    Program,
+    /// 进入更新子菜单
+    Updates,
     /// 退出启动器
     Quit,
 }
 
 impl Item {
-    /// 菜单显示文本
-    fn label(self) -> &'static str {
+    /// 菜单基础文本（不含自检后缀）
+    fn base(self, up: &startup::Status) -> String {
         match self {
-            Item::Online => "在线模式（默认，回车）",
-            Item::Blackboard => "启动小黑板",
-            Item::Check => "检查小黑板连接",
-            Item::Update => "更新数据（联网）",
-            Item::Program => "更新程序（联网）",
-            Item::Quit => "退出",
+            Item::Online => "在线模式（默认，回车）".to_string(),
+            Item::Blackboard => "启动小黑板".to_string(),
+            Item::Check => "检查小黑板连接".to_string(),
+            Item::Updates => match up.pending_count() {
+                0 => "更新与插件（联网）".to_string(),
+                count => format!("更新与插件（联网） · {count} 项可更新"),
+            },
+            Item::Quit => "退出".to_string(),
         }
     }
+}
 
-    /// 非 TTY 兜底编号（末项为 0，与 `q` 等价）
+impl MenuEntry for Item {
     fn key(self) -> &'static str {
         match self {
             Item::Online => "1",
             Item::Blackboard => "2",
             Item::Check => "3",
-            Item::Update => "4",
-            Item::Program => "5",
+            Item::Updates => "4",
             Item::Quit => "0",
+        }
+    }
+
+    fn label(self, up: &startup::Status) -> String {
+        self.base(up)
+    }
+}
+
+/// 更新子菜单选项：每个更新入口只跑自己的频道
+#[derive(Clone, Copy)]
+enum UpdateItem {
+    /// 重跑一次只读自检，刷新头部与后缀
+    Check,
+    /// `ai_data`
+    AiData,
+    /// `ura_data`（`.portable/` 根下的 `.br`）
+    UraData,
+    /// `ura_plugins`（`.portable/Plugins/*.zip`）
+    Plugins,
+    /// `program`（整包更新程序本体）
+    Program,
+    /// 回主菜单
+    Back,
+}
+
+impl UpdateItem {
+    /// 菜单基础文本
+    fn base(self) -> &'static str {
+        match self {
+            UpdateItem::Check => "检查更新（只读，刷新状态）",
+            UpdateItem::AiData => "更新 AI 数据",
+            UpdateItem::UraData => "更新小黑板数据",
+            UpdateItem::Plugins => "更新小黑板插件",
+            UpdateItem::Program => "更新程序本体",
+            UpdateItem::Back => "返回主菜单",
+        }
+    }
+
+    /// 该入口对应的频道是否待更新
+    fn pending(self, up: &startup::Status) -> bool {
+        match self {
+            UpdateItem::AiData => up.ai_data_pending(),
+            UpdateItem::UraData => up.ura_data_pending(),
+            UpdateItem::Plugins => up.plugins_pending(),
+            UpdateItem::Program => up.program_pending(),
+            UpdateItem::Check | UpdateItem::Back => false,
+        }
+    }
+
+    /// 该入口对应的数据频道（检查项与返回项没有）
+    fn channel(self) -> Option<update::DataChannel> {
+        match self {
+            UpdateItem::AiData => Some(update::DataChannel::AiData),
+            UpdateItem::UraData => Some(update::DataChannel::UraData),
+            UpdateItem::Plugins => Some(update::DataChannel::Plugins),
+            UpdateItem::Check | UpdateItem::Program | UpdateItem::Back => None,
+        }
+    }
+}
+
+impl MenuEntry for UpdateItem {
+    fn key(self) -> &'static str {
+        match self {
+            UpdateItem::Check => "1",
+            UpdateItem::AiData => "2",
+            UpdateItem::UraData => "3",
+            UpdateItem::Plugins => "4",
+            UpdateItem::Program => "5",
+            UpdateItem::Back => "0",
+        }
+    }
+
+    fn label(self, up: &startup::Status) -> String {
+        if self.pending(up) {
+            format!("{} · 有更新", self.base())
+        } else {
+            self.base().to_string()
         }
     }
 }
@@ -303,7 +400,8 @@ fn main() -> ExitCode {
         }
     };
     program::startup(&paths.install_dir);
-    menu_loop(&paths, &paint)
+    let mut update = startup::run(&paths, &paint);
+    menu_loop(&paths, &paint, &mut update)
 }
 
 /// 解析安装根、启动时 cwd、核心 exe 与游戏根
@@ -368,8 +466,8 @@ fn core_version(paths: &Paths) -> String {
     }
 }
 
-/// 主菜单循环：头部只读信息 + 在线 / 小黑板 / 体检 / 更新 / 退出
-fn menu_loop(paths: &Paths, paint: &Paint) -> ExitCode {
+/// 主菜单循环：头部只读信息 + 在线 / 小黑板 / 体检 / 更新子菜单 / 退出
+fn menu_loop(paths: &Paths, paint: &Paint, up: &mut startup::Status) -> ExitCode {
     let core_ver = core_version(paths);
     let mut first = true;
     loop {
@@ -378,8 +476,8 @@ fn menu_loop(paths: &Paths, paint: &Paint) -> ExitCode {
             paint.clear();
         }
         first = false;
-        print_header(paths, paint, &core_ver);
-        let Some(item) = choose() else {
+        print_header(paths, paint, &core_ver, up);
+        let Some(item) = choose("请选择", &ITEMS, up) else {
             return ExitCode::SUCCESS;
         };
         match item {
@@ -401,25 +499,62 @@ fn menu_loop(paths: &Paths, paint: &Paint) -> ExitCode {
                 }
                 pause("按回车返回菜单…");
             }
-            Item::Update => {
-                if let Err(err) = update::run(paths, paint) {
-                    eprintln!("更新数据：{err}");
-                }
-                pause("按回车返回菜单…");
-            }
-            Item::Program => {
-                if let Err(err) = program::run(paths, paint) {
-                    eprintln!("更新程序：{err}");
-                }
-                pause("按回车返回菜单…");
-            }
+            Item::Updates => update_menu(paths, paint, up),
             Item::Quit => return ExitCode::SUCCESS,
         }
     }
 }
 
-/// 头部信息：标题 + 分隔线 + 四行只读状态（标签列按显示宽度对齐）
-fn print_header(paths: &Paths, paint: &Paint, core_ver: &str) {
+/// 更新子菜单：每项只跑自己的频道；动作返回后重跑自检刷新头部与后缀
+fn update_menu(paths: &Paths, paint: &Paint, up: &mut startup::Status) {
+    let mut first = true;
+    loop {
+        if !first {
+            paint.clear();
+        }
+        first = false;
+        print_update_header(paint, up);
+        let Some(item) = choose("更新", &UPDATE_ITEMS, up) else {
+            return;
+        };
+        match item {
+            UpdateItem::Back => return,
+            // 只读检查：不打印、不确认，直接重跑自检刷新状态
+            UpdateItem::Check => {
+                *up = startup::run(paths, paint);
+                continue;
+            }
+            UpdateItem::Program => {
+                if let Err(err) = program::run(paths, paint) {
+                    eprintln!("更新程序：{err}");
+                }
+            }
+            _ => {
+                let Some(channel) = item.channel() else {
+                    continue;
+                };
+                if let Err(err) = update::run(paths, paint, channel) {
+                    eprintln!("更新{}：{err}", channel.name());
+                }
+            }
+        }
+        pause("按回车返回更新菜单…");
+        // 动作后重跑自检：让头部的「更新」行与菜单后缀反映最新状态
+        *up = startup::run(paths, paint);
+    }
+}
+
+/// 更新子菜单头：标题 + 分隔线 + 当前自检结论
+fn print_update_header(paint: &Paint, up: &startup::Status) {
+    println!();
+    println!("{}", paint.bold("更新与插件"));
+    println!("{}", paint.dim(&"─".repeat(SEPARATOR_COLS)));
+    info_row("状态", &up.summary(paint));
+    println!();
+}
+
+/// 头部信息：标题 + 分隔线 + 五行只读状态（标签列按显示宽度对齐）
+fn print_header(paths: &Paths, paint: &Paint, core_ver: &str, up: &startup::Status) {
     let launcher_ver = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
     let ura_ok = paths.ura_exe.is_file();
     let plugin_ok = paths
@@ -460,6 +595,7 @@ fn print_header(paths: &Paths, paint: &Paint, core_ver: &str) {
             format!("{} bin/{core_exe_name} 缺失", paint.red("○"))
         },
     );
+    info_row("更新", &up.summary(paint));
     println!();
 }
 
@@ -495,24 +631,24 @@ fn is_wide(ch: char) -> bool {
     )
 }
 
-/// 读取一次菜单选择；`None` 表示结束程序
-fn choose() -> Option<Item> {
+/// 读取一次菜单选择；`None` 表示结束程序 / 返回上级
+fn choose<T: MenuEntry>(title: &str, items: &[T], up: &startup::Status) -> Option<T> {
     if !io::stdin().is_terminal() {
-        return choose_plain();
+        return choose_plain(items, up);
     }
-    let labels: Vec<&str> = ITEMS.iter().map(|item| item.label()).collect();
-    match Select::new("请选择", labels).prompt() {
-        Ok(choice) => ITEMS.iter().copied().find(|item| item.label() == choice),
+    let labels: Vec<String> = items.iter().map(|item| item.label(up)).collect();
+    match Select::new(title, labels).prompt() {
+        Ok(choice) => items.iter().copied().find(|item| item.label(up) == choice),
         // 取消（ESC / Ctrl+C）、非 TTY 或其它 inquire 错误一律退出，不空转。
         Err(_) => None,
     }
 }
 
 /// 非 TTY（管道 / 重定向）兜底：编号输入，供脚本调用与自动化验证
-fn choose_plain() -> Option<Item> {
+fn choose_plain<T: MenuEntry>(items: &[T], up: &startup::Status) -> Option<T> {
     loop {
-        for item in ITEMS {
-            println!("  {}. {}", item.key(), item.label());
+        for item in items {
+            println!("  {}. {}", item.key(), item.label(up));
         }
         print!("请选择：");
         let _ = io::stdout().flush();
@@ -522,16 +658,18 @@ fn choose_plain() -> Option<Item> {
             Ok(0) | Err(_) => return None,
             Ok(_) => {}
         }
-        match line.trim().to_ascii_lowercase().as_str() {
-            "" => return Some(Item::Online),
-            "q" => return Some(Item::Quit),
-            key => {
-                if let Some(item) = ITEMS.iter().copied().find(|item| item.key() == key) {
-                    return Some(item);
-                }
-                println!("无此选项，请输入 1 / 2 / 3 / 4 / 5 / 0。");
-            }
+        let answer = line.trim().to_ascii_lowercase();
+        if answer.is_empty() {
+            return items.first().copied();
         }
+        if answer == "q" {
+            return None;
+        }
+        if let Some(item) = items.iter().copied().find(|item| item.key() == answer) {
+            return Some(item);
+        }
+        let keys: Vec<&str> = items.iter().map(|item| item.key()).collect();
+        println!("无此选项，请输入 {}。", keys.join(" / "));
     }
 }
 
@@ -683,4 +821,44 @@ fn pause(prompt: &str) {
     let _ = io::stdout().flush();
     let mut line = String::new();
     let _ = io::stdin().read_line(&mut line);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 主菜单第 4 项按待更新数追加后缀，其余项不受影响
+    #[test]
+    fn main_menu_labels() {
+        let none = startup::Status::for_test([false; 4]);
+        assert_eq!(Item::Updates.label(&none), "更新与插件（联网）");
+        let some = startup::Status::for_test([true, false, false, true]);
+        assert_eq!(
+            Item::Updates.label(&some),
+            "更新与插件（联网） · 2 项可更新"
+        );
+        assert_eq!(Item::Online.label(&some), "在线模式（默认，回车）");
+        assert_eq!(Item::Quit.label(&some), "退出");
+    }
+
+    /// 更新子菜单只在对应频道待更新时追加后缀
+    #[test]
+    fn update_menu_labels() {
+        let some = startup::Status::for_test([true, false, true, false]);
+        assert_eq!(UpdateItem::Program.label(&some), "更新程序本体 · 有更新");
+        assert_eq!(UpdateItem::UraData.label(&some), "更新小黑板数据 · 有更新");
+        assert_eq!(UpdateItem::AiData.label(&some), "更新 AI 数据");
+        assert_eq!(UpdateItem::Plugins.label(&some), "更新小黑板插件");
+        assert_eq!(UpdateItem::Check.label(&some), "检查更新（只读，刷新状态）");
+        assert_eq!(UpdateItem::Back.label(&some), "返回主菜单");
+    }
+
+    /// 编号：主菜单 1–4 / 0，更新子菜单 1–5 / 0（非 TTY 脚本依赖它）
+    #[test]
+    fn menu_keys() {
+        let keys: Vec<&str> = ITEMS.iter().map(|item| item.key()).collect();
+        assert_eq!(keys, ["1", "2", "3", "4", "0"]);
+        let keys: Vec<&str> = UPDATE_ITEMS.iter().map(|item| item.key()).collect();
+        assert_eq!(keys, ["1", "2", "3", "4", "5", "0"]);
+    }
 }
