@@ -226,11 +226,11 @@ RAYON_NUM_THREADS=16 ./target/release/bench root --turn 32 --search-n 256 --repe
 # CPU 剖面（pprof；首次构建需联网拉依赖）
 cargo build --release --features profile -p matsuri-tools
 ./target/release/bench prof flat --turn 32 --rollouts 120000 --threads 16 \
-  --freq 997 --out logs/perf/flame-flat.svg
+  --freq 997 --out benchmark/_local/perf/flame-flat.svg
 ```
 
 配对测量时基线版放在并列 worktree（同引擎 path 依赖），两版交替运行、各独立启动。
-测量 CSV 落在 `logs/perf/`（不入仓）。
+测量 CSV 落在 `benchmark/_local/perf/`（不入仓）。
 
 ## 9. 后续可做
 
@@ -247,7 +247,7 @@ cargo build --release --features profile -p matsuri-tools
 ## 10. 产物说明
 
 - 工具源码：`crates/matsuri-tools/src/bin/bench.rs`（入仓）。
-- 测量 CSV / 基线 worktree：`logs/perf/` 与仓外临时 worktree（不入仓）。
+- 测量 CSV / 基线 worktree：`benchmark/_local/perf/` 与仓外临时 worktree（不入仓）。
 - 基线二进制在测量结束后可整体删除；本报告只保留当轮数字与相对变化。
 ## 11. 第二轮（2026-11-05 下午）：机制侧分配与估值去重
 
@@ -532,9 +532,9 @@ Distribute 阶段 486 → 8 次、AfterTrain 1898 → 929 次（剩余大头在�
 cargo build --release --features profile -p matsuri-tools
 
 ./target/release/bench prof flat --turn 32 --rollouts 120000 --threads 16 \
-  --freq 997 --out logs/perf/flame-flat.svg
+  --freq 997 --out benchmark/_local/perf/flame-flat.svg
 RAYON_NUM_THREADS=24 ./target/release/bench prof game --games 1 --seed 61444 \
-  --warmup 0 --search-n 1024 --out logs/perf/flame-game.svg
+  --warmup 0 --search-n 1024 --out benchmark/_local/perf/flame-game.svg
 
 # 硬件计数器对照（需 perf 已解锁）
 perf stat -e task-clock,cycles,instructions,cache-references,cache-misses,context-switches \

@@ -14,7 +14,7 @@
 2. **日期 = 拍板日期**，不是实现日期；同一天多轮按时间先后追加。
 3. **`基线影响` 列必须写影响面**：无影响写「无（……）」，有位移给数字（分数 / PT / 卡数）。
 4. **同时同步**：影响机制表述的改 `mechanism.md`；影响术语的改 `glossary.md`；
-   位移基线的重录 `baselines/*.json` 并改 `baselines/README.md`。
+   位移基线的重录 `benchmark/baselines/*.json` 并改 `benchmark/baselines/README.md`。
 
 ## 1. 决定记录（按日期升序）
 
@@ -209,6 +209,8 @@
 | 2026-11-09 | **守门 ④ 不屈例外 + 演目锁位 CRN 补消费** | ①守门 ④：`vital < 32` 且存在 0% 失败率训练（901 不屈 Lv10 / 剧本失败率下降 ≥100）时放行打分表；无保底训练仍强制休息。②`distribute.rs` 锁位分支按「未锁位时 `distribute_person` 的抽签次数」推进共享随机流（不改落位），修复满槽锁卡导致 t+1 CRN 游标错位。③曾试人头级独立流，20 局配对搜索 −851±327 判定为回归，回退为补消费；A/B 手写 +369±298 / 搜索 −196±425。④基线重录：a-normal 手写 83793.9 / 搜索 87557.1，b-ideal 88385.3 / 91535.7 | user 2026-11-09「先优化有不屈仍强制休息 / 演目满槽锁卡 CRN」 | 有（分布随机序列位移；基线重录） |
 | 2026-11-10 | **在线教诲搜索根阶段改为按窗口表定档** | `online::advice_stage` 不再读帧 `isAfterTraining`，改由 `plan.advice_window` 判定：窗口 0/1/3/5（T2/T11/T35/T59）→ `Begin`，2/4（T23/T47，融合窗口，复用 `is_fusion_window`）→ `End`，与离线 `begin_tail` / `settle_advice_window` 同源；`isAfterTraining` 只保留给入口阶段（按决策面）与事件根阶段（叠加 checkPoint 结算） | 旧帧 6312/6314 共 11 张 `special ps=51` 教诲帧有 4 张被粘连的 `isAfterTraining` 判错根阶段；6312 T23_5（窗口 2 判成 `Begin`）让在线已预融合的槽在 rollout 本回合 `End` 被再次融合，512 次 rollout 全失败、整帧报错；user 2026-11-10「改法合理，可执行并测试」 | 离线 / 基线零影响（只改在线搜索根阶段）；错配帧不再报错，教诲搜索估值随正确根阶段位移 |
 | 2026-11-10 | **文档分工：术语与口径分家** | `docs/glossary.md` 只留术语（§1–§8 词条 + §9 官方译名来源），原 §9「口径与用语决定记录」（188 条）与本文件 §2 的分歧表迁出为 `docs/changelog.md`；决定表按日期升序重排并合并为一张完整表（原表被空行切成 6 段、第 2 段起无表头） | user 2026-11-10「术语表以外的东西隔离到单独文档」；术语表越滚越长的日志让「查词条」变难 | 无（纯文档结构；术语 §1–§8 编号不变，外部引用不受影响） |
+| 2026-11-11 | **基准 / 测卡数据归置 `benchmark/`，试验产物统一忽略** | ①仓根 `baselines/` + `decks/` 整体移入 `benchmark/`，同步 5 处硬编码（`bench.rs` 基线目录、`baseline.rs` 自检、`cardtest.rs` 缺省夹具、`ga_trainer.py` 默认夹具）与全仓文档路径；②`logs/` 里被文档当结论引用的 198 个文件（四轮扫描 FINAL/RESULT/STATUS、复核数字来源 CSV、`newcard/` 测卡、`replay_*` 帧、`scan/` 夹具等）移入 `benchmark/_local/`，`.gitignore` 加 `/benchmark/_local/`；③`benchmark/` 只跟踪 9 个文件：基线 3 + 卡组夹具 5 + `benchmark/README.md`，其余 198 个不入库；④`logs/` 其余 2109 个旧日志 / 试验输出清除，清理前整体备份至 `../Backup/umaai-matsuri-logs-20261111/`（2289 文件 / 711,380,024 bytes，清单与 md5 已核）。**历史决定行里的旧路径按 `benchmark/README.md` 映射，原行不改写（遵守只追加纪律）**：`logs/<X>` → `benchmark/_local/<X>`、`baselines/*.json` → `benchmark/baselines/*.json`、`decks/<夹具>.csv` → `benchmark/decks/<夹具>.csv`；`logs/diag/prior_ab/`、`logs/perf/base/bench*` 等纯试验产物只在备份中保留 | user 2026-11-11「新建 benchmark 目录用来放测试数据」「清理 logs 里的日志、旧测试和试验数据，必要的移到 benchmark，其他清除」「移入的文件哪些需要进 git 跟踪，大部分不需要，统一目录方便 gitignore 过滤」 | 无（纯目录归置；`bench baseline` 判定口径不变。`repo_baselines_parse` 原来在目录缺失时静默 return、CI 不红，本次改为显式 `expect`，使基线自检在路径迁移后真正生效） |
+| 2026-11-11 | **结论 md 改为入库 + `logs/` 用途收窄为纯日志** | ①`.gitignore` 由 `/benchmark/_local/` 整目录排除改为「排除全部 → 放行子目录 → 放行 `*.md`」三段例外：`_local/` 下 25 个结论 md（`FINAL` / `RESULT` / `STATUS` / `REPORT` / `SUMMARY` / `STAGE_*` / `ranking_*` / 退役备份 README，合计 235.6 KB）入库，其余 173 个原始产物仍忽略；`benchmark/` 跟踪数 **9 → 34**，`git check-ignore` 逐条实测通过。②`AGENTS.md` 新增「输出目录约定」：**禁止在 `logs/` 放日志以外的测试 / 测卡 / 扫参 / 性能结果数据、卡组夹具、回放帧与结论文档**，结果数据一律进 `benchmark/`，新增工具 / 脚本的缺省输出路径按此约定设置；③`benchmark/README.md` 同步跟踪口径与克隆后的可用性说明。本日上一条决定中「只跟踪 9 个文件 / 结论 md 不入库、克隆后引用悬空」以此条为准（按只追加纪律不改写原行） | user 2026-11-11「结论MD也改为入库」「更新Agents规则文件，禁止在logs里放日志以外的测试或结果数据类文件」 | 无（纯目录与文档口径；代码、基线与判定结果不变） |
 
 ## 2. 与旧实现 / 资料的已知分歧
 

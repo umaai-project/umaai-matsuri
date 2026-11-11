@@ -2,9 +2,9 @@
 """手写训练员的 CMA-ES 联合搜索（官方评分口径；多马娘 × 多种马综合；一次调一个卡组档）。
 
 用法（仓根执行，依赖 numpy；先 `cargo build --release -p matsuri-tools --bin cardtest`）：
-    python scripts/ga_trainer.py search  --out logs/ga/run3 [--decks decks/stamina_build.csv]
+    python scripts/ga_trainer.py search  --out benchmark/_local/ga/run3 [--decks benchmark/decks/stamina_build.csv]
         [--profile stamina_build] [--start snippet.toml] [--seed-offset 10000000] [--max-minutes 100]
-    python scripts/ga_trainer.py confirm --out logs/ga/run3 （同上参数）[--games 2500]
+    python scripts/ga_trainer.py confirm --out benchmark/_local/ga/run3 （同上参数）[--games 2500]
 
 口径：
 - `--decks` 夹具第一行 = 被调卡组，`*_shadow` 行 = 影子卡组（只在验收时看换卡后是否同向）；
@@ -42,7 +42,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BASE_CONFIG = ROOT / "data" / "matsuri_config.toml"
 EXE_NAME = "cardtest.exe" if sys.platform == "win32" else "cardtest"
 DEFAULT_EXE = ROOT / "target" / "release" / EXE_NAME
-DEFAULT_DECKS = ROOT / "decks" / "speed_build.csv"
+DEFAULT_DECKS = ROOT / "benchmark" / "decks" / "speed_build.csv"
 CARD_DB = ROOT / "data" / "cardDB.json"
 REF = "current"  # 不匹配任何档名 → cardtest 按卡组构成选档（= 该卡组在默认层的现行档）
 START = "ga_start"
@@ -158,7 +158,7 @@ class Deck:
 
 
 def load_decks(path: Path) -> tuple[Deck, Deck | None]:
-    """读 `decks/<档>.csv`：第一行 = 主卡组，首个 `*_shadow` 行 = 影子卡组（可无）。
+    """读 `benchmark/decks/<档>.csv`：第一行 = 主卡组，首个 `*_shadow` 行 = 影子卡组（可无）。
 
     构成按 cardDB 现算，与 comp 列不符直接报错（防止片段写错构成、档挂到别的卡组上）。
     """

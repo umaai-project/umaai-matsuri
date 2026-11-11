@@ -84,6 +84,23 @@
 - lib 侧不写死路径：`MatsuriData::load` / `MatsuriConfig::load*` / `Data::init` 的根由调用方注入。
 - 配置层未知键**严格报错**；剧本专属配置段归本仓，不进引擎配置。
 
+## 输出目录约定（2026-11-11 起）
+
+1. **`logs/` 只放运行期日志**：stdout / stderr 重定向、诊断输出、在线帧记录等由工具或进程直接产生的日志。
+   **禁止在 `logs/` 下放日志以外的测试 / 测卡 / 扫参 / 性能测量结果数据、卡组夹具、回放帧、结论文档**，
+   或任何需要留存、复现、跨机器引用的产物。`logs/` 整目录被 `.gitignore` 忽略，放进去等于没有备份，
+   且会被下一次清理清掉。
+2. **基准与测卡数据一律进 `benchmark/`**：
+   - `benchmark/baselines/`、`benchmark/decks/` — 人工维护的基线与卡组夹具，入库。
+   - `benchmark/_local/*.md` — 结论文档（`FINAL` / `RESULT` / `STATUS` / `REPORT` / `SUMMARY` /
+     `STAGE_*` / `ranking_*`），由 `.gitignore` 例外放行，入库。
+   - `benchmark/_local/` 其余 — 机器可复跑的原始输出（CSV / TXT / TOML / 帧数据），不入库。
+   - 分工、复原与旧路径映射见 `benchmark/README.md`。
+3. **写结果前先定归属**：一次性日志直接写 `logs/`（用完即弃）；需要归档的试验输出写
+   `benchmark/_local/` 并在 `docs/` 引用新路径；需要跨版本保留的结论 / 夹具写入库位置。
+   **不要把「以后要查」的东西留在 `logs/`。** 新增工具 / 脚本的缺省输出路径按此约定设置，
+   不要用 `logs/perf/`、`logs/scan/` 之类的子目录承载结果数据。
+
 ## Rust 编码规范
 
 ### 错误处理

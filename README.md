@@ -18,6 +18,9 @@ workspace 六 crate：
 - 引擎以 path 引用 `../umaai_next` 的 `umaai-core` / `umasim` / `umaai`；不 fork 引擎、不在引擎仓加剧本 crate。
 - 数据根为 `data/`：引擎静态表 + `scenario_matsuri.json` + 默认层 `matsuri_config.toml` / `ai_config.toml`。
 - 工作目录同名配置可作覆盖层；`[decks.*]` 只由引擎 / 工具使用，玩家侧不覆盖。
+- **基准 / 测卡数据归 `benchmark/`**：基线、卡组夹具与结论 md 入库，试验产物放 `benchmark/_local/`（不入库）；
+  `logs/` 只放运行期日志，禁止放测试 / 测卡 / 扫参 / 性能结果数据。分工见
+  [`benchmark/README.md`](benchmark/README.md)，规则见 `AGENTS.md` §输出目录约定。
 
 ## 当前状态
 
@@ -62,8 +65,8 @@ workspace 六 crate：
   `scripts/package_launcher.py`、`dist/extra/`；完整版计划与差异见
   [`docs/plan/release_launcher.md`](docs/plan/release_launcher.md) §0。
 - **测卡 / 扫参**：`cardtest` 支持 `--matsuri-config` 显式完整配置入口；单卡定卡、教诲落位、
-  五维系数、机制旋钮四轮扫描均已完成（结果见 `logs/deckselect` / `logs/advscan` /
-  `logs/statusscan` / `logs/knobscan`）；`cardtest` 汇总带友人出行列（`friend_mean` / `friend_full`）。
+  五维系数、机制旋钮四轮扫描均已完成（结果见 `benchmark/_local/deckselect` / `benchmark/_local/advscan` /
+  `benchmark/_local/statusscan` / `benchmark/_local/knobscan`）；`cardtest` 汇总带友人出行列（`friend_mean` / `friend_full`）。
   手写训练员三档（21101 / 12101 / 11102）由 CMA-ES 联合调参（`scripts/ga_trainer.py`，需 numpy），
   再经搜索档 N=8192 配对验收（`scripts/search_check.py`）后定档。
   方案与结果见 [`docs/plan/deck_param_scan.md`](docs/plan/deck_param_scan.md) §9–§10。
@@ -85,12 +88,12 @@ cargo run --release --bin matsuri -- online --replay <帧目录> --trainer searc
 cargo run --release --bin matsuri -- --help
 cargo run --release --bin matsuri -- online --help
 
-# 测卡 / 扫参（手写档；实验输出落 logs/）
+# 测卡 / 扫参（手写档；实验输出落 `benchmark/_local/`）
 ./target/release/cardtest pool --top 12
-./target/release/cardtest build --comp all --pick measured --with-default --out decks/measured.csv
-./target/release/cardtest run --decks decks/measured.csv --ref default_21101 --games 3000 --seed 82000
-./target/release/cardtest run --decks logs/scan/candidates.csv \
-  --matsuri-config logs/scan/scan.toml --ref ref_stamina --games 5000 --seed 87000
+./target/release/cardtest build --comp all --pick measured --with-default --out benchmark/decks/measured.csv
+./target/release/cardtest run --decks benchmark/decks/measured.csv --ref default_21101 --games 3000 --seed 82000
+./target/release/cardtest run --decks benchmark/_local/scan/candidates.csv \
+  --matsuri-config benchmark/_local/scan/scan.toml --ref ref_stamina --games 5000 --seed 87000
 ```
 
 主要环境变量：`MATSURI_SEARCH_N`、`MATSURI_SEARCH_RADICAL`、`MATSURI_EXPLAIN`、`MATSURI_ROOT`。

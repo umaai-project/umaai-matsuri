@@ -2,9 +2,9 @@
 //!
 //! 用法（仓根执行，先 `cargo build --release --offline -p matsuri-tools`）：
 //! - `cardtest pool [--type 0-4] [--top 12]` 卡池榜（面板分 / 得意率 / 羁绊 / 链接钉位 / 剔除项）
-//! - `cardtest build --comp all --pick panel --out decks/panel.csv` 按构成码装配卡组
+//! - `cardtest build --comp all --pick panel --out benchmark/decks/panel.csv` 按构成码装配卡组
 //! - `cardtest build --comp 21101 --pick measured --topk 6 --games 400` 逐槽实测贪婪
-//! - `cardtest run --decks decks/panel.csv --games 1000 --seed 80000` 同种子配对跑测
+//! - `cardtest run --decks benchmark/decks/panel.csv --games 1000 --seed 80000` 同种子配对跑测
 //! - `cardtest ... --matsuri-config <完整配置>` 测卡 / 扫参专用：显式载入完整
 //!   `matsuri_config.toml`（含 `[decks.*]` 变体），不读仓内默认层；玩家 CLI 不暴露该入口
 //!
@@ -1009,11 +1009,11 @@ fn read_decks(path: &str) -> Result<Vec<DeckLine>> {
     Ok(out)
 }
 
-/// 多卡组同种子配对跑测：`cardtest run --decks decks/panel.csv --games 1000`
+/// 多卡组同种子配对跑测：`cardtest run --decks benchmark/decks/panel.csv --games 1000`
 fn cmd_run(env: &Env, args: &[String]) -> Result<()> {
     let path = parse_arg(args, "--decks")
         .or_else(|| parse_arg(args, "--in"))
-        .unwrap_or_else(|| "decks/panel.csv".to_string());
+        .unwrap_or_else(|| "benchmark/decks/panel.csv".to_string());
     let games = parse_usize(args, "--games", DEFAULT_RUN_GAMES)?.max(1);
     let seed = parse_usize(args, "--seed", DEFAULT_SEED as usize)? as u64;
     let threads = resolve_threads(args)?;

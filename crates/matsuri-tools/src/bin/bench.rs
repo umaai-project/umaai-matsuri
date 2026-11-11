@@ -460,7 +460,7 @@ fn apply_fixture(env: &mut Env, args: &[String]) -> Result<()> {
 
 /// 基线复跑：`bench baseline [--name a-normal] [--trainer hand|search|both] [--games N]`
 ///
-/// 读仓根 `baselines/*.json`，按档内的马娘 / 切状态 / 心情盾 / 搜索参数复跑，再按
+/// 读仓根 `benchmark/baselines/*.json`，按档内的马娘 / 切状态 / 心情盾 / 搜索参数复跑，再按
 /// 合并标准误与相对容差判定。任一档漂移即以非零退出码返回，便于 CI 当门禁用。
 fn cmd_baseline(env: &Env, args: &[String]) -> Result<()> {
     let only = parse_arg(args, "--name");
@@ -477,7 +477,7 @@ fn cmd_baseline(env: &Env, args: &[String]) -> Result<()> {
         .unwrap_or(0.01);
     let want = parse_arg(args, "--trainer").unwrap_or_else(|| "both".to_string());
 
-    let dir = env.root.join("baselines");
+    let dir = env.root.join("benchmark").join("baselines");
     let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
         .with_context(|| format!("读取基线目录失败: {}", dir.display()))?
         .flatten()
@@ -1286,7 +1286,7 @@ fn cmd_root(env: &Env, args: &[String]) -> Result<()> {
 ///
 /// - 不依赖 `perf_event_open` / root：pprof 走 `setitimer(ITIMER_PROF)` + `SIGPROF`；
 ///   只采用户态 CPU，内核态时间用 `perf stat` 另看。
-/// - 用法：`bench prof flat --turn 32 --rollouts 120000 --threads 16 --freq 997 --out logs/perf/flame-flat.svg`。
+/// - 用法：`bench prof flat --turn 32 --rollouts 120000 --threads 16 --freq 997 --out benchmark/_local/perf/flame-flat.svg`。
 #[cfg(feature = "profile")]
 mod prof {
     use super::*;
@@ -1301,8 +1301,8 @@ mod prof {
         )?;
         let freq = parse_usize(args, "--freq", 997)?;
         anyhow::ensure!((1..=2000).contains(&freq), "--freq 超出范围 1..=2000");
-        let out =
-            parse_arg(args, "--out").unwrap_or_else(|| format!("logs/perf/flame-{inner}.svg"));
+        let out = parse_arg(args, "--out")
+            .unwrap_or_else(|| format!("benchmark/_local/perf/flame-{inner}.svg"));
 
         // 重建原命令参数：去掉 "prof" 与 --freq / --out，其余 flags 原样保留
         let mut sub: Vec<String> = Vec::with_capacity(args.len());

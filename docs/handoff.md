@@ -58,7 +58,7 @@
 | 在线阶段推断 | `crates/matsuri-ai/src/online.rs`、`session.rs` |
 | 估值 | `crates/matsuri-core/src/value.rs`、`game/train.rs` |
 | 引擎钩子 / 结果统计 / 协议 | `../umaai_next/crates/umasim/src/search/{searchable,flat_search,result}.rs`、`umaai/src/protocol/base.rs` |
-| 基线 | `baselines/*.json`、`baselines/README.md` |
+| 基线 | `benchmark/baselines/*.json`、`benchmark/baselines/README.md` |
 | 本轮记录 | `docs/plan/round_2026-11-09.md` |
 
 ## 5. 关键命令
@@ -79,10 +79,10 @@ RAYON_NUM_THREADS=24 ./target/release/bench game --games 10 --seed 73200 \
   --warmup 0 --uma 105902 --qie none --shield 0
 
 # 在线回放（小预算快速核对）
-MATSURI_SEARCH_N=256 ./target/release/matsuri online --replay logs/replay_t23 --trainer search --json
+MATSURI_SEARCH_N=256 ./target/release/matsuri online --replay benchmark/_local/replay_t23 --trainer search --json
 ```
 
-- 同一 `target` 目录一次只跑一个 cargo；脚本 / 测量输出放 `logs/_scratch/`，不进 `data/`。
+- 同一 `target` 目录一次只跑一个 cargo；脚本 / 测量输出放 `benchmark/_local/`，不进 `data/`、`logs/`。
 - 种子块：73200–73299 已用于本轮基线；下一块 **73300 起**。
 - 提交纪律：不自动 push；提交前同步 `README` / 文档 / 基线，剧本侧 clippy 由用户确认后跑。
 

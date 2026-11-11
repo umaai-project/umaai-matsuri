@@ -2,7 +2,7 @@
 #
 # 职责：批量跑局与基线裁判（「变更探测器」）。**测量入口不放这里**，统一在 `matsuri-tools`
 # （user 2026-11-05 定：测量函数应放 tools）。
-# 基线数据在仓根 `baselines/`，一档一 JSON，由本 crate 的 `baseline` 模块解析与判定。
+# 基线数据在仓根 `benchmark/baselines/`，一档一 JSON，由本 crate 的 `baseline` 模块解析与判定。
 [package]
 name = "matsuri-sim"
 version.workspace = true

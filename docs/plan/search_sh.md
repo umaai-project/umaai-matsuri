@@ -198,7 +198,7 @@ event = true
 | `crates/matsuri-core/src/config.rs` | `search_n` 语义与校验；默认 4096 |
 | `data/matsuri_config.toml`、`data/ai_config.toml` | 默认值与注释；惰性字段标注 |
 | `crates/matsuri-tools/src/bin/audit_search.rs` | 新增 SH 模式；输出每轮分配、早轮误杀率、终局翻转率；沿用 `gap/indep_se/counts` |
-| `baselines/`、`README.md`、`docs/plan/round_2026-11-09.md` | 新分配下重录基线与本轮记录 |
+| `benchmark/baselines/`、`README.md`、`docs/plan/round_2026-11-09.md` | 新分配下重录基线与本轮记录 |
 
 `ADVICE_TOPK = 16` 的候选剪枝仍留在 matsuri（属剧本决策面）；引擎只接收剪枝后的候选。
 
@@ -235,7 +235,7 @@ event = true
 - 同 seed 块（下一块 **73300 起**）做 20 局配对搜索 A/B：现行 UCB vs SH-4096。
 - 记录 wall time：预期 Train +9%–21%、教诲 +30%、事件 −11%；若整体超过 +40%，
   回落到 `target_n=3072` 或只在 Train 启用 SH。
-- 重录基线：`a-normal` / `b-ideal` 四项；同步 `README`、`baselines/README.md`。
+- 重录基线：`a-normal` / `b-ideal` 四项；同步 `README`、`benchmark/baselines/README.md`。
 
 ## 8. 风险与回滚
 

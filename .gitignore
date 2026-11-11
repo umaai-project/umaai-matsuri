@@ -2,6 +2,11 @@
 # 打包产物（dist/matsuri-ai/）与打包附加资源（dist/extra/）均不入库
 /dist/
 logs/
+# benchmark：跟踪基线 / 卡组夹具 / README，以及 _local 下的结论 md；其余试验产物不入库
+# 先排除 _local 下全部内容，再放开目录与 *.md（父目录不排除，例外才会生效）
+/benchmark/_local/**
+!/benchmark/_local/**/
+!/benchmark/_local/**/*.md
 __pycache__/
 *.pyc
 

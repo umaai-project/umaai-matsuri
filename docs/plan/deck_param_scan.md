@@ -8,7 +8,7 @@
 ## 1. 背景与目标
 
 #48 实测（seeds 82000–84999，3000 局/档）耐 / 根 / 智主卡组比默认速主档低
-3.9k–4.6k，失分集中在速度分项；现有 [`decks/measured.csv`](../../decks/measured.csv)
+3.9k–4.6k，失分集中在速度分项；现有 [`benchmark/decks/measured.csv`](../../benchmark/decks/measured.csv)
 是在默认（速主）参数下、单槽贪婪 `topk=6`、单种子块跑出来的，只能作为定卡起点。
 
 本轮目标：
@@ -35,7 +35,7 @@
 - 四套都使用同一条池规则：SSR 训练卡、不含担当马娘 105902、不重复角色、满破；
   链接卡只在「卡类型 == 钉位演目」时进池；友人固定 SSR 吾妻 30323；卡组顺序固定
   「类型 0→4 升序 + 友人最后」。
-- `decks/*.csv` 是**测量夹具**，不写进 `[decks.*]`；`[decks.*]` 只放同 comp 的参数。
+- `benchmark/decks/*.csv` 是**测量夹具**，不写进 `[decks.*]`；`[decks.*]` 只放同 comp 的参数。
   卡组行名与生产档名一致时，`cardtest run` 按名字选档，否则按 comp 自动匹配。
 
 ### 2.2 测试专用配置入口
@@ -89,15 +89,15 @@ bench    ... --matsuri-config <完整 matsuri_config.toml>
 ### 3.3 确认与采用
 
 - 一轮结束后，最终卡组 vs 起始卡组，换独立种子块（86000–86999）、20k 局确认。
-- 确认 CI 不跨零才写入 `decks/<build>.csv`；否则保留起始卡组，排名表照常保留。
+- 确认 CI 不跨零才写入 `benchmark/decks/<build>.csv`；否则保留起始卡组，排名表照常保留。
 - 影子卡组（panel 档或 measured 次优套）不参与调参，只用于参数迁移验证。
 
 ### 3.4 speed 与重录基准
 
 - speed 21101 跑同一套单卡流程，基准 = 当前默认卡组。
 - 若新卡组在确认块上显著优于当前默认：
-  1. 更新 `data/ai_config.toml` 的 `[sim].cards`，同步 `decks/measured.csv` 的默认行；
-  2. 用同一 73200 块重录 `baselines/a-normal.json` / `b-ideal.json` 的手写 100 局与
+  1. 更新 `data/ai_config.toml` 的 `[sim].cards`，同步 `benchmark/decks/measured.csv` 的默认行；
+  2. 用同一 73200 块重录 `benchmark/baselines/a-normal.json` / `b-ideal.json` 的手写 100 局与
      搜索 10 局，量化换卡位移；另用 93000 块做独立复核；
   3. 更新 README / handoff / changelog 的基线表，重跑 seed 61444 冒烟；
   4. 卡组是全局 `[sim]` 输入，a-normal 与 b-ideal 两条都要重录。
@@ -118,10 +118,10 @@ bench    ... --matsuri-config <完整 matsuri_config.toml>
 完整差异一起展开）。再生成一张 decks CSV，行名 = variant 名，卡组列都填该 build 的主卡组：
 
 ```bash
-cardtest run --decks logs/scan/candidates.csv \
-  --matsuri-config logs/scan/scan.toml \
+cardtest run --decks benchmark/_local/scan/candidates.csv \
+  --matsuri-config benchmark/_local/scan/scan.toml \
   --ref ref_stamina --games 5000 --seed 87000 --threads 24 \
-  --correct holm --out logs/scan/result.csv
+  --correct holm --out benchmark/_local/scan/result.csv
 ```
 
 - `ref_<build>` 行名不命中任何档，按 comp 自动回落到该 build 的生产档，作为参照臂；
@@ -165,10 +165,10 @@ cardtest run --decks logs/scan/candidates.csv \
 
 ## 6. 产出
 
-1. `logs/deckselect/<build>_ranking_<pass>.csv`：按槽位完整排名；
-   `logs/deckselect/<build>_ranking.md`：按类型汇总的高→低表。
-2. `decks/<build>.csv`：主卡组 + 影子行；`pick` 标 `measured-v2`，备注种子块与局数。
-3. speed 换卡被采用时：新的 `[sim].cards` + 重录的 `baselines/*.json` + README / changelog 基线表。
+1. `benchmark/_local/deckselect/<build>_ranking_<pass>.csv`：按槽位完整排名；
+   `benchmark/_local/deckselect/<build>_ranking.md`：按类型汇总的高→低表。
+2. `benchmark/decks/<build>.csv`：主卡组 + 影子行；`pick` 标 `measured-v2`，备注种子块与局数。
+3. speed 换卡被采用时：新的 `[sim].cards` + 重录的 `benchmark/baselines/*.json` + README / changelog 基线表。
 4. `[decks.<build>]` 只写与 default 的差异；`note` 记录基准、种子、局数、确认结果。
 5. 扫参结果 CSV 与本文的结果小节。
 
@@ -205,7 +205,7 @@ cardtest run --decks logs/scan/candidates.csv \
 
 speed 未换默认卡组 → **不触发 §3.4 重录基准**；`data/ai_config.toml [sim].cards` 与 seed 61444 冒烟
 86053 / PT 11864 保持不变。实测配对差分 sd≈3318（换卡）；500 局 CI95≈291 分、80% 功效≈415 分，
-单点复跑逐位一致。产出 `decks/<build>.csv`（主 + 影子），详见 `logs/deckselect/RESULT.md`。
+单点复跑逐位一致。产出 `benchmark/decks/<build>.csv`（主 + 影子），详见 `benchmark/_local/deckselect/RESULT.md`。
 
 ### 9.2 教诲分配（advice）
 
@@ -228,7 +228,7 @@ speed 未换默认卡组 → **不触发 §3.4 重录基准**；`data/ai_config.
   解释了历史「两道绑耐 +76（t≈1.2）不显著」（只动了一个窗口）。
 - t47 / t59 未扫（各只需 24 个有效布局），S0 显示这两个窗口潜力更大（+363.5 / +330.6），列为下一步。
 - 落地验证：`tomllib` 解析通过、`cardtest` 载入正常、三套档与补丁配置 10 局逐位一致、
-  **默认档 seed 61444 仍为 86053 / PT 11864**。详见 `logs/advscan/FINAL.md` 与 `STATUS.md`。
+  **默认档 seed 61444 仍为 86053 / PT 11864**。详见 `benchmark/_local/advscan/FINAL.md` 与 `STATUS.md`。
 
 ### 9.3 种子块登记
 
@@ -253,18 +253,18 @@ speed 未换默认卡组 → **不触发 §3.4 重录基准**；`data/ai_config.
 
 - **wisdom 五维系数落地**：`[decks.wisdom_build.trainer] status_weights =
   [0.808125, 1.111613, 0.629025, 0.15, 1.31085]`（独立块 105000 块 5000 局 Holm：
-  +630.6 ±145.4、影子 +606.3；见 `logs/statusscan/FINAL.md`）。
-- **stamina / guts 退役**：移除 `decks/stamina_build.csv` / `decks/guts_build.csv` 与配置中两段
+  +630.6 ±145.4、影子 +606.3；见 `benchmark/_local/statusscan/FINAL.md`）。
+- **stamina / guts 退役**：移除 `benchmark/decks/stamina_build.csv` / `benchmark/decks/guts_build.csv` 与配置中两段
   `[decks.*]`（含 advice 四窗口）。理由：五维系数复核不通过、机制旋钮 278 变体 0/6 通过且
   全部显著为负，残余失分是构成性的（stamina 只 1 张速卡、guts 0 张耐卡），等放开 comp 做
-  构成搜索后再加入。卡组夹具、配置原文与加回步骤备份在 `logs/deckselect/retired_2026-11-07/`；
-  教诲定档成果仍留在 `logs/advscan/proposed_patch.toml`，未丢失。
+  构成搜索后再加入。卡组夹具、配置原文与加回步骤备份在 `benchmark/_local/deckselect/retired_2026-11-07/`；
+  教诲定档成果仍留在 `benchmark/_local/advscan/proposed_patch.toml`，未丢失。
 - 默认档 seed 61444 仍 86053 / PT 11864 逐位不变。
 
 ## 10. GA 联合调参（2026-11-08 ～ 11-09）
 
 §9.4 第三条（五维 → 其余旋钮 → 联合精修）改由 CMA-ES 一次联合搜完；stamina 以 §2.1 起始卡组 +
-§9.1 槽 2 替换重建夹具 `decks/stamina_build.csv` 后重新入档。
+§9.1 槽 2 替换重建夹具 `benchmark/decks/stamina_build.csv` 后重新入档。
 
 ### 10.1 方法
 
@@ -301,7 +301,7 @@ speed 未换默认卡组 → **不触发 §3.4 重录基准**；`data/ai_config.
   但实际卡组上的搜索档增益可能偏小。
 - 新马娘 112901 / 114101 / 106301 只在搜索档验收中轮转，未进 GA 适应度。
 - 两个非默认档写全全部旋钮，不再继承 default；以后调 default 不会连带改动它们。
-- 默认档变了，`baselines/*.json` 与 seed 61444 冒烟（86053 / PT 11864）都会位移；本次未重录，由维护者重录。
+- 默认档变了，`benchmark/baselines/*.json` 与 seed 61444 冒烟（86053 / PT 11864）都会位移；本次未重录，由维护者重录。
 
 ### 10.4 种子块
 

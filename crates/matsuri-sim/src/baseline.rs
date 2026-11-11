@@ -1,6 +1,6 @@
 //! 基线数据与判定
 //!
-//! 一档一 JSON（仓根 `baselines/`），记录固定局面条件与固定种子块下的均分。判定只比
+//! 一档一 JSON（仓根 `benchmark/baselines/`），记录固定局面条件与固定种子块下的均分。判定只比
 //! **分数与 PT 的均值**：单局耗时会随机器负载漂移，不进基线。
 //!
 //! 容差同时受两个东西约束：基线与本轮的合并标准误（统计噪声）和相对容差（口径允许的
@@ -217,10 +217,9 @@ mod tests {
             .parent()
             .and_then(Path::parent)
             .expect("上溯两级到仓根")
+            .join("benchmark")
             .join("baselines");
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            return;
-        };
+        let entries = std::fs::read_dir(&dir).expect("仓根 benchmark/baselines/ 应存在");
         let mut seen = 0;
         for entry in entries.flatten() {
             let path = entry.path();
@@ -238,6 +237,6 @@ mod tests {
             );
             seen += 1;
         }
-        assert!(seen > 0, "仓根 baselines/ 下应有基线文件");
+        assert!(seen > 0, "仓根 benchmark/baselines/ 下应有基线文件");
     }
 }

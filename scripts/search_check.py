@@ -2,9 +2,9 @@
 """搜索档（FlatSearch）配对验收：同场景、同种子，现行档 vs 候选片段，逐局跑 `bench game`。
 
 用法（仓根执行，依赖 numpy（经 ga_trainer）；先 `cargo build --release -p matsuri-tools --bin bench`）：
-    python scripts/search_check.py --out logs/ga/search3 \
-        --check speed=decks/speed_build.csv,logs/ga/run2/ok_g0269.toml \
-        --check stamina=decks/stamina_build.csv,logs/ga/run3/run3_stamina/ok_g0109.toml \
+    python scripts/search_check.py --out benchmark/_local/ga/search3 \
+        --check speed=benchmark/decks/speed_build.csv,benchmark/_local/ga/run2/ok_g0269.toml \
+        --check stamina=benchmark/decks/stamina_build.csv,benchmark/_local/ga/run3/run3_stamina/ok_g0109.toml \
         [--search-n 8192] [--seed 30000000] [--pairs 400] [--workers 8] [--rayon 1] [--max-minutes 20]
 
 口径：
