@@ -44,13 +44,16 @@ fn expected_outing_levels(level: [i32; 5], gauge: [i32; 5], gauge_max: i32) -> [
 }
 
 /// 按三则落点 / 满槽跳过推进 `count` 次演目槽，返回各演目增量
+///
+/// 同批并列按「本批起始槽 → 属性序」裁决（真机 T45 / T58 帧核对）
 fn expected_gauge_up(level: [i32; 5], gauge: [i32; 5], count: i32, gauge_max: i32) -> [i32; 5] {
+    let base = gauge;
     let mut guage = gauge;
     let mut gained = [0; 5];
     for _ in 0..count {
         let Some(act) = (0..5)
             .filter(|act| guage[*act] < gauge_max)
-            .min_by_key(|act| (level[*act], guage[*act], *act as i32))
+            .min_by_key(|act| (level[*act], guage[*act], base[*act], *act as i32))
         else {
             break;
         };

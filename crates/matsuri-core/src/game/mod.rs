@@ -725,11 +725,23 @@ fn act_gauge_add(acts: &mut ActLedger, started: bool, max: i32, act: usize, amou
     new - old
 }
 
-/// 未满槽演目里挑「Lv 最低 → 槽最低 → 属性序」（账本级）
-fn act_lowest_gain(acts: &ActLedger, max: i32) -> Option<usize> {
+/// 未满槽演目里挑「Lv 最低 → 槽最低 → 本批起始槽最低 → 属性序」（账本级）
+///
+/// 第三键 `base_gauge` 是**本批 +N 开始前**的槽快照：真机同一批多点入账时，
+/// 并列优先给「本批开始时槽更低」的演目，而不是每 +1 都按属性序重排
+/// （T45 / T58 生涯目标赛帧核对，见 memo §2.3）。`count = 1` 时该键恒等于当前槽，
+/// 行为与旧口径逐位一致。
+fn act_lowest_gain(acts: &ActLedger, base_gauge: &Array5, max: i32) -> Option<usize> {
     (0..5)
         .filter(|act| acts.gauge[*act] < max)
-        .min_by_key(|act| (acts.level[*act], acts.gauge[*act], *act as i32))
+        .min_by_key(|act| {
+            (
+                acts.level[*act],
+                acts.gauge[*act],
+                base_gauge[*act],
+                *act as i32,
+            )
+        })
 }
 
 /// 三则落点逐次 +1 槽（账本级；满槽跳过、并列逐次分摊）
@@ -738,8 +750,10 @@ fn act_gauge_add_lowest(acts: &mut ActLedger, started: bool, max: i32, count: i3
     if !started {
         return gained;
     }
+    // 本批起始槽：批内并列裁决用，不随 +1 更新
+    let base_gauge = acts.gauge;
     for _ in 0..count.max(0) {
-        let Some(act) = act_lowest_gain(acts, max) else {
+        let Some(act) = act_lowest_gain(acts, &base_gauge, max) else {
             break;
         };
         acts.gauge[act] += 1;
@@ -796,6 +810,27 @@ mod tests {
         // act0 槽满：下一档在 Lv2 的 act2（act1 满槽跳过）与其余里取
         assert_eq!(game.gain_lowest_act_gauge(1), [0, 0, 1, 0, 0]);
         assert_eq!(game.acts.gauge, [5, 5, 1, 0, 0]);
+    }
+
+    /// 真机帧核对（game6316，生涯目标赛 +4）：同批并列时按「本批起始槽」优先，
+    /// 而不是每 +1 都按属性序重排（T45 / T58 两个可判别样本）
+    #[test]
+    fn gauge_batch_tie_uses_start_gauge() {
+        let mut game = crate::testing::sample_game();
+        game.turn = crate::SCENARIO_START_TURN;
+        let max = game.act_gauge_max();
+
+        // T45：Lv [7,7,7,5,7]、槽 [0,1,0,5,3] → 速 +2 / 力 +2（耐力 0）
+        game.acts.level = [7, 7, 7, 5, 7];
+        game.acts.gauge = [0, 1, 0, max, 3];
+        assert_eq!(game.gain_lowest_act_gauge(4), [2, 0, 2, 0, 0]);
+        assert_eq!(game.acts.gauge, [2, 1, 2, max, 3]);
+
+        // T58：Lv [8,9,7,5,9]、槽 [5,2,5,5,1] → 耐力 +1 / 智力 +3
+        game.acts.level = [8, 9, 7, 5, 9];
+        game.acts.gauge = [max, 2, max, max, 1];
+        assert_eq!(game.gain_lowest_act_gauge(4), [0, 1, 0, 0, 3]);
+        assert_eq!(game.acts.gauge, [max, 3, max, max, 4]);
     }
 
     #[test]
