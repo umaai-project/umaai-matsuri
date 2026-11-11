@@ -22,7 +22,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use matsuri_core::game::advice::advice_display_name;
 use matsuri_core::game::restore::RestoreInput;
 use matsuri_core::{
@@ -716,6 +716,7 @@ impl OnlineSession {
 
     /// 帧 → 局面
     fn restore(&mut self, frame: &ParsedFrame) -> Result<(MatsuriGame, Vec<String>)> {
+        ensure_local_cards(&frame.status.card_id)?;
         let params = self.params();
         let FrameOutcome { game: base, notes } = frame.status.to_base_game(&params)?;
         // 入口阶段：本帧带决策面（人头已落位或预览非零）就按 `Train` 还原。
@@ -811,6 +812,20 @@ impl OnlineSession {
     }
 }
 
+/// 帧内卡组必须都能在**本地卡表**里解出来
+///
+/// 小黑板与 AI 的数据各自更新：新卡有「AI 先有、小黑板还没有」的情形——那只是插件
+/// `charaId` 留 0，还原层按本地卡表补上即可；反过来 AI 侧落后就没法建局面，
+/// 这类失败要给玩家可执行的处置（更新 AI 数据），而不是一句字段错误。
+fn ensure_local_cards(cards: &[u32]) -> Result<()> {
+    for id in cards {
+        if SupportCard::new(*id).is_err() {
+            bail!("帧内支援卡 {id} 不在本地卡表（无法计算）：请更新 AI 数据后重试，或等待上游更新");
+        }
+    }
+    Ok(())
+}
+
 /// 本帧是否带决策面：有人头落位（`>= 0`，`-1` 是占位）或任一训练预览非零
 ///
 /// 事件帧 / 结算中间帧两者皆空；载入快照只有预览没有分布——后者仍算有面，
@@ -881,5 +896,19 @@ mod tests {
                 "{name}：还原 / 融合 / 训练员共用生效档"
             );
         }
+    }
+
+    /// 本地卡表缺卡（AI 数据落后于游戏版本）→ 拒绝并要玩家更新，而不是报字段错
+    #[test]
+    fn unknown_card_asks_for_update() {
+        ensure_data(data_dir()).expect("引擎静态数据");
+        ensure_local_cards(&[303114, 303234]).expect("帧内真机卡都应在本地卡表里");
+        let err = ensure_local_cards(&[303234, 999994]).expect_err("本地没有的卡必须拒绝");
+        let message = format!("{err:#}");
+        assert!(
+            message.contains("999994"),
+            "报错要带上出问题的卡：{message}"
+        );
+        assert!(message.contains("更新"), "要给可执行的处置：{message}");
     }
 }

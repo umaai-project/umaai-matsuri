@@ -26,7 +26,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use anyhow::{Context, Result, anyhow, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use umaai::BasePersonStatus;
 use umaai_core::gamedata::EventData;
 use umaai_core::{Array5, Data, Ill};
@@ -193,10 +193,10 @@ impl MatsuriGame {
             game.restore_persons(festa, noncard_friendship)?;
         }
         // 剧本机制未启动（T0 / T1）：名单保持建局结果，担当 / 演目 / 教诲都不从帧取。
-        game.restore_acts(festa)?;
+        game.restore_acts(festa);
         game.restore_advice(festa);
         game.restore_camp(festa);
-        game.restore_check_points(festa)?;
+        game.restore_check_points(festa);
         game.restore_train_levels(festa, prev_train_levels);
         game.assist_support_left = festa
             .assist_support_left
@@ -207,7 +207,7 @@ impl MatsuriGame {
 
         // 人头建完才能把分布从协议 id 翻成 `person_index`
         let raw_distribution = std::mem::take(&mut game.base.distribution);
-        game.base.distribution = game.map_distribution(&raw_distribution)?;
+        game.base.distribution = game.map_distribution(&raw_distribution);
 
         // 事件帧注入：**本仓事件数据优先**——数值与选项数以本地表为准，帧 `story` 只提供选项文本。
         // 因此引擎按 `story` 建过的同 id 事件会被本地那份覆盖；本地查不到才回退帧数据，
@@ -347,6 +347,14 @@ impl MatsuriGame {
     /// `to_base_game` 按**数组下标**把 `baseGame.persons[i].friendship` 写进 `deck[i]`，
     /// 也就是假定「帧人头顺序 = 卡组顺序」。这条假设必须当着真机帧验证：
     /// 对不齐就直接报错，而不是带着错位的羁绊去算训练值。
+    ///
+    /// **身份以本地卡表为准**（2026-11-11）：小黑板与 AI 的数据各自更新，新支援卡常是
+    /// AI 侧先有、小黑板侧还没有——插件 `ApplyPersonCharaIds` 查不到角色就把 `charaId`
+    /// 留 0（协议里该字段本就可选、只用于解名字）。这是「帧端未知」不是「数据矛盾」，
+    /// 跳过该位即可；帧端给出非 0 却与本地不符才是真人头错位，照旧拒绝。
+    ///
+    /// 身份之外再守一道**结构校验**：`personType`（1 = 友人 / 2 = 普通支援卡）由插件按
+    /// `cardId` 直接算出，不依赖卡名表，因此 `charaId` 全为 0 时依然成立。
     fn check_roster(&self, frame_persons: &[BasePersonStatus]) -> Result<()> {
         if frame_persons.is_empty() {
             bail!("帧内缺少 baseGame.persons：无法校验卡位顺序（拒绝计算）");
@@ -358,14 +366,47 @@ impl MatsuriGame {
             self.deck.len()
         );
         for (index, (person, card)) in frame_persons.iter().zip(self.deck.iter()).enumerate() {
-            ensure!(
-                person.chara_id == card.data.chara_id,
-                "第 {} 位人头对不上：帧内 chara_id={}，卡组 card_id={} 的 chara_id={}（帧人头顺序与卡组不一致，拒绝计算）",
-                index + 1,
-                person.chara_id,
-                card.card_id,
-                card.data.chara_id
-            );
+            if person.chara_id == 0 {
+                diag!(
+                    "【卡位自检】第 {} 位 charaId=0（小黑板卡表未收录 card {}），按本地 chara_id={} 继续",
+                    index + 1,
+                    card.card_id,
+                    card.data.chara_id
+                );
+            } else {
+                ensure!(
+                    person.chara_id == card.data.chara_id,
+                    "第 {} 位人头对不上：帧内 chara_id={}，卡组 card_id={} 的 chara_id={}（帧人头顺序与卡组不一致，拒绝计算）",
+                    index + 1,
+                    person.chara_id,
+                    card.card_id,
+                    card.data.chara_id
+                );
+            }
+            // `0` = 未加载 / 语义未定，不参与比对；只认 1 / 2 两种卡位语义
+            let frame_friend = match person.person_type {
+                1 => Some(true),
+                2 => Some(false),
+                _ => None,
+            };
+            if let Some(frame_friend) = frame_friend {
+                ensure!(
+                    frame_friend == (card.card_type >= 5),
+                    "第 {} 位卡位类型对不上：帧内是{}，卡组 card_id={} 是{}（帧人头顺序与卡组不一致，拒绝计算）",
+                    index + 1,
+                    if frame_friend {
+                        "友人卡"
+                    } else {
+                        "普通支援卡"
+                    },
+                    card.card_id,
+                    if card.card_type >= 5 {
+                        "友人卡"
+                    } else {
+                        "普通支援卡"
+                    }
+                );
+            }
         }
         Ok(())
     }
@@ -411,9 +452,11 @@ impl MatsuriGame {
                 PersonKind::Guest => {
                     let chara_id = u32::try_from(person.target_id)
                         .with_context(|| format!("帧内神驹 targetId 非法：{}", person.target_id))?;
+                    // 神驹的 targetId 就是角色 id，本地必须有这个角色才谈得上算他的加成；
+                    // 缺数据是「AI 侧落后于游戏版本」，处置是让玩家更新（与卡位 charaId=0 不同）
                     ensure!(
                         Data::get()?.get_chara_name(chara_id) != "未知",
-                        "帧内编成外神驹 targetId={chara_id} 不是已知角色（拒绝计算）"
+                        "帧内编成外神驹 targetId={chara_id} 本地没有该角色（无法计算）：请更新 AI 数据后重试，或等待上游更新"
                     );
                     guests.insert(chara_id, act_index(person.act_type));
                 }
@@ -452,23 +495,27 @@ impl MatsuriGame {
     }
 
     /// 演目槽 / 演目 Lv（按 `actType` 落位，不信数组下标）
-    fn restore_acts(&mut self, festa: &FestaState) -> Result<()> {
+    ///
+    /// `actType` 越界（协议新增了本仓没有的演目）只跳过该项：其余演目的槽位与等级仍然可用，
+    /// 不值得为一条多出来的记录拒绝整帧。
+    fn restore_acts(&mut self, festa: &FestaState) {
         let gauge_max = self.act_gauge_max();
         let level_cap = self.act_level_cap();
         for act in &festa.acts {
-            let index = act_index_of(act.act_type).ok_or_else(|| {
-                anyhow!(
-                    "帧内演目 actType={} 越界（应为 1–{ACT_COUNT}）",
+            let Some(index) = act_index_of(act.act_type) else {
+                diag!(
+                    "【演目】T{} actType={} 越界（应为 1–{ACT_COUNT}），忽略该项",
+                    self.base.turn,
                     act.act_type
-                )
-            })?;
+                );
+                continue;
+            };
             self.acts.gauge[index] = act.gauge.clamp(0, gauge_max);
             // `level == 0` = 本帧未给（真机运行期恒 ≥1），保持默认 Lv1
             if act.level > 0 {
                 self.acts.level[index] = act.level.clamp(1, level_cap);
             }
         }
-        Ok(())
     }
 
     /// 教诲槽：`fusionId == 0` → 未転成，`slots = adviceId`；否则 `slots = fusionId`、`fused = adviceId`
@@ -513,18 +560,24 @@ impl MatsuriGame {
     }
 
     /// 進捗発表会 / 本番结果（`scheduleId` 1 基；数组顺序不保证，按 id 落位）
-    fn restore_check_points(&mut self, festa: &FestaState) -> Result<()> {
+    ///
+    /// 越界的 `scheduleId` 只跳过该条（本仓只有 3 场），不让一条多出来的记录否决整帧。
+    fn restore_check_points(&mut self, festa: &FestaState) {
         if let Some(points) = &festa.check_points {
             for point in points {
-                let index = usize::try_from(point.schedule_id - 1)
-                    .ok()
-                    .filter(|index| *index < 3)
-                    .ok_or_else(|| {
-                        anyhow!(
-                            "帧内発表会 scheduleId={} 越界（应为 1–3）",
-                            point.schedule_id
-                        )
-                    })?;
+                let index = point
+                    .schedule_id
+                    .checked_sub(1)
+                    .and_then(|id| usize::try_from(id).ok())
+                    .filter(|index| *index < 3);
+                let Some(index) = index else {
+                    diag!(
+                        "【発表会】T{} scheduleId={} 越界（应为 1–3），忽略该项",
+                        self.base.turn,
+                        point.schedule_id
+                    );
+                    continue;
+                };
                 self.check_points[index] = match point.result_type {
                     2 => CheckPointResult::GreatSuccess,
                     1 => CheckPointResult::Success,
@@ -535,7 +588,6 @@ impl MatsuriGame {
             }
         }
         self.finals_done = self.check_points[2] != CheckPointResult::NotReached;
-        Ok(())
     }
 
     /// 训练等级加成：以帧等级为**真值**反解 `train_level_bonus`
@@ -570,19 +622,25 @@ impl MatsuriGame {
     /// `to_base_game` 把帧的 `personDistribution` **原样**拷进底座，而引擎的
     /// `count_training_persons` / `calc_training_buff` 都按 `persons` 下标取人——
     /// 不翻这一层，编成外神驹（id ≥ 1000）会被当成越界下标静默丢弃，人数加成与神驹担当全丢。
-    fn map_distribution(&self, raw: &[Vec<i32>]) -> Result<Vec<Vec<i32>>> {
+    ///
+    /// **单点翻不出来只丢弃该人头**（`diag!` 留痕），不拒绝整帧：少一个人只影响该训练位的
+    /// 人数加成，整帧拒绝会让这一局彻底没有建议。可能触发的情形：老插件把神驹压成 `8`、
+    /// 协议新增本仓还不认识的编号段、一行超过协议定长 5 人。
+    fn map_distribution(&self, raw: &[Vec<i32>]) -> Vec<Vec<i32>> {
         let deck_len = self.deck.len() as i32;
         let yayoi = self.person_index_of(PersonOrigin::Yayoi);
         let reporter = self.person_index_of(PersonOrigin::Reporter);
         let mut out = Vec::with_capacity(raw.len());
         for (train, row) in raw.iter().enumerate() {
-            ensure!(
-                row.len() <= MAX_PERSONS_PER_TRAIN,
-                "帧内第 {train} 号训练位站了 {} 人（上限 {MAX_PERSONS_PER_TRAIN}）",
-                row.len()
-            );
-            let mut mapped = Vec::with_capacity(row.len());
-            for id in row {
+            if row.len() > MAX_PERSONS_PER_TRAIN {
+                diag!(
+                    "【分布】T{} 第 {train} 号训练位给了 {} 人（协议定长 {MAX_PERSONS_PER_TRAIN}），按前 {MAX_PERSONS_PER_TRAIN} 人取",
+                    self.base.turn,
+                    row.len()
+                );
+            }
+            let mut mapped = Vec::with_capacity(row.len().min(MAX_PERSONS_PER_TRAIN));
+            for id in row.iter().take(MAX_PERSONS_PER_TRAIN) {
                 if *id < 0 {
                     continue; // 空位哨兵：离线分布只放实际人头
                 }
@@ -590,33 +648,50 @@ impl MatsuriGame {
                     continue; // 协议占位 / NPC：从不出现在分布
                 }
                 let index = if (0..=PROTOCOL_CARD_ID_MAX).contains(id) {
-                    ensure!(
-                        *id < deck_len,
-                        "帧内分布卡位 id={id} 超出卡组张数 {deck_len}"
-                    );
+                    if *id >= deck_len {
+                        diag!(
+                            "【分布】T{} 卡位 id={id} 超出卡组张数 {deck_len}，丢弃该人头",
+                            self.base.turn
+                        );
+                        continue;
+                    }
                     *id as usize
                 } else if *id == PROTOCOL_ID_YAYOI_DIST {
-                    yayoi.ok_or_else(|| anyhow!("帧内分布含理事长（id 6），但人头未建"))?
+                    let Some(index) = yayoi else {
+                        diag!("【分布】T{} 理事长人头未建，丢弃该人头", self.base.turn);
+                        continue;
+                    };
+                    index
                 } else if *id == PROTOCOL_ID_REPORTER_DIST {
-                    reporter.ok_or_else(|| anyhow!("帧内分布含记者（id 7），但人头未建"))?
+                    let Some(index) = reporter else {
+                        diag!("【分布】T{} 记者人头未建，丢弃该人头", self.base.turn);
+                        continue;
+                    };
+                    index
                 } else if *id >= PROTOCOL_GUEST_ID_MIN {
                     let chara_id = *id as u32;
-                    self.persons
-                        .iter()
-                        .position(|person| {
-                            person.origin == PersonOrigin::Guest && person.chara_id() == chara_id
-                        })
-                        .ok_or_else(|| {
-                            anyhow!("帧内分布含未登记的神驹 id={chara_id}（人头里没有）")
-                        })?
+                    let Some(index) = self.persons.iter().position(|person| {
+                        person.origin == PersonOrigin::Guest && person.chara_id() == chara_id
+                    }) else {
+                        diag!(
+                            "【分布】T{} 神驹 id={chara_id} 未登记进人头，丢弃该人头",
+                            self.base.turn
+                        );
+                        continue;
+                    };
+                    index
                 } else {
-                    bail!("帧内分布含无法归类的人头 id={id}");
+                    diag!(
+                        "【分布】T{} 无法归类的人头 id={id}（协议编号段本仓不识别），丢弃该人头",
+                        self.base.turn
+                    );
+                    continue;
                 };
                 mapped.push(index as i32);
             }
             out.push(mapped);
         }
-        Ok(out)
+        out
     }
 
     /// 某来源人头的下标（就地查找；`None` = 人头未建）

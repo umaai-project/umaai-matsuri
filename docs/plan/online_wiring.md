@@ -631,6 +631,7 @@ M1 的 round-trip 是**整套方案的核心守门**：它能在没有真机的�
 | 10 | `isAfterTraining` 决定入口阶段（第 6 条） | 真机 6311 T7 **两帧都是 `true`**，其中 `turn7_2` 是完整训练屏（分布齐、预览非零）；该字段会「粘」在后续帧上，引擎侧只解析不使用 | 阶段改按**决策面**定档：帧有人头落位（`>= 0`）或任一训练预览非零 → `Train`，否则按 `isAfterTraining` 落 `AfterTrain`；路由不再单设 `isAfterTraining` 跳过 |
 | 11 | 同回合多帧只决策一次（`last_train_turn` / 教诲窗口去重） | 玩家可能反复进出同一状态（选完取消、重进训练屏、中途 `load`），去重会让面板停在旧建议上（6311 T5 / T7 实测） | **同回合允许多次决策**：每张新帧都重算并重新输出；只有内容完全相同的重复帧仍按 `G7` 摘要幂等跳过。运气分同回合复用快照，不重复推进跟踪器 |
 | 12 | 教诲搜索根阶段按帧 `isAfterTraining` 定档（2026-11-09 接线） | 该字段会粘连：6312 T2 为 `true` 而 6314 T2 为 `false`；6312 T23 窗口 2 的 `special ps=51` 帧为 `false` 被判 `Begin`，在线已预融合的槽在 rollout 本回合 `End` 被重复融合 → 16 候选 × 32 全部失败、整帧报错 | 教诲根阶段只按 `plan.advice_window`（窗口表）：0/1/3/5 → `Begin`，2/4 → `End`，与 `begin_tail` / `settle_advice_window` 同源；`isAfterTraining` 只保留给入口阶段（第 10 条）与事件根阶段（叠加 checkPoint 结算） |
+| 13 | `check_roster` 要求 `persons[i].charaId == deck[i].chara_id`，任一不等即拒绝整帧（第 1 条） | 小黑板卡表与 AI 卡表各自更新，「新卡 AI 先有、小黑板还没有」是常态：插件 `ApplyPersonCharaIds` 查不到角色就留默认 0（协议注释明确 `charaId = 0` 是「未加载 / 懒得写」，**只用于解名字**），而引擎 `to_base_game` 只按下标取 `friendship`、不读该字段。`cardId` 同局不变 → 一次不等等于该局此后**每一帧**都失败、玩家整局无建议 | 身份以**本地卡表**为准：`charaId = 0` 跳过该位、照常还原，非 0 且与本地不符才拒绝；另补一道不依赖卡名表的结构校验（`personType` 1/2 ↔ `card_type >= 5`）守住友人位错位。演目 `actType` / 発表会 `scheduleId` 越界与分布翻不出来的单点改为**丢弃该项 + `diag!`**；AI 侧缺角色 / 缺卡仍拒绝，但文案改为「请更新 AI 数据后重试，或等待上游更新」 |
 
 
 ### 9.3 `--verify-training` 首轮结果（`G13`）——两次修正后

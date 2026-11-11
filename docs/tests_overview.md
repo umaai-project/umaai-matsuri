@@ -12,10 +12,10 @@
 
 | crate | 测试面 | 现状 |
 |---|---|---|
-| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成）+ `tests/restore.rs`（还原层）+ `tests/diag.rs`（诊断守门）+ `tests/search.rs`（搜索档） | 内联单测 **172** 个（含 1 个 `#[ignore]` 微基准）+ L2 数据层 **16** 个 + 机制集成 **36** 个 + 还原层 **17** 个 + 诊断 **1** 个 + 搜索 **4** 个（另 1 个 1024 手动 `#[ignore]`） |
+| `matsuri-core` | 内联单测 + `tests/data.rs`（L2 数据层）+ `tests/mechanics.rs`（机制集成）+ `tests/restore.rs`（还原层）+ `tests/diag.rs`（诊断守门）+ `tests/search.rs`（搜索档） | 内联单测 **177** 个（含 1 个 `#[ignore]` 微基准）+ L2 数据层 **16** 个 + 机制集成 **36** 个 + 还原层 **21** 个 + 诊断 **1** 个 + 搜索 **4** 个（另 1 个 1024 手动 `#[ignore]`） |
 | `matsuri-sim` | `tests/baseline.rs`（固定种子基线） | 待补 |
 | `matsuri-cli` | 内联（呈现件纯函数）+ `tests/manual_smoke.rs` + `tests/explain_smoke.rs` + `tests/search_smoke.rs` | 内联 **14** 个 + 冒烟 **3** 个（manual / explain / search）；基线待补 |
-| `matsuri-ai` | 内联 17 + `tests/replay.rs` 3 + `tests/advice_boundary.rs` 1 + `tests/w2.rs` 3（诊断）+ `tests/layers.rs` 1（诊断） | 帧解析（含 `charaEffects` 全量状态 / `storyId`）/ **按帧内卡组选档** / **路由（事件帧查不到数据 → 跳过，不回落训练）** / **教诲搜索根阶段按窗口表定档（帧 `isAfterTraining` 翻转不影响决策）** / **教诲选择边界：运气分只挂 Train、教诲帧不挂；选择前后与跨回合 E / 运气波动守 3σ；回合状态按帧真值还原、搜索根不污染输出局面** / 终局帧门禁 / 回放顺序与局末终局帧 / 一帧一决策 / 训练验算与偏差拆解 |
+| `matsuri-ai` | 内联 20 + `tests/replay.rs` 3 + `tests/advice_boundary.rs` 1 + `tests/w2.rs` 3（诊断）+ `tests/layers.rs` 1（诊断） | 帧解析（含 `charaEffects` 全量状态 / `storyId`）/ **按帧内卡组选档** / **路由（事件帧查不到数据 → 跳过，不回落训练）** / **教诲搜索根阶段按窗口表定档（帧 `isAfterTraining` 翻转不影响决策）** / **教诲选择边界：运气分只挂 Train、教诲帧不挂；选择前后与跨回合 E / 运气波动守 3σ；回合状态按帧真值还原、搜索根不污染输出局面** / **本地卡表缺卡 → 拒绝并提示更新 AI 数据** / 终局帧门禁 / 回放顺序与局末终局帧 / 一帧一决策 / 训练验算与偏差拆解 |
 | `matsuri-tools` | 性能测量 bin `bench`（整局 / 分段 / rollout 分布 / 固定根） | 无单测（测量工具，按 docs/perf_profiling.md 复现） |
 | `matsuri-launcher` | 内联（三频道守卫 / 程序包清单、解压与替换守卫 / 启动自检汇总 / 菜单标签与编号） | 内联 **25** 个 + 1 手动 `#[ignore]`（联网冒烟 `smoke_live_inspect`）：`ai_data` 严格三表白名单、`ura_data` 仅 `.br` 根文件、`ura_plugins` 只收 `Plugins/*.zip` 与 `version.json`（`PluginData/` / `.br` / 多级路径全拒）；程序清单白名单 / 包名 / 协议 / 待更新判定 / 备份名 / 拒绝清单外 zip 条目 / 备份保留 / 失败回滚；启动自检四频道汇总（最新 / 待更新 / 部分失败 / 跳过）与插件频道离线 `check` + 离线 `update` 落位；主 / 子菜单标签与编号 |
 
@@ -141,7 +141,9 @@
 |---|---|
 | `restore_round_trip_at_decision_point` | 决策点还原与离线态逐项一致（演目 / 教诲 / 合宿 / 発表会 / 分布映射 / 训练等级 / 编成警告） |
 | `restore_keeps_build_roster_before_scenario_start` / `restore_after_training_stage` / `restore_carries_level_baseline_when_frame_zero` | T0/T1 名单保持建局结果；`AfterTrain` 入口；帧等级为 0 时沿用跨帧基准（`G12`） |
-| `restore_rejects_deck_without_ssr_friend` / `restore_rejects_unknown_guest` / `restore_rejects_roster_order_mismatch` | 编成门禁与卡位顺序自检（缺 SSR 吾妻 / 未知神驹 / 顺序不符 → 明确报错） |
+| `restore_rejects_deck_without_ssr_friend` / `restore_rejects_unknown_guest` / `restore_rejects_roster_order_mismatch` | 编成门禁与卡位顺序自检（缺 SSR 吾妻 / AI 侧也没有该神驹 / 顺序不符 → 明确报错并要求更新数据） |
+| `restore_tolerates_zero_chara_id` / `restore_rejects_roster_type_mismatch` | **帧端身份未知不拒绝**：小黑板卡表未收录该卡时 `charaId = 0`，身份按本地卡表补、照常出决策；帧端非 0 却与本地不符、或 `personType` 与卡组卡类型对不上（友人位错位）仍拒绝 |
+| `restore_tolerates_out_of_range_act_and_schedule` / `restore_drops_unmapped_distribution_entries` | 单条越界只丢该项：`actType` / `scheduleId` 越界、分布里协议不认识的编号段（老插件的神驹 `8`）、超定长 5 人的行 → 丢弃 / 截断后照常还原 |
 | `distribution_maps_protocol_ids` / `restore_maps_check_point_results` | 协议人头 id → `person_index`；発表会结果按 `scheduleId` 落位 |
 | `restore_chara_effects_by_kind` / `restore_fat_comes_from_effect_4` | 帧 `charaEffects` 按 **142 表**还原（1 = 熬夜 / 3 = 皮肤粗糙 / **4 = 变胖**），覆盖引擎粗粒度 `UNKNOWN`；`1` 不再被误判成变胖、`4` 不再被当成摸鱼 |
 | `restore_chara_effects_ignores_non_illness_ids` / `restore_empty_chara_effects` / `restore_buffs_only_clears_unknown` | 全量状态数组口径：`[25, 47, 4]` 只还原 `FAT`；`[]` 保持 `NONE` 或按 `isIll` 回退 `UNKNOWN`；`[25, 47]` 覆盖掉 `UNKNOWN`，不误判生病 |

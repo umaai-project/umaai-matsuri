@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use matsuri_core::data::CheckPointResult;
-use matsuri_core::game::festa::{FestaPerson, FestaState};
+use matsuri_core::game::festa::{FestaAct, FestaCheckPoint, FestaPerson, FestaState};
 use matsuri_core::game::restore::RestoreInput;
 use matsuri_core::testing::sample_game_with_uma;
 use matsuri_core::{MatsuriConfig, MatsuriGame, MatsuriTrainer, PersonOrigin, Stage};
@@ -107,6 +107,32 @@ fn act_headcount(game: &MatsuriGame) -> ([usize; 5], [usize; 5]) {
         }
     }
     (cards, guests)
+}
+
+/// 还原一帧（容错用例共用）：帧人头 + 剧本段 + **协议 id** 分布 → 局面
+fn restore_frame(
+    game: &MatsuriGame,
+    festa: &FestaState,
+    persons: &[BasePersonStatus],
+    distribution: Vec<Vec<i32>>,
+) -> Result<MatsuriGame> {
+    let data = Arc::clone(&game.data);
+    let mut base = game.base.clone();
+    base.distribution = distribution;
+    MatsuriGame::restore(
+        RestoreInput {
+            base,
+            festa,
+            stage: Stage::Train,
+            frame_persons: persons,
+            prev_train_levels: None,
+            noncard_friendship: None,
+            chara_effects: &[],
+            story_id: None,
+        },
+        data,
+        MatsuriConfig::default(),
+    )
 }
 
 /// 主用例：决策点 round-trip 逐项一致
@@ -417,7 +443,12 @@ fn restore_rejects_unknown_guest() -> Result<()> {
         MatsuriConfig::default(),
     )
     .expect_err("未知神驹必须拒绝还原");
-    assert!(format!("{err:#}").contains("9999"), "报错要带上出问题的 id");
+    let message = format!("{err:#}");
+    assert!(message.contains("9999"), "报错要带上出问题的 id：{message}");
+    assert!(
+        message.contains("更新"),
+        "AI 侧也缺数据时要让玩家更新，而不是只报字段错：{message}"
+    );
     Ok(())
 }
 
@@ -452,6 +483,124 @@ fn restore_rejects_roster_order_mismatch() -> Result<()> {
     )
     .expect_err("人头顺序错位必须拒绝还原");
     assert!(format!("{err:#}").contains("顺序"), "报错要指出顺序不一致");
+    Ok(())
+}
+
+/// 小黑板卡表落后（新卡解不出角色 → `charaId = 0`）：按**本地卡表**继续还原，不拒绝
+///
+/// 数据不同步的方向通常是「AI 先有、小黑板还没有」：插件查不到角色就把 `charaId` 留 0，
+/// 但本地卡表认得这张卡，身份、羁绊、担当一个都不缺。
+#[test]
+fn restore_tolerates_zero_chara_id() -> Result<()> {
+    let mut game = sample_game_with_uma(UMA_ID);
+    drive_to_train(&mut game, TARGET_TURN)?;
+    let festa = game.export_festa();
+    let dist = protocol_distribution(&game);
+    let mut persons = frame_persons(&game);
+    let index = game
+        .deck
+        .iter()
+        .position(|card| card.card_type < 5)
+        .ok_or_else(|| anyhow!("测试卡组应有普通支援卡"))?;
+    persons[index].chara_id = 0;
+
+    let restored = restore_frame(&game, &festa, &persons, dist)?;
+    assert_eq!(
+        restored.persons[index].chara_id(),
+        game.deck[index].data.chara_id,
+        "身份取本地卡表，不因帧端为 0 而丢"
+    );
+    assert_eq!(
+        restored.persons[index].act, game.persons[index].act,
+        "除身份外卡位映射照常（跳过的只是那一处比对）"
+    );
+    assert_eq!(
+        restored.deck[index].data.card_id, game.deck[index].data.card_id,
+        "卡组本身不受影响"
+    );
+    Ok(())
+}
+
+/// 结构校验：帧 `personType` 与卡组卡类型对不上（友人位错位）→ 仍拒绝
+///
+/// `charaId` 可以被上游数据拖成 0，但 `personType` 由插件按 `cardId` 算出，
+/// 它错位说明帧人头顺序真的和卡组不一致，羁绊会整段错挂。
+#[test]
+fn restore_rejects_roster_type_mismatch() -> Result<()> {
+    let mut game = sample_game_with_uma(UMA_ID);
+    drive_to_train(&mut game, TARGET_TURN)?;
+    let festa = game.export_festa();
+    let dist = protocol_distribution(&game);
+    let mut persons = frame_persons(&game);
+    let index = game
+        .deck
+        .iter()
+        .position(|card| card.card_type < 5)
+        .ok_or_else(|| anyhow!("测试卡组应有普通支援卡"))?;
+    persons[index].person_type = 1; // 普通卡位被标成友人
+
+    let err = restore_frame(&game, &festa, &persons, dist).expect_err("卡位类型错位必须拒绝");
+    assert!(
+        format!("{err:#}").contains("卡位类型"),
+        "报错要指出卡位类型不一致"
+    );
+    Ok(())
+}
+
+/// 超出本仓认识范围的单条记录只丢该项：`actType` 越界 / `scheduleId` 越界都不拒绝整帧
+#[test]
+fn restore_tolerates_out_of_range_act_and_schedule() -> Result<()> {
+    let mut game = sample_game_with_uma(UMA_ID);
+    drive_to_train(&mut game, TARGET_TURN)?;
+    let mut festa = game.export_festa();
+    let dist = protocol_distribution(&game);
+    let persons = frame_persons(&game);
+    let before_acts = game.acts.clone();
+    let before_points = game.check_points;
+    festa.acts.push(FestaAct {
+        act_type: 7,
+        gauge: 99,
+        level: 99,
+        ..FestaAct::default()
+    });
+    festa
+        .check_points
+        .get_or_insert_with(Vec::new)
+        .push(FestaCheckPoint {
+            schedule_id: 9,
+            result_type: 2,
+        });
+
+    let restored = restore_frame(&game, &festa, &persons, dist)?;
+    assert_eq!(restored.acts, before_acts, "越界演目被忽略，其余照常");
+    assert_eq!(restored.check_points, before_points, "越界场次被忽略");
+    Ok(())
+}
+
+/// 分布里翻不出来的单点只丢该人头：协议编号段不认识 / 一行超定长
+#[test]
+fn restore_drops_unmapped_distribution_entries() -> Result<()> {
+    let mut game = sample_game_with_uma(UMA_ID);
+    drive_to_train(&mut game, TARGET_TURN)?;
+    let festa = game.export_festa();
+    let persons = frame_persons(&game);
+    let mut dist = protocol_distribution(&game);
+    // 第 1 位：协议里不认识的编号段（老插件把神驹压成 8）
+    dist[0] = vec![0, 8, -1, -1, -1];
+    // 第 2 位：一行给了 6 人（协议定长 5），按前 5 人取
+    dist[1] = vec![0, 1, 2, 3, 4, 5];
+
+    let restored = restore_frame(&game, &festa, &persons, dist)?;
+    assert_eq!(
+        restored.base.distribution[0],
+        vec![0],
+        "无法归类的人头被丢弃，能认的照常落位"
+    );
+    assert_eq!(
+        restored.base.distribution[1],
+        vec![0, 1, 2, 3, 4],
+        "超定长的行按前 5 人截断"
+    );
     Ok(())
 }
 
