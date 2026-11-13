@@ -10,11 +10,11 @@
 | `README.md` | ✅ 跟踪 | 本文件：分工、跟踪口径、复跑方式 |
 | `baselines/` | ✅ 跟踪（3） | `a-normal.json` / `b-ideal.json` + `README.md`。`bench baseline` 门禁数据、`repo_baselines_parse` 自检对象，人工维护，口径变更须重录 |
 | `decks/` | ✅ 跟踪（5） | `measured.csv` / `panel.csv` / `speed_build.csv` / `stamina_build.csv` / `wisdom_build.csv`。`cardtest` 与 `ga_trainer.py` 的默认卡组夹具 |
-| `_local/*.md` | ✅ 跟踪（25） | 结论文档：`FINAL` / `RESULT` / `STATUS` / `REPORT` / `SUMMARY` / `STAGE_*` / `ranking_*` / 退役备份 `README.md`。由 `.gitignore` 的 `!` 例外放行，**入库** |
-| `_local/` 其余 | ❌ 忽略（173） | 试验产物：原始 CSV / TXT / TOML、回放帧、一次性卡组夹具等，由 `.gitignore` 的 `/benchmark/_local/**` 过滤 |
+| `_local/*.md` | ✅ 跟踪（26） | 结论文档：`FINAL` / `RESULT` / `STATUS` / `REPORT` / `SUMMARY` / `STAGE_*` / `ranking_*` / 退役备份 `README.md`。由 `.gitignore` 的 `!` 例外放行，**入库** |
+| `_local/` 其余 | ❌ 忽略（174） | 试验产物：原始 CSV / TXT / TOML、回放帧、一次性卡组夹具等，由 `.gitignore` 的 `/benchmark/_local/**` 过滤 |
 
-**跟踪口径：`benchmark/` 共 34 个文件入库（3 基线 + 5 夹具 + 本 README + 25 结论 md），
-其余 173 个试验产物不入库。** 结论 md 与配套原始行同目录存放，但只有 md 随仓库分发。
+**跟踪口径：`benchmark/` 共 35 个文件入库（3 基线 + 5 夹具 + 本 README + 26 结论 md），
+其余 174 个试验产物不入库。** 结论 md 与配套原始行同目录存放，但只有 md 随仓库分发。
 `.gitignore` 的三段写法不能合并：先排除 `_local/` 全部内容，再放开子目录，最后放开 `*.md`——
 父目录若被排除，`!` 例外不会生效。
 
@@ -27,8 +27,9 @@
 - `deckselect/retired_2026-11-07/` — 文档引用的退役夹具备份
 - `decks/newcard_3032*.csv` — 11-10 一次性测卡夹具（18 个，与上面 5 个长期夹具区分）
 - `replay_*` / `scan/` / `_scratch/` / `cardtest_*` / `perf/` / `inherit_sweep/` — 在线回放帧、扫参夹具、3000 局测卡结果、性能与继承报告
+- `advice_choice/` — 2026-11-13 教诲分配实测（`RESULT.md` 入库 + 原始 N=2048 stdout 不入库）
 
-其中 **25 个 `*.md` 结论文档入库**，随仓库分发：README、`docs/plan/deck_param_scan.md`、
+其中 **26 个 `*.md` 结论文档入库**，随仓库分发：README、`docs/plan/deck_param_scan.md`、
 `docs/plan/round_2026-11-09.md` 里的「详见 `benchmark/_local/.../FINAL.md`」在克隆仓库后仍可查。
 其余 173 个原始产物（CSV / TXT / 帧数据）**不入库**，克隆后这些数字来源需按下面的方式复跑或从备份还原。
 

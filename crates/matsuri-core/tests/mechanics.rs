@@ -2306,7 +2306,7 @@ fn pre_xiaoqie_flag_and_score_factor() -> Result<()> {
     );
 
     // 评分 PT 项 = total_pt × pt_score_rate × 折算系数（切者 1.1 / 小切 1.04）
-    let rate = f32::from(Data::get()?.consts.pt_score_rate);
+    let rate = Data::get()?.consts.pt_score_rate;
     let pt = plain.uma().total_pt()? as f32;
     let expect = (pt * rate * 1.04) as i32 - (pt * rate) as i32;
     let diff = small.uma().calc_score()? - plain.uma().calc_score()?;

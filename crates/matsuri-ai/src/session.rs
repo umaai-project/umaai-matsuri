@@ -479,66 +479,13 @@ impl OnlineSession {
                 } else {
                     None
                 };
-                let preset_diff = game.preset_advice_ids(window).map(|preset| {
-                    let chosen_ids = match actions.get(index) {
-                        Some(Action::AssignAdvice(assign)) => game.effective_advice_ids(assign),
-                        _ => [0; 5],
-                    };
-                    let axes = ["速", "耐", "力", "根", "智"];
-                    let changed: Vec<(usize, i32, i32)> = (0..5)
-                        .filter(|act| chosen_ids[*act] != preset[*act])
-                        .map(|act| (act, preset[act], chosen_ids[act]))
-                        .collect();
-                    let text = if changed.is_empty() {
-                        "与预设一致".to_string()
-                    } else if changed.len() <= 2 {
-                        format!(
-                            "差异 {} 槽：{}",
-                            changed.len(),
-                            changed
-                                .iter()
-                                .map(|(act, old, new)| format!(
-                                    "{} {}→{}",
-                                    axes[*act],
-                                    advice_display_name(*old),
-                                    advice_display_name(*new)
-                                ))
-                                .collect::<Vec<_>>()
-                                .join(" · ")
-                        )
-                    } else {
-                        format!(
-                            "差异 {}/5 槽：{}",
-                            changed.len(),
-                            changed
-                                .iter()
-                                .map(|(act, _, _)| axes[*act])
-                                .collect::<Vec<_>>()
-                                .join("、")
-                        )
-                    };
-                    serde_json::json!({
-                        "match": changed.is_empty(),
-                        "changed": changed.len(),
-                        "axes": changed.iter().map(|(act, _, _)| axes[*act]).collect::<Vec<_>>(),
-                        "text": text,
-                    })
-                });
-                let mut record = online::advice_record(
+                let record = online::advice_record(
                     &game,
                     &actions,
                     index,
                     summary.as_ref(),
                     fusion.as_deref(),
                 );
-                if let Some(diff) = preset_diff
-                    && let Some(extra) = record
-                        .extra
-                        .as_mut()
-                        .and_then(|extra| extra.as_object_mut())
-                {
-                    extra.insert("preset_diff".to_string(), diff);
-                }
                 let view = game.view();
                 OnlineTurnOutput {
                     turn,

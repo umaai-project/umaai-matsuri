@@ -121,12 +121,12 @@ cargo test --workspace --release --offline
 cargo clippy --workspace --all-targets --offline -- -D warnings
 ```
 
-当前：workspace **全绿**（2026-11-11 启动器新增 8 例）+ 3 手动 `#[ignore]`；clippy `-D warnings` 全绿（2026-11-08 清零）；基线 / 性能复现见
+当前：workspace **全绿**（2026-11-13 复查）+ 4 手动 `#[ignore]`；clippy `-D warnings` 全绿（2026-11-13 复查）；基线 / 性能复现见
 [`docs/tests_overview.md`](docs/tests_overview.md) 与 [`docs/perf_profiling.md`](docs/perf_profiling.md)。
 clippy 只在 Windows 侧跑；CI 也是 `-D warnings` 硬门禁。
 
-基线快照（2026-11-11，默认档 1 耐位 `30300` → `30324` 后重录）：手写 `a-normal` 84260.7 / `b-ideal` 88882.1，
-搜索 N=8192 `a-normal` 87936.7 / `b-ideal` 91691.4 —— **MCTS 比手写高 +2809 ~ +3676 分**（详见
+基线快照（2026-11-13，`pt_score_rate` 2.0 → 1.88 后重录）：手写 `a-normal` 82808.8 / `b-ideal` 87411.2，
+搜索 N=8192 `a-normal` 86554.8 / `b-ideal` 90067.6 —— **MCTS 比手写高 +2656 ~ +3746 分**（详见
 [`docs/tests_overview.md`](docs/tests_overview.md) §4.2）。
 
 ## 文档

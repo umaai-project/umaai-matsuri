@@ -26,7 +26,7 @@ use matsuri_ai::{
     error_payload, resolve_live_root,
 };
 use matsuri_core::{MatsuriConfig, MatsuriData, SearchCandidate};
-use umaai::{Config, DecisionRecord, FrameKind, LuckAttach};
+use umaai::{Config, FrameKind, LuckAttach};
 use umaai_cli::render::term;
 use umaai_core::Data;
 
@@ -360,7 +360,6 @@ fn render_decision(stdout: &mut impl Write, output: &OnlineTurnOutput, color: bo
             writeln!(stdout, "{}", paint(&line, Some(code), color))?;
             rank += 1;
         }
-        render_preset_diff(stdout, output.turn, record, color)?;
         return Ok(());
     }
     // 手写档 / 无搜索分：只报首选，不伪造候选分
@@ -370,32 +369,6 @@ fn render_decision(stdout: &mut impl Write, output: &OnlineTurnOutput, color: bo
         output.turn,
         kind,
         paint(&format!("首选：{}", record.action_desc), Some(top), color)
-    )?;
-    render_preset_diff(stdout, output.turn, record, color)?;
-    Ok(())
-}
-
-/// 预设差异行：与 `AdvicePreset` 对比；一致时明确标出可自动选择
-fn render_preset_diff(
-    stdout: &mut impl Write,
-    turn: i32,
-    record: &DecisionRecord,
-    color: bool,
-) -> Result<()> {
-    let Some(diff) = record
-        .extra
-        .as_ref()
-        .and_then(|extra| extra.get("preset_diff"))
-    else {
-        return Ok(());
-    };
-    let Some(text) = diff.get("text").and_then(|text| text.as_str()) else {
-        return Ok(());
-    };
-    writeln!(
-        stdout,
-        "[回合 {turn} 预设]{}",
-        paint(text, Some("90"), color)
     )?;
     Ok(())
 }
