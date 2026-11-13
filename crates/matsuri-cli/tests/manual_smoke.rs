@@ -46,8 +46,6 @@ fn manual_mode_runs_full_game_with_scripted_input() {
         "教诲 → 転成",
         "[NPC]",
         "【动作】",
-        "【目标赛】",
-        "【演目槽】",
         "←101 牵绊",
         "可触发追加稽古",
         "配色：",

@@ -308,6 +308,47 @@ fn restore_keeps_build_roster_before_scenario_start() -> Result<()> {
     Ok(())
 }
 
+/// 真机帧只发「在场者」：尚未登场的神驹（第 2 批 `avail_turn = 48`）不在帧名单里，
+/// 还原后必须仍在名单中并保留可用回合门槛——否则 rollout 里整局缺席，期望分被低估
+#[test]
+fn restore_keeps_future_guests_absent_from_frame() -> Result<()> {
+    let mut game = sample_game_with_uma(UMA_ID);
+    drive_to_train(&mut game, 2)?;
+    let turn = game.turn();
+    let future: Vec<(u32, i32)> = game
+        .persons
+        .iter()
+        .filter(|person| person.origin == PersonOrigin::Guest && person.avail_turn > turn)
+        .map(|person| (person.chara_id(), person.avail_turn))
+        .collect();
+    assert!(!future.is_empty(), "该马娘 T2 应有未登场神驹，否则用例失效");
+    // 模拟真机帧：只保留卡位 / 友人 / 理事长 / 记者与**已登场**的神驹
+    let mut festa = game.export_festa();
+    festa.persons.retain(|person| {
+        if person.target_id < 1000 {
+            return true;
+        }
+        let chara = person.target_id as u32;
+        game.persons.iter().any(|entry| {
+            entry.origin == PersonOrigin::Guest
+                && entry.chara_id() == chara
+                && entry.avail_turn <= turn
+        })
+    });
+    let raw_dist = protocol_distribution(&game);
+    let persons = frame_persons(&game);
+    let restored = restore_frame(&game, &festa, &persons, raw_dist)?;
+    for (chara, avail) in future {
+        let person = restored
+            .persons
+            .iter()
+            .find(|person| person.origin == PersonOrigin::Guest && person.chara_id() == chara)
+            .ok_or_else(|| anyhow!("帧未列的未登场神驹 {chara} 在还原后丢失"))?;
+        assert_eq!(person.avail_turn, avail, "未登场神驹的可用回合不应被抹掉");
+    }
+    Ok(())
+}
+
 /// 帧等级整组为 0（合宿期 `command` / `load` / `special` 帧）→ 沿用上一帧等级
 #[test]
 fn restore_carries_level_baseline_when_frame_zero() -> Result<()> {

@@ -2305,13 +2305,14 @@ fn pre_xiaoqie_flag_and_score_factor() -> Result<()> {
         "小切应在建局后带出"
     );
 
-    // 评分 PT 项 = total_pt × 2.0 × 折算系数（切者 1.1 / 小切 1.04）
+    // 评分 PT 项 = total_pt × pt_score_rate × 折算系数（切者 1.1 / 小切 1.04）
+    let rate = f32::from(Data::get()?.consts.pt_score_rate);
     let pt = plain.uma().total_pt()? as f32;
-    let expect = (pt * 2.0 * 1.04) as i32 - (pt * 2.0) as i32;
+    let expect = (pt * rate * 1.04) as i32 - (pt * rate) as i32;
     let diff = small.uma().calc_score()? - plain.uma().calc_score()?;
     assert_eq!(
         diff, expect,
-        "小切 PT 项增量应为 total_pt × 2.0 × 0.04（截断）"
+        "小切 PT 项增量应为 total_pt × pt_score_rate × 0.04（截断）"
     );
     println!("育成前小切：标志成立，评分 +{diff}（PT {pt}）");
     Ok(())

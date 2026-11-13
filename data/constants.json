@@ -2,7 +2,7 @@
   "five_status_limit_base": [
     3100,2400,2200,2200,2400
   ],
-  "pt_score_rate": 2.0,
+  "pt_score_rate": 1.88,
   "hint_pt_rate": 6.5,
   "base_hint_rate": 7.5,
   "group_buff_end_prob": [

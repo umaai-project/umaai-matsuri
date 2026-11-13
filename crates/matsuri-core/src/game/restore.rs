@@ -21,7 +21,7 @@
 //! | `persons[].targetId` | 「`1–6` = 卡位、`targetId-1` 即卡组下标」 | **不成立**：`targetId` 是本局服务端人头 id，开新局时友人是 1、卡从 2 起；中途加载局（friend 不进 `evaluation_info_array`）卡从 1 起。本实现**按顺序**对齐卡位（见 [`MatsuriGame::restore_persons`]） |
 //! | `festa.persons` 内容 | 「只发 `actType > 0`」 | T0 帧把整份名单都发了（含 `101–115` 占位与理事长 / 记者，`actType` 全 0）；按 `actType > 0` 过滤担当即可，两边都成立 |
 //! | `trainLevelTotal == 0` | 「只出现在 `load/event/special`」 | 合宿期的 `command` 帧（T13–T15）**也整组为 0**；改为逐位判空 |
-//! | 神驹批次 | 第 1 批 `avail_turn = 2` / 第 2 批 `avail_turn = 48 + 需大成功` | 帧内神驹一律 `avail_turn = 0`、不设大成功门槛（出现在帧里即已可用；帧按 `targetId` 升序排列，位置推不出批次） |
+//! | 神驹批次 | 第 1 批 `avail_turn = 2` / 第 2 批 `avail_turn = 48 + 需大成功` | 帧内神驹一律 `avail_turn = 0`、不设大成功门槛（出现在帧里即已可用；帧按 `targetId` 升序排列，位置推不出批次）。**帧只发在场者**：尚未登场的神驹不在帧内，按建局名单的批次门槛保留（`restore_persons` 不再整段清空），否则 rollout 里未来加入的神驹整局缺席、期望分被低估约 1.5k；已到登场回合却不在帧名单的按帧丢弃；名单总数守恒（未来名额 = 目标神驹数 − 帧内人数），帧内提前登场者先顶替旧条目 |
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -472,6 +472,66 @@ impl MatsuriGame {
             }
         }
 
+        // 帧只发「在场者」：建局名单里尚未登场的神驹（第 2 批 `avail_turn = 48` 等）不在帧名单里，
+        // 但它们带可用回合 / 大成功门槛，rollout 推到对应回合就会加入。整段清空会让未来加入的
+        // 神驹在整局缺席，T2 的期望分被低估约 1.5k（6316 / 6317 实帧，N=2048 A/B：ΔE = −1488）。
+        let mut roster_guests: Vec<MatsuriPerson> = self
+            .persons
+            .iter()
+            .skip(deck_len + 2)
+            .filter(|person| person.origin == PersonOrigin::Guest)
+            // 未到登场回合的批次保留；已到回合却不在帧名单 = 本局没有这名神驹
+            // （例：带吾妻余额的随机顶替换成了别人），按帧丢弃，避免名单只增不减。
+            .filter(|person| {
+                person.avail_turn > self.base.turn || guests.contains_key(&person.chara_id())
+            })
+            .cloned()
+            .collect();
+        // 帧里出现 = 已登场；帧里没有而同批次的旧条目不保留（顶替换人）。
+        // 帧里多出名单没有的神驹同样占一个名额（先顶替已到回合的旧条目），
+        // 最后按「目标总数 − 帧内人数」截断未来批次，名单总数不增不减。
+        let turn = self.base.turn;
+        let target_guests = self
+            .persons
+            .iter()
+            .filter(|person| person.origin == PersonOrigin::Guest)
+            .count();
+        let mut early: Vec<(u32, Option<usize>)> = Vec::new();
+        for (chara_id, act) in &guests {
+            if let Some(person) = roster_guests
+                .iter_mut()
+                .find(|person| person.chara_id() == *chara_id)
+            {
+                // 帧里出现即已可用：清掉批次门槛，担当以帧为准
+                person.act = *act;
+                person.avail_turn = 0;
+                person.needs_great_success = false;
+            } else {
+                early.push((*chara_id, *act));
+            }
+        }
+        for (chara_id, act) in early {
+            // 顶替一名「已到回合却不在帧内」的旧条目，避免凭空多出一人
+            let stale = roster_guests.iter().position(|person| {
+                person.avail_turn <= turn && !guests.contains_key(&person.chara_id())
+            });
+            if let Some(index) = stale {
+                roster_guests.remove(index);
+            }
+            let mut person = MatsuriPerson::guest(chara_id, act.unwrap_or(0), 0, false);
+            person.act = act;
+            roster_guests.push(person);
+        }
+        let future_need = target_guests.saturating_sub(guests.len());
+        let mut kept_future = 0;
+        roster_guests.retain(|person| {
+            if person.avail_turn > turn {
+                kept_future += 1;
+                kept_future <= future_need
+            } else {
+                true
+            }
+        });
         let cards: Vec<MatsuriPerson> = self.persons.iter().take(deck_len).cloned().collect();
         let (yayoi_friendship, reporter_friendship) = noncard_friendship.unwrap_or((0, 0));
         let mut yayoi = MatsuriPerson::yayoi();
@@ -485,10 +545,7 @@ impl MatsuriGame {
         }
         self.add_person(yayoi);
         self.add_person(reporter);
-        for (chara_id, act) in guests {
-            // `guest()` 要求先给一个演目；不参与担当的占位随后改回 `None`
-            let mut person = MatsuriPerson::guest(chara_id, act.unwrap_or(0), 0, false);
-            person.act = act;
+        for person in roster_guests {
             self.add_person(person);
         }
         Ok(())

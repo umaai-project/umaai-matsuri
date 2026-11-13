@@ -150,15 +150,6 @@ fn member_color(origin: PersonOrigin, shining: bool, assist_bound: bool) -> Opti
     }
 }
 
-/// 增减量色调：正绿 / 负红 / 零默认
-fn delta_tone(delta: i32) -> Option<&'static str> {
-    match delta {
-        d if d > 0 => Some(ANSI_GREEN),
-        d if d < 0 => Some(ANSI_RED),
-        _ => None,
-    }
-}
-
 /// 训练位下标 → 演目下标（`act_trains` 反查；防御性回退同下标）
 fn act_of_train(view: &MatsuriView, train: usize) -> usize {
     view.resources
@@ -440,17 +431,6 @@ fn year_name(year: MatsuriYear) -> &'static str {
     year.as_str()
 }
 
-/// 比赛等级名（等级表口径：0 = 无比赛、1 = G1 … 4 = OP）
-fn grade_name(grade: i32) -> &'static str {
-    match grade {
-        1 => "G1",
-        2 => "G2",
-        3 => "G3",
-        4 => "OP",
-        _ => "?",
-    }
-}
-
 /// 阶段号 → 名字
 fn stage_name(stage: u64) -> &'static str {
     match stage {
@@ -547,41 +527,10 @@ pub(crate) fn newgame_config(game: &MatsuriGame) -> String {
     out
 }
 
-/// 局面数值快照（`MatsuriView` 派生；算「上一步后变化」）
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct Snapshot {
-    turn: i32,
-    five: [i32; 5],
-    pt: i32,
-    total_hints: i32,
-    vital: i32,
-    motivation: i32,
-    /// 演目槽（比赛 +4 / 休息·出行 +1 / 训练参与 / 稽古清槽的落点可核对）
-    act_gauge: [i32; 5],
-    act_level: [i32; 5],
-}
-
-impl Snapshot {
-    fn of(view: &MatsuriView) -> Self {
-        Self {
-            turn: view.turn.turn,
-            five: view.uma.five_status,
-            pt: view.uma.skill_pt,
-            total_hints: view.uma.total_hints,
-            vital: view.uma.vital,
-            motivation: view.uma.motivation,
-            act_gauge: view.resources.act_gauge,
-            act_level: view.resources.act_level,
-        }
-    }
-}
-
 /// 回合面板（手写档 / 手动档共用）
 ///
 /// 持有「上一步变化 / 新事件 / 教诲分配变化」的跨提示快照；对外只读（内部 `Cell`）。
 pub struct BoardPanel {
-    /// 上次提示时的数值快照（用于「上一步后变化」）
-    last: Cell<Option<Snapshot>>,
     /// 已回显到的事件序号
     last_event_seq: Cell<u64>,
     /// 上一个动作面板所在的教诲窗口回合计（下一次面板列分配结果）
@@ -598,7 +547,6 @@ impl BoardPanel {
     /// 新建面板（完整信息：手动核对与 explain 用）
     pub fn new(color: bool) -> Self {
         Self {
-            last: Cell::new(None),
             last_event_seq: Cell::new(0),
             last_advice_window: Cell::new(None),
             last_advice: Cell::new(None),
@@ -704,106 +652,6 @@ impl BoardPanel {
             );
         }
         self.last_event_seq.set(max_seq);
-    }
-
-    /// 上一步后的数值变化（正绿 / 负红）
-    fn write_delta(&self, view: &MatsuriView, out: &mut String, color: bool) {
-        let Some(last) = self.last.get() else {
-            return;
-        };
-        let now = Snapshot::of(view);
-        let range = if last.turn == now.turn {
-            "本回合上一步后".to_string()
-        } else {
-            format!("T{} 后", last.turn)
-        };
-        let axes: Vec<String> = (0..5)
-            .filter(|axis| now.five[*axis] != last.five[*axis])
-            .map(|axis| {
-                let delta = now.five[axis] - last.five[axis];
-                paint(
-                    &format!("{}{:+}", AXIS_NAMES[axis], delta),
-                    delta_tone(delta),
-                    color,
-                )
-            })
-            .collect();
-        let vital = paint(
-            &format!("体力{:+}", now.vital - last.vital),
-            delta_tone(now.vital - last.vital),
-            color,
-        );
-        let motivation = paint(
-            &format!("干劲{:+}", now.motivation - last.motivation),
-            delta_tone(now.motivation - last.motivation),
-            color,
-        );
-        let pt = paint(
-            &format!("PT{:+}", now.pt - last.pt),
-            delta_tone(now.pt - last.pt),
-            color,
-        );
-        let mut parts: Vec<String> = vec![if axes.is_empty() {
-            "五维±0".to_string()
-        } else {
-            axes.join(" ")
-        }];
-        parts.push(vital);
-        parts.push(motivation);
-        parts.push(pt);
-        // 灵感（Hint）收益也要进入「变化」：事件 / 训练后的 hint 在 URA 期间同样发生
-        if now.total_hints != last.total_hints {
-            let delta = now.total_hints - last.total_hints;
-            parts.push(paint(&format!("灵感{delta:+}"), delta_tone(delta), color));
-        }
-        let _ = writeln!(out, "【变化】{range}：{}", parts.join(" "));
-        // 演目等级变化（排练成功 / 友人出行 / 合宿结算等）
-        let levels: Vec<String> = (0..5)
-            .filter(|act| now.act_level[*act] != last.act_level[*act])
-            .map(|act| {
-                paint(
-                    &format!(
-                        "{} {}→{}",
-                        act_short(act),
-                        last.act_level[act],
-                        now.act_level[act]
-                    ),
-                    delta_tone(now.act_level[act] - last.act_level[act]),
-                    color,
-                )
-            })
-            .collect();
-        if !levels.is_empty() {
-            let _ = writeln!(out, "【演目Lv】{}", levels.join(" "));
-        }
-        // 演目槽变化：比赛 / 休息 / 出行 / 训练参与 / 稽古清槽的落点
-        let gauges: Vec<String> = (0..5)
-            .filter(|act| now.act_gauge[*act] != last.act_gauge[*act])
-            .map(|act| {
-                // 稽古成功清槽（归零）与普通增减分开表述 / 着色
-                if now.act_gauge[act] == 0 {
-                    paint(
-                        &format!("{}清空", act_short(act)),
-                        Some(ANSI_BRIGHT_YELLOW),
-                        color,
-                    )
-                } else {
-                    paint(
-                        &format!(
-                            "{} {}→{}",
-                            act_short(act),
-                            last.act_gauge[act],
-                            now.act_gauge[act]
-                        ),
-                        delta_tone(now.act_gauge[act] - last.act_gauge[act]),
-                        color,
-                    )
-                }
-            })
-            .collect();
-        if !gauges.is_empty() {
-            let _ = writeln!(out, "【演目槽】{}", gauges.join(" "));
-        }
     }
 
     /// 五维 / 体力 / 状态
@@ -1252,41 +1100,6 @@ impl BoardPanel {
             out,
             "【友人】{state}  {outing}  下一段 {next_step}{next_event}{fatigue}"
         );
-        let goals = &view.schedule.goal_races;
-        let goal_text = if goals.is_empty() {
-            "无后续目标赛".to_string()
-        } else {
-            goals
-                .iter()
-                .enumerate()
-                .map(|(index, turn)| {
-                    let text = format!("T{turn}");
-                    if index == 0 {
-                        paint(&text, Some(ANSI_BRIGHT_YELLOW), color)
-                    } else {
-                        text
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(" ")
-        };
-        let _ = writeln!(out, "【目标赛】{goal_text}");
-        let races: Vec<String> = view
-            .schedule
-            .self_races
-            .iter()
-            .take(4)
-            .map(|race| format!("T{}({})", race.turn, grade_name(race.grade)))
-            .collect();
-        let _ = writeln!(
-            out,
-            "【自选赛】{}",
-            if races.is_empty() {
-                "无".to_string()
-            } else {
-                races.join(" ")
-            }
-        );
         if !view.deck_warnings.is_empty() {
             let warnings: Vec<String> = view
                 .deck_warnings
@@ -1456,7 +1269,6 @@ impl BoardPanel {
             Self::turn_kind(&view),
         );
         self.write_new_events(&view, &mut out);
-        self.write_delta(&view, &mut out, color);
         self.write_uma(&view, &mut out, color);
         self.write_advice_window(&view, game, &mut out, color);
         self.write_resources(&view, &mut out, color);
@@ -1491,8 +1303,7 @@ impl BoardPanel {
             }
         }
 
-        // 更新面板状态：下次提示显示本步之后的变化 / 新事件
-        self.last.set(Some(Snapshot::of(&view)));
+        // 更新面板状态：下次提示显示新事件与教诲分配变化
         Ok(out)
     }
 }
@@ -1549,13 +1360,6 @@ mod tests {
         assert_eq!(advice_fallback(101), Some("牵绊"));
         assert_eq!(advice_fallback(1001), Some("兼修"));
         assert_eq!(advice_fallback(999), None);
-    }
-
-    #[test]
-    fn test_delta_tone() {
-        assert_eq!(delta_tone(3), Some(ANSI_GREEN));
-        assert_eq!(delta_tone(-3), Some(ANSI_RED));
-        assert_eq!(delta_tone(0), None);
     }
 
     #[test]
