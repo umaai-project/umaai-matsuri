@@ -22,6 +22,11 @@ path = "src/bin/sweep.rs"
 name = "cardtest"
 path = "src/bin/cardtest.rs"
 
+# 复盘：局包 → 事实层（open）；估值按需重算（后续 eval / curve / report）
+[[bin]]
+name = "review"
+path = "src/bin/review.rs"
+
 [features]
 # CPU 剖面（pprof）：只在 bench 的 `prof` 子命令用到，默认不编译、不进 core / 下游
 profile = ["dep:pprof"]
@@ -29,12 +34,15 @@ profile = ["dep:pprof"]
 [dependencies]
 matsuri-core.workspace = true
 matsuri-sim.workspace = true
+matsuri-ai.workspace = true
 umaai-core.workspace = true
 umasim.workspace = true
 umaai.workspace = true
 anyhow.workspace = true
 log.workspace = true
 rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 # 仅 `--features profile`：SIGPROF 采样 + SVG 火焰图（不依赖 perf_event / root）
 pprof = { version = "0.15.0", features = ["flamegraph"], optional = true }

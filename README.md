@@ -83,6 +83,11 @@ workspace 六 crate：
   手写训练员三档（21101 / 12101 / 11102）由 CMA-ES 联合调参（`scripts/ga_trainer.py`，需 numpy），
   再经搜索档 N=8192 配对验收（`scripts/search_check.py`）后定档。
   方案与结果见 [`docs/plan/deck_param_scan.md`](docs/plan/deck_param_scan.md) §9–§10。
+- **复盘（事实层）**：`matsuri-tools` 新增 `review` bin：`review open <帧目录>` 读局帧 → `facts.json` /
+  `brief.md`（逐回合事实、终局、检查项、`pending` 待重算项）；**不跑搜索、不做估值**（`eval` / `curve` /
+  `report` 按需补）。真机 `game6316` 已跑通（131 帧 / T0–T77 / 终局 81361（LG8）/ 0 解析失败），
+  两次输出逐字节一致。数据面与口径见
+  [`docs/plan/review_tool_plan_2026-11-13.md`](docs/plan/review_tool_plan_2026-11-13.md)。
 
 ## 快速开始
 
@@ -107,6 +112,9 @@ cargo run --release --bin matsuri -- online --help
 ./target/release/cardtest run --decks benchmark/decks/measured.csv --ref default_21101 --games 3000 --seed 82000
 ./target/release/cardtest run --decks benchmark/_local/scan/candidates.csv \
   --matsuri-config benchmark/_local/scan/scan.toml --ref ref_stamina --games 5000 --seed 87000
+
+# 复盘（事实层；输入为含 game{id}_turn*.json + finalScore 的局目录）
+./target/release/review open <帧目录> --out <输出目录>
 ```
 
 主要环境变量：`MATSURI_SEARCH_N`、`MATSURI_SEARCH_RADICAL`、`MATSURI_EXPLAIN`、`MATSURI_ROOT`。
@@ -139,6 +147,7 @@ clippy 只在 Windows 侧跑；CI 也是 `-D warnings` 硬门禁。
 | [`docs/plan/deck_param_scan.md`](docs/plan/deck_param_scan.md) | 四套 build 定卡 / 扫参顺序 / `--matsuri-config` 入口 |
 | [`docs/plan/online_wiring.md`](docs/plan/online_wiring.md) | 在线接线路由 / 还原口径 |
 | [`docs/plan/release_launcher.md`](docs/plan/release_launcher.md) | Windows 发布启动器 `matsuri-ai` 计划 |
+| [`docs/plan/review_tool_plan_2026-11-13.md`](docs/plan/review_tool_plan_2026-11-13.md) | 复盘工具计划：局包 / 数据补充 / `review` 子命令 / 指标口径 |
 | [`docs/mechanism.md`](docs/mechanism.md) | 机制公式 / 流程 / 实现落点 |
 | [`docs/glossary.md`](docs/glossary.md) | 术语与官方译名 |
 | [`docs/changelog.md`](docs/changelog.md) | 口径与决定变更记录 |

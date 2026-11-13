@@ -1050,10 +1050,13 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "log",
+ "matsuri-ai",
  "matsuri-core",
  "matsuri-sim",
  "pprof",
  "rand",
+ "serde",
+ "serde_json",
  "umaai",
  "umaai-core",
  "umasim",

@@ -16,6 +16,7 @@
 | [`plan/online_wiring.md`](plan/online_wiring.md) | **在线接线方案**：`MatsuriGame` 剧本专属状态盘点与还原来源分类（协议直读 / 插件收集 / 插件计算 / 本侧重算）、`thisTurn.json` 的 `matsuri` 段草案、两端改动清单与待核清单 `G1–G10` | 在线外壳（S8）推进、`G#` 有结论时 |
 | [`plan/round_2026-11-09.md`](plan/round_2026-11-09.md) | **本轮修改与待办**：已改项 / 验证结果 / 已定位但未修改项 / 基线快照 / 后续顺序 | 每轮收尾 |
 | [`plan/search_sh.md`](plan/search_sh.md) | **搜索分配方案（设计稿，未实施）**：UCB 不等样本终局倒挂、固定组 Successive Halving / Racing、单旋钮 `search_n=4096`、引擎/剧本落点与验收计划 | 方案评审 / 实施时 |
+| [`plan/review_tool_plan_2026-11-13.md`](plan/review_tool_plan_2026-11-13.md) | **复盘工具开发计划（替代 11-06 方案）**：插件端局包归档与数据补充（actions 扩白名单 / meta / 时间戳）、剧本仓记录层与 `review` bin（`open` / 按需 `eval` / `curve` / `report`）、`pending` 契约与缓存、指标口径与检查项、技能与阶段验收；**引擎零改动** | 复盘推进、插件补数拍板 |
 | [`plan/release_launcher.md`](plan/release_launcher.md) | **发布启动器（`matsuri-ai`）计划 + 实现记录**：完整版布局 / 菜单计划、§0 基础版差异、§0.1 数据更新（`ai_data` / `ura_data`）、§0.2 程序更新与 Authenticode 签名（`program` 频道整包 zip）；核心 CLI 不改；不做 GUI | 发布形态变更时 |
 | [`mechanism.md`](mechanism.md) | 机制文档：公式 / 流程 / 实现落点 / 测试对应 | 机制实现或修正 |
 | [`matsuri_memo_cn.md`](matsuri_memo_cn.md) | 中文机制备忘：按机制类型逐条记录（骨架 / 演目 / 排练 / 教诲 / 汇报会 / 合宿 / 比赛 / 事件）；**§2.2 为担当编排规则**（五步流水线 + 卡落位 / NPC 摊法 / 追加负责人 / 形态穷举）；**§3.5 为分身机制**（教诲 +1 人的落点与打法）；§14 为 **未决清单**（P0–P2 未定 13 条：`△` 3 / `□` 10，P0 已清空（U02 收口）；§14.8 另有 U41 / U44 / U45；已定条与已核实项移到 §14.4 / §14.5 备查） | 上游日文备忘或真机口径更新 |
