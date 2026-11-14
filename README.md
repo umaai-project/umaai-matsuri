@@ -163,7 +163,7 @@ clippy 只在 Windows 侧跑；CI 也是 `-D warnings` 硬门禁。
 
 ```powershell
 # 首次克隆
-git clone --recursive https://github.com/LaplaceTor/umaai-matsuri.git
+git clone --recursive https://github.com/umaai-project/umaai-matsuri.git
 
 # 已有仓库补拉子模块
 git submodule update --init --recursive
