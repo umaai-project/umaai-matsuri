@@ -5,11 +5,11 @@
 > 估值口径、随机流、卡组参数与训练员权重。
 >
 > 关联：[`round_2026-11-09.md`](round_2026-11-09.md)（UCB 审计现状）、
-> [`../../umaai_next/crates/umasim/src/search/flat_search.rs`](../../umaai_next/crates/umasim/src/search/flat_search.rs)（当前实现）。
+> [`../umaai_next/crates/umasim/src/search/flat_search.rs`](../umaai_next/crates/umasim/src/search/flat_search.rs)（当前实现）。
 
 ## 1. 问题：UCB 的「不等样本终局比较」
 
-当前 `FlatSearch` 的分配（[`flat_search.rs`](../../umaai_next/crates/umasim/src/search/flat_search.rs)）：
+当前 `FlatSearch` 的分配（[`flat_search.rs`](../umaai_next/crates/umasim/src/search/flat_search.rs)）：
 
 1. 首轮每个候选跑 `search_group_size`（生产 1024）；
 2. 之后每轮按 `value + cpuct × expected_stdev × sqrt(total_n) / n` 选一个候选追加一组；

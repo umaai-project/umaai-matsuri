@@ -26,16 +26,16 @@
 | [`perf_profiling.md`](perf_profiling.md) | 性能分析与优化：测量工具 / 热点拆解 / 改动清单 / 配对测量 / 复现命令 | 性能轮次、测量工具变化 |
 | [`handoff.md`](handoff.md) | 交接提示词（上下文很长时） | 用户同意交接时 |
 
-## 2. 引擎通用文档（权威版在引擎仓 `../umaai_next`）
+## 2. 引擎通用文档（权威版在引擎子模块 `umaai_next/`）
 
 | 文档 | 内容 |
 |---|---|
-| [`../../umaai_next/docs/scenario/README.md`](../../umaai_next/docs/scenario/README.md) | 接入指南：建仓 / 依赖 / 纪律 / 常见坑 |
-| [`../../umaai_next/docs/scenario/repo_form.md`](../../umaai_next/docs/scenario/repo_form.md) | 剧本仓形态：crate 分工 / 数据配置 / 引擎钩子 / 文档 / 测试 / 分面 / 验收 |
-| [`../../umaai_next/docs/scenario/dev_process.md`](../../umaai_next/docs/scenario/dev_process.md) | 开发流程：S0 机制核对 → S1–S9 → 扩展轨 / 性能优化轨 |
-| [`../../umaai_next/docs/scenario/perf_plan.md`](../../umaai_next/docs/scenario/perf_plan.md) | 性能优化：工具选择 / 测量协议 / 手段 / 阶段 |
-| [`../../umaai_next/docs/scenario/contracts.md`](../../umaai_next/docs/scenario/contracts.md) | 契约逐项清单（`Game` / `Person` / `ActionEnum` / `Trainer` / `Frontend` / 装配 / `StageId` / View） |
-| [`../../umaai_next/docs/notes/matsuri_scenario_preview.md`](../../umaai_next/docs/notes/matsuri_scenario_preview.md) | 预告情报汇总（开发代号 `matsuri`；持续更新的未确认情报） |
+| [`../umaai_next/docs/scenario/README.md`](../umaai_next/docs/scenario/README.md) | 接入指南：建仓 / 依赖 / 纪律 / 常见坑 |
+| [`../umaai_next/docs/scenario/repo_form.md`](../umaai_next/docs/scenario/repo_form.md) | 剧本仓形态：crate 分工 / 数据配置 / 引擎钩子 / 文档 / 测试 / 分面 / 验收 |
+| [`../umaai_next/docs/scenario/dev_process.md`](../umaai_next/docs/scenario/dev_process.md) | 开发流程：S0 机制核对 → S1–S9 → 扩展轨 / 性能优化轨 |
+| [`../umaai_next/docs/scenario/perf_plan.md`](../umaai_next/docs/scenario/perf_plan.md) | 性能优化：工具选择 / 测量协议 / 手段 / 阶段 |
+| [`../umaai_next/docs/scenario/contracts.md`](../umaai_next/docs/scenario/contracts.md) | 契约逐项清单（`Game` / `Person` / `ActionEnum` / `Trainer` / `Frontend` / 装配 / `StageId` / View） |
+| [`../umaai_next/docs/notes/matsuri_scenario_preview.md`](../umaai_next/docs/notes/matsuri_scenario_preview.md) | 预告情报汇总（开发代号 `matsuri`；持续更新的未确认情报） |
 
 - 本仓文档与引擎文档冲突时：**契约以引擎 `contracts.md` 为准**，本剧本术语以本仓 `glossary.md`、
   口径决定以本仓 `changelog.md` 为准。

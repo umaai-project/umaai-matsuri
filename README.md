@@ -15,7 +15,7 @@ workspace 六 crate：
 | `matsuri-tools` | 外围测量：`bench` / `sweep` / `cardtest` 与诊断工具 |
 | `matsuri-launcher` | Windows 发布启动器 `matsuri-ai`（菜单 / 子进程装配 / 通道体检 / 启动自检更新；交互选择用 `inquire`，不依赖业务 crate） |
 
-- 引擎以 path 引用 `../umaai_next` 的 `umaai-core` / `umasim` / `umaai`；不 fork 引擎、不在引擎仓加剧本 crate。
+- 引擎以 Git Submodule 挂载在 `umaai_next/`，引用 `umaai-core` / `umasim` / `umaai` / `umaai-cli` / `umaai-update`；不 fork 引擎、不在引擎仓加剧本 crate。
 - 数据根为 `data/`：引擎静态表 + `scenario_matsuri.json` + 默认层 `matsuri_config.toml` / `ai_config.toml`。
 - 工作目录同名配置可作覆盖层；`[decks.*]` 只由引擎 / 工具使用，玩家侧不覆盖。
 - **基准 / 测卡数据归 `benchmark/`**：基线、卡组夹具与结论 md 入库，试验产物放 `benchmark/_local/`（不入库）；
@@ -159,15 +159,23 @@ clippy 只在 Windows 侧跑；CI 也是 `-D warnings` 硬门禁。
 
 ## 依赖
 
-```toml
-# 开发期：并列目录
-umaai-core = { path = "../umaai_next/crates/umaai-core" }
-umasim     = { path = "../umaai_next/crates/umasim" }
-umaai      = { path = "../umaai_next/crates/umaai" }
-umaai-cli  = { path = "../umaai_next/crates/umaai-cli" }
+引擎仓已作为 Git Submodule 挂载于 `umaai_next/`：
 
-# 稳定期：同一 repo / tag
-# umaai = { git = "<engine repo>", tag = "engine-v0.1.0" }
+```powershell
+# 首次克隆
+git clone --recursive https://github.com/LaplaceTor/umaai-matsuri.git
+
+# 已有仓库补拉子模块
+git submodule update --init --recursive
+```
+
+```toml
+# 当前：仓内 Git Submodule
+umaai-core   = { path = "umaai_next/crates/umaai-core" }
+umasim       = { path = "umaai_next/crates/umasim" }
+umaai        = { path = "umaai_next/crates/umaai" }
+umaai-cli    = { path = "umaai_next/crates/umaai-cli" }
+umaai-update = { path = "umaai_next/crates/umaai-update" }
 ```
 
 ## 许可证
