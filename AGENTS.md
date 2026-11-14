@@ -39,41 +39,8 @@
 
 ## 代码结构
 
-**workspace 六 crate：五个按终端业务形态划分，另加发布启动器。** `matsuri-core` 是宿主稳定面（机制 + 训练员 +
-装配）；`matsuri-sim`（离线模拟）与 `matsuri-ai`（在线决策）是两条业务线 lib；终端入口由
-`matsuri-cli` 承载；`matsuri-tools` 是外围工具面。业务 crate 之间不允许反向依赖
-（sim / ai 不得依赖 cli）。重依赖各归其位，**在对应业务真正用上前不要往 `Cargo.toml` 加依赖或 feature**。
-
-| crate / 文件 | 职责 |
-|---|---|
-| `crates/matsuri-core/src/lib.rs` | 模块声明 + 对外重导出 + 常量（**不含实现**） |
-| `crates/matsuri-core/src/game/mod.rs` | 局面 `MatsuriGame` + 资源账本 / 预览 + `build_game` |
-| `crates/matsuri-core/src/game/view.rs` | 回合信息快照 `MatsuriView`（分节：turn / resources / uma / board / schedule / friend / camp）+ `view()` |
-| `crates/matsuri-core/src/game/diag.rs` | 诊断辅助（关键状态快照 / 变化摘要，供 `diag!` 埋点；只读） |
-| `crates/matsuri-core/src/game/stage.rs` | 阶段机 `Stage`（含 `StageId` 投影）+ 事件队列 `run_event_queue` |
-| `crates/matsuri-core/src/game/action.rs` | `Action` + `Display` + `ActionEnum` + 动作结算入口 |
-| `crates/matsuri-core/src/game/traits.rs` | 契约 impl（`Game` / `TrainingValueSource` / `FlatSearchGame`） |
-| `crates/matsuri-core/src/{data,config}.rs` | 剧本资产 schema / 剧本配置段 |
-| `crates/matsuri-core/src/trainer.rs` | 手写训练员（守门链 + 打分表 + 事件选项 + 教诲分配价值矩阵；rollout 基策） |
-| `crates/matsuri-core/src/search.rs` | FlatSearch 搜索训练员 `MatsuriSearchTrainer`（Train / 教诲 / 事件三路 + 事件队列续跑 + 叶估接口） |
-| `crates/matsuri-core/src/value.rs` | 训练员估值层（官方评分边际 + pt_favor + 动作 / 事件 / 教诲分配折算；私有模块） |
-| `crates/matsuri-core/src/testing.rs` | 测试定位件（仓根 / 数据根） |
-| `crates/matsuri-sim` | 离线模拟：基线裁判（跑局与判定原语）；只出 lib。测量入口不放这里 |
-| `crates/matsuri-ai` | 在线决策：帧段解析 / Session 接线 / 决策循环；只出 lib |
-| `crates/matsuri-cli` | 终端入口：bin `matsuri`（切 `matsuri` / `random` / `manual`） |
-| `crates/matsuri-cli/src/manual.rs` | 手动核对面板（人工核对机制）：状态取 `MatsuriView`（纯呈现）+ 育成配置 + 彩色训练明细表 + 剧本资源 / 教诲分配结果 + 动作槽增量预览 + Inquire 动作 / 事件选择 |
-| `crates/matsuri-cli/src/logging.rs` | stderr 日志器：消费 `[output] log_level`，承接 `diag!` 记录 |
-| `crates/matsuri-tools` | 外围工具（一个子面一个 bin）：`bench` / `sweep` / `cardtest`（测卡）/ `audit_search` / `probe_fail`；复盘待补 |
-| `crates/matsuri-launcher` | 发布启动器 bin `matsuri-ai`：菜单 / 子进程装配 / 小黑板启动（同目录 URA，`CREATE_NEW_CONSOLE` 另开窗口）/ 小黑板通道只读体检 / 更新子菜单（AI 数据 · 小黑板数据 · 小黑板插件 · 程序本体）/ 启动时四频道清单只读自检（只显示，不自动装）（交互选择用 `inquire`，非 TTY 有编号输入兜底；不依赖本仓业务 crate） |
-
-- **契约 trait impl 不可拆文件**：一个 trait 的 `impl` 必须整体落在同一文件。
-- **可见性**：crate 内跨模块调用标 `pub(crate)`；跨 crate 消费面标 `pub`。
-- **阶段自持**：内部强类型 `Stage`，对外只投影 `StageId`（显式赋号，改号 = 旧种子失效）。
-- **不碰引擎**：接入新剧本时引擎仓 `git diff` 为空；确需新能力时回引擎仓按「带默认实现、非破坏」加钩子。
-- **不预置剧本形态**：阶段 / 事件 / 训练 / 比赛 / 资源等强依赖剧本的实现，先在
-  `docs/plan/scenario_dev_plan.md` 列为「待确认项」，S0 机制核对后再自建。
-- **诊断日志**：机制 / 训练员的状态变化埋点统一走 `crate::diag!`（引擎宏，target = `diagnostic`；
-  预览与搜索 rollout 静默），不要用 `log::info!` 直打业务状态。
+本仓为六 crate Rust workspace（`matsuri-core` / `matsuri-sim` / `matsuri-ai` / `matsuri-cli` / `matsuri-tools` / `matsuri-launcher`）。
+在新增模块、调整 crate 依赖、定位代码落点或处理引擎接缝前，先阅读 [ARCHITECTURE.md](ARCHITECTURE.md)（含拓扑边界、各 crate/文件职责表及架构硬约束）。
 
 ## 数据与配置
 
