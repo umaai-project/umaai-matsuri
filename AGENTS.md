@@ -12,11 +12,11 @@
 
 - 本仓是 **骏大祭剧本仓**：官方名「朋、史解き ―午式駿大祭―」（駿大祭編），
   `scenarioId = 15`；开发代号 **`matsuri`**，参考库别名 `shuntaisai`（mee-umasim）。
-- 引擎仓为并列目录 `../umaai_next`，本仓以 path / git 依赖引用它的 `umaai-core` / `umasim` / `umaai`；
+- 引擎仓以 Git Submodule 挂载于 `umaai_next/`，本仓以 path 依赖引用它的 `umaai-core` / `umasim` / `umaai`；
   **不 fork 引擎、不在引擎仓加剧本 crate**。
-- 引擎契约：`../umaai_next/docs/scenario/contracts.md`；接入纪律：
-  `../umaai_next/docs/scenario/README.md`；仓库形态 / 开发流程 / 性能优化：
-  `../umaai_next/docs/scenario/{repo_form,dev_process,perf_plan}.md`。
+- 引擎契约：`umaai_next/docs/scenario/contracts.md`；接入纪律：
+  `umaai_next/docs/scenario/README.md`；仓库形态 / 开发流程 / 性能优化：
+  `umaai_next/docs/scenario/{repo_form,dev_process,perf_plan}.md`。
 - 成熟参考实现：`../umaai-onsen`（温泉剧本仓，workspace 五 crate 形态来源）。
 - 本仓文档索引见 `docs/README.md`，含开发计划、接入包、stub 登记、机制、术语、测试与交接。
 
