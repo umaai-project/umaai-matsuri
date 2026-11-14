@@ -1,7 +1,7 @@
 # 卡组配置重构：`[decks.*]`（2026-11-07 拍板）
 
 > 状态：已实施（2026-11-07）。本文是 `matsuri_config.toml` 的**单一事实源**说明；机制口径仍以
-> [`../mechanism.md`](../mechanism.md) 为准，术语以 [`../glossary.md`](../glossary.md) 为准。
+> [`../mechanism.md`](../mechanism.md) 为准，术语以 [`../../GLOSSARY.md`](../../GLOSSARY.md) 为准。
 
 ## 1. 背景
 

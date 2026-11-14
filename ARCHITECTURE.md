@@ -81,7 +81,9 @@ matsuri-tools ──▶ matsuri-sim ─┼─▶ matsuri-core ──▶ umaai_ne
 ## 5. 架构硬约束
 
 - **契约 trait impl 不可拆文件**：同一个 trait（如 `Game`）的 `impl` 必须整体落在同一文件（`traits.rs`）。
+- **`Deref` 底座不得与契约同名**：`BaseGame` 的公开方法不得与 `Game` 契约方法同名。
 - **可见性分级**：crate 内跨模块调用标 `pub(crate)`；跨 crate 消费面标 `pub`。
+- **数据与配置注入**：lib 侧不写死路径（`MatsuriData::load` / `MatsuriConfig::load*` / `Data::init` 的根由调用方注入）；bin 数据根为代码级常量（`matsuri-cli/src/main.rs` 的 `DATA_ROOT`），工作目录存在同名 `ai_config.toml` / `matsuri_config.toml` 时覆盖合并；未知键严格报错。
 - **`StageId` 显式赋号**：对外投影枚举值只增不改，修改已有编号会导致旧种子失效。
 - **呈现与决策分离**：`MatsuriView` 为纯只读值快照，不混入呈现文本或候选动作预览；`manual.rs` / 前端只消费 `MatsuriView` 与静态表。
 - **诊断埋点统一走 `diag!`**：机制与训练员状态变化统一使用 `crate::diag!`（target = `diagnostic`；预览与搜索 rollout 静默），不以 `log::info!` 直打业务状态。

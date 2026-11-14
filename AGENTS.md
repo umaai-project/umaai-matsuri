@@ -1,125 +1,30 @@
 # umaai-matsuri 项目规则
 
-## 对话规则与工作规范
+## 对话与工作规范
 
-1. **语言**：思考和回答使用中文，语气简洁、专业。
-2. **避免信息过载**：需要分析大量代码 / 数据并提取结论时，使用子代理。
-3. **方案选择**：涉及不在上下文中的领域知识或需要选型时，停下来给出建议交用户选择，不直接生成代码。
-4. **提案前审视**：提案前从「做减法」的角度重新考虑一次。
-5. **编码前确认方案**：每一阶段的任务实际开始编码前，先总结当前方案并向用户确认，确认不再调整后再开始实际编码。
+1. **语言**：使用中文回答，保持简洁。
+2. **大量分析用子代理**：分析大量代码或数据时，派发子代理提取结论。
+3. **选型交由用户**：涉及未确认的领域知识或方案选型时，先给出选项供用户决定再实施。
+4. **提案先做减法**：提出方案前先从「做减法」的角度审视。
+5. **编码前确认方案**：每阶段实际编码前，先总结方案并向用户确认，确认后再动手。
 
-## 项目上下文
+## 项目指针与范围
 
-- 本仓是 **骏大祭剧本仓**：官方名「朋、史解き ―午式駿大祭―」（駿大祭編），
-  `scenarioId = 15`；开发代号 **`matsuri`**，参考库别名 `shuntaisai`（mee-umasim）。
-- 引擎仓以 Git Submodule 挂载于 `umaai_next/`，本仓以 path 依赖引用它的 `umaai-core` / `umasim` / `umaai`；
-  **不 fork 引擎、不在引擎仓加剧本 crate**。
-- 引擎契约：`umaai_next/docs/scenario/contracts.md`；接入纪律：
-  `umaai_next/docs/scenario/README.md`；仓库形态 / 开发流程 / 性能优化：
-  `umaai_next/docs/scenario/{repo_form,dev_process,perf_plan}.md`。
-- 成熟参考实现：`../umaai-onsen`（温泉剧本仓，workspace 五 crate 形态来源）。
-- 本仓文档索引见 `docs/README.md`，含开发计划、接入包、stub 登记、机制、术语、测试与交接。
+- **引擎边界**：**非必要不动 `umaai_next/`**；涉及引擎契约接口时读 `umaai_next/docs/scenario/{contracts,README}.md`。
+- **架构与落点**：新增模块、调整 crate 依赖、定位代码或处理引擎接缝前，先读 [ARCHITECTURE.md](ARCHITECTURE.md)。
+- **文档与提交同步**：更新文档或进入提交准备前，先读 [docs/README.md](docs/README.md)。
+- **产物与日志**：运行期临时日志放 `logs/`；落盘基准、测卡、扫参等结论产物前，先读 [benchmark/README.md](benchmark/README.md)。
 
-## 文档规则
+## 编码、测试与工具纪律
 
-以下文档随代码同步维护，在提交准备阶段统一更新：
-
-1. **README 状态**：结构 / 验收命令 / 数据说明的现状变化，不写修改过程。
-2. **接入包**（`docs/plan/intake.md`）：情报位置、机制 / 数值 / 数据表清单、待确认问题；
-   S0 核对期间持续更新，结论分流到机制、术语与 stub。
-3. **开发计划**（`docs/plan/scenario_dev_plan.md`）：阶段状态、阶段推进记录、待决事项
-   （跨阶段生效的口径裁定放 `changelog.md`，不在计划里重复）。
-4. **数值占位**（`docs/plan/stubs.md`）：`STUB` / `TBD` 的位置、来源、替换条件与基线影响。
-5. **机制 / 术语 / 口径决定 / 测试**：`docs/mechanism.md` 随机制改动、`docs/glossary.md` 随术语与
-   官方译名变动、`docs/changelog.md` 随口径拍板、`docs/tests_overview.md` 随测试增删更新。
-   **四类内容不互抄**：机制只写公式流程、术语只写词条、changelog 只写「为什么这么定」。
-6. **决定记录纪律**（`docs/changelog.md`）：**只追加、不改历史行**；被取代的结论在原「决定」列标注
-   「（已被 YYYY-MM-DD 修正：…）」而不删行；`基线影响` 列必须写影响面。
-7. **handoff**（`docs/handoff.md`）：上下文很长时，经用户同意后写交接提示词。
-
-## 代码结构
-
-本仓为六 crate Rust workspace（`matsuri-core` / `matsuri-sim` / `matsuri-ai` / `matsuri-cli` / `matsuri-tools` / `matsuri-launcher`）。
-在新增模块、调整 crate 依赖、定位代码落点或处理引擎接缝前，先阅读 [ARCHITECTURE.md](ARCHITECTURE.md)（含拓扑边界、各 crate/文件职责表及架构硬约束）。
-
-## 数据与配置
-
-- **统一数据目录 `data/`（剧本仓唯一发布库，拷仓即跑）**：剧本资产 `scenario_matsuri.json` +
-  剧本配置默认层 `matsuri_config.toml`；引擎仓 `gamedata/` 的六张静态表与 `ai_config.toml` 已拷入。
-- bin 的数据根是**代码级常量**（`crates/matsuri-cli/src/main.rs` 的 `DATA_ROOT`，跑局从仓根发起）。
-  引擎覆盖层约定保留：工作目录放同名 `ai_config.toml` / `matsuri_config.toml` 存在才合并。
-- lib 侧不写死路径：`MatsuriData::load` / `MatsuriConfig::load*` / `Data::init` 的根由调用方注入。
-- 配置层未知键**严格报错**；剧本专属配置段归本仓，不进引擎配置。
-
-## 输出目录约定（2026-11-11 起）
-
-1. **`logs/` 只放运行期日志**：stdout / stderr 重定向、诊断输出、在线帧记录等由工具或进程直接产生的日志。
-   **禁止在 `logs/` 下放日志以外的测试 / 测卡 / 扫参 / 性能测量结果数据、卡组夹具、回放帧、结论文档**，
-   或任何需要留存、复现、跨机器引用的产物。`logs/` 整目录被 `.gitignore` 忽略，放进去等于没有备份，
-   且会被下一次清理清掉。
-2. **基准与测卡数据一律进 `benchmark/`**：
-   - `benchmark/baselines/`、`benchmark/decks/` — 人工维护的基线与卡组夹具，入库。
-   - `benchmark/_local/*.md` — 结论文档（`FINAL` / `RESULT` / `STATUS` / `REPORT` / `SUMMARY` /
-     `STAGE_*` / `ranking_*`），由 `.gitignore` 例外放行，入库。
-   - `benchmark/_local/` 其余 — 机器可复跑的原始输出（CSV / TXT / TOML / 帧数据），不入库。
-   - 分工、复原与旧路径映射见 `benchmark/README.md`。
-3. **写结果前先定归属**：一次性日志直接写 `logs/`（用完即弃）；需要归档的试验输出写
-   `benchmark/_local/` 并在 `docs/` 引用新路径；需要跨版本保留的结论 / 夹具写入库位置。
-   **不要把「以后要查」的东西留在 `logs/`。** 新增工具 / 脚本的缺省输出路径按此约定设置，
-   不要用 `logs/perf/`、`logs/scan/` 之类的子目录承载结果数据。
-
-## Rust 编码规范
-
-### 错误处理
-1. `Result` 优先；可用 `Result` 的场合不用 `unwrap`。
-2. 取 `Option` 内部值时优先 `ok_or_else` 转 `Result`；越界报错，不静默取末档。
-3. 仅测试 / 临时代码允许 `unwrap` / `panic`。
-
-### 代码结构
-1. **新类型原则**：固定结构的数据建新类型，避免裸 Tuple。
-2. **文档化注释**：新增函数 / 结构体须有 rustdoc 注释，函数注释 ≤10 行、文件头 ≤15 行；
-   注释必须对应代码现状，历史修改写 `README.md` 状态行或剧本仓文档。
-3. 变量命名简短；长词可用缩写。
-4. **`Deref` 底座不得与契约同名**（`BaseGame` 的公开方法不得与 `Game` 契约方法同名）。
-
-## 测试规范
-
-1. **前期验证**：机制是否成立以**对话核对为主**（`docs/plan/intake.md` 的确认清单），
-   自动化测试随业务落地逐步补齐，不用测试代替机制确认。
-2. **分层**：单元测试（内联，私有细节 / 纯函数）用 `assert`；机制集成测试、基线测试与冒烟测试
-   在业务落地后补到对应 crate 的 `tests/`。
-3. 测试进程的 cwd 在各 crate 目录：数据根 / 基线路径统一经 `matsuri_core::testing` 取仓根。
-   引擎 `umaai-core::testing` 的 `env!` 固化的是引擎仓路径，**跨仓不可用**。
-4. **Release 档**跑 binary；`cargo test` 统一加 `--offline`。
-
-## 工具使用
-
-- 日常 `cargo fmt --all --check` / `cargo clippy --workspace --all-targets -- -D warnings` /
-  `cargo test --workspace --release` 加 `--offline`。
-- 需要改 registry（`cargo add` / `fetch`）时**先请求提权**。
-- **同一 target 目录一次只跑一个 cargo**（并发会互等锁，表现为卡死）。
-- 从剧本仓根执行 cargo 命令；不要再套 `--manifest-path`。
-- 用户确认整理提交之前，不要执行`cargo fmt`或`cargo clippy`，因为这两个会修改代码，导致需要重新读取全部代码。
-
-## Git 操作
-
-1. **不自动 `commit` / `push`**：先确认用户已完成全部调整，再进入提交准备。
-2. **提交准备**：同步更新 `README.md` 状态与剧本仓文档，由用户确认后再提交。
-3. **提交范围**：涵盖工作树下由 Agent 与用户做的全部修改。
-4. 提交说明需点明**默认行为是否等价**（引擎侧）；剧本侧数值位移须在剧本仓文档记口径分歧。
-5. 遵循 Git 安全协议，避免破坏性操作。
+- **Rust 规范**：`Result` 优先（非测试与非临时代码禁用 `unwrap` / `panic`，越界直接报错）；固定结构建新类型；新增公开 API 须配只描述当前行为与契约的 `rustdoc`。
+- **测试规范**：测试取仓根统一经 `matsuri_core::testing`；Release 档跑 binary。
+- **Cargo 纪律**：在仓根直接运行 `cargo`；同一 `target` 一次只跑一个 cargo；日常 `fmt --all --check`、`clippy --workspace --all-targets -- -D warnings`、`test` 加 `--offline`；改 registry（`add` / `fetch`）先请求提权；**确认进入提交准备前，保持工作树格式原样（不运行会改写文件的 `cargo fmt` 或 `--fix`）**。
+- **Git 提交**：待用户确认全部调整后再进入提交准备（涵盖工作树全部修改）；禁止主动 `commit` 或 `push`。
 
 ## Agent skills
 
-### Issue 追踪器（Issue tracker）
-
-使用 GitHub Issues（`umaai-project/umaai-matsuri`，通过 `gh` CLI）追踪 Issue。详见 `docs/agents/issue-tracker.md`。
-
-### 分诊标签（Triage labels）
-
-使用五角色中文分诊标签（`待分诊`、`待补充信息`、`Agent就绪`、`需人工处理`、`不予处理`）。详见 `docs/agents/triage-labels.md`。
-
-### 领域文档（Domain docs）
-
-单上下文布局（仓库根目录 `GLOSSARY.md` + `docs/adr/`）。详见 `docs/agents/domain.md`。
-
+- **Issue 追踪器**：读取、创建或更新 GitHub Issues 时，按 [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md) 执行。
+- **分诊标签**：为 Issue 添加或映射分诊标签时，使用 [docs/agents/triage-labels.md](docs/agents/triage-labels.md) 中的映射表。
+- **领域文档**：探索代码库、使用领域术语或评估架构决策时，按 [docs/agents/domain.md](docs/agents/domain.md) 执行。
+- **会话交接**：上下文过长或需交接给下一位 Agent 时，按 [docs/agents/handoff.md](docs/agents/handoff.md) 执行。

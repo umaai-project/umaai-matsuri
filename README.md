@@ -159,7 +159,7 @@ clippy 只在 Windows 侧跑；CI 也是 `-D warnings` 硬门禁。
 | [`docs/plan/release_launcher.md`](docs/plan/release_launcher.md) | Windows 发布启动器 `matsuri-ai` 计划 |
 | [`docs/plan/review_tool_plan_2026-11-13.md`](docs/plan/review_tool_plan_2026-11-13.md) | 复盘工具计划：局包 / 数据补充 / `review` 子命令 / 指标口径 |
 | [`docs/mechanism.md`](docs/mechanism.md) | 机制公式 / 流程 / 实现落点 |
-| [`docs/glossary.md`](docs/glossary.md) | 术语与官方译名 |
+| [`GLOSSARY.md`](GLOSSARY.md) | 领域术语与官方译名 |
 | [`docs/changelog.md`](docs/changelog.md) | 口径与决定变更记录 |
 | [`docs/tests_overview.md`](docs/tests_overview.md) | 测试一览 |
 | [`docs/perf_profiling.md`](docs/perf_profiling.md) | 性能测量与复现 |
