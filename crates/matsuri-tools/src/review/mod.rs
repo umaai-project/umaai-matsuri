@@ -36,7 +36,7 @@ pub fn open(args: OpenArgs<'_>) -> Result<PathBuf> {
     let files = GameFiles::scan(args.input, args.game)?;
     let data_root = args
         .data_root
-        .map_or_else(|| matsuri_core::testing::data_dir(), Path::to_path_buf);
+        .map_or_else(matsuri_core::testing::data_dir, Path::to_path_buf);
     ensure_data(&data_root)?;
     let engine = umaai::Config::load_with_overlay_file(&data_root, ".")?;
     let data = Arc::new(MatsuriData::load(&data_root)?);
