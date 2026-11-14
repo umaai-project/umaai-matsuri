@@ -1,6 +1,6 @@
 # 赛后回看（复盘）工具开发计划 · matsuri
 
-> 日期：2026-11-13 · 状态：实施计划（未动代码）
+> 日期：2026-11-13 · 状态：实施中（`review open` 与插件数据面已落地；2026-11-14 局包路径改为扁平）
 > 替代：[review_improvement_plan_2026-11-06.md](review_improvement_plan_2026-11-06.md)（**存档**，仅保留方法论与外部调研；本文修正其三个过时前提与两处概念）
 > 范围：插件端（数据采集 / 局包归档）+ 剧本仓（记录层、复盘 bin、技能）；**引擎仓零改动**（仅两个可选增益，见 §9）
 > 前置拍板（2026-11-13）：不改引擎；支持「开 AI」与「只开小黑板」两种模式的局；复盘工具**按需重算**，不在打开时全量重算。
@@ -47,6 +47,7 @@
 | 学技能（只到「花了点」） | ✅ | ✅ | 帧 `skillPt` 下降 + 终局 `skillPtSpent` | P0（见 §3.2） |
 | 局边界（start_turn / mid_entry / 帧数 / 时间） | ⚠️ 靠首帧推 | ⚠️ 同 | **写入终局帧 `review` 段** | P0（见 §3.1） |
 | AI 候选分 / T(n) / 运气分 | ✅ | ❌ | AI sidecar（matsuri-cli `--record`） | P1（可重算替代） |
+| AI 在场标记（开 AI / 只开黑板） | ✅ `ai-decision` | ❌（无标记） | 包内 `game{id}_ai-decision.json` | P0 |
 | 技能学习明细（学了哪个） | ❌ | ❌ | **不补**（AI 只看点数） | — |
 | 比赛名次 / 用时 / 输给谁 | ❌ | ❌ | **不补** | — |
 | 事件选项数值效果 | ❌ | ❌ | **不补** | — |
@@ -68,13 +69,13 @@
 | 目标 | 一局一包，复盘工具直接消费；不改散帧路径与文件名（AI `FileChannel` 依赖） |
 | 触发 | 终局帧落盘之后，在同一次调用内打包（`GameStatusSend_GameEnd` 的终局出口）；同局只打一次（`FinalScoreWritten` 已保证一局一份） |
 | 兜底 | 下一局 `start` 响应时若上局已见终局仍未打包则补包；**不要挂在 `load` 上**（换局时终局帧可能还没到）。进程退出补包仅作可选 |
-| 位置 | `PluginData/SendGameStatusPlugin/records/game{id}.zip`（**不进** `ura_plugins` 更新集合，见 §3.4） |
+| 位置 | `PluginData/SendGameStatusPlugin/game{id}.zip`（与帧同目录、**目录保持扁平**；不进 `ura_plugins` 更新集合，见 §3.4）。旧版 `records/game{id}.zip` 只读兼容：存在即视为已归档，新包不再写那里 |
 | 原子性 | 写 `.partial` → `File.Move` 覆盖；失败重试并保留散帧不动 |
 | 包内容 | 本局全部 `game{id}_turn*.json` + `game{id}_finalScore.json`；**不含** `thisTurn.json`；**不新增 meta / manifest 文件** |
 | 局级摘要 | 写进 `finalScore.json` 的 `review` 子对象（见下），不单独成文件 |
 | 缺帧 / 中途载入 | 不阻断打包；`mid_entry = start_turn > 0`（或首个 `isFullGame=false`）；`missing_turns` 由帧回合序列算差集 |
 | 保留策略 | 默认保留最近 50 局（按 mtime），超出删最旧；开关默认**关**（先观察磁盘占用，见 §12-D1）。**插件只新增 zip、不删原散帧**，清理交给工具或用户 |
-| 兼容 | 老包（终局帧无 `review` 段）由工具侧按文件名与 mtime 降级推断；新包带 `review.schema` 演进 |
+| 兼容 | **只支持新包**（含 `review` 段 + 新协议帧 `charaEffects`）。无 `review` 的旧包、旧协议帧（`illEffects`）一律不兼容，工具直接报错并提示用新版插件重录（2026-11-14 拍板） |
 
 **为什么不在插件里画图**：T(n) / 候选分只在 AI 进程内存里（插件侧没有模拟器）。插件只做**数据归档**；图与报告归复盘工具。
 
@@ -142,7 +143,7 @@
 | # | 补什么 | 理由 |
 |---|---|---|
 | 3 | `festa.events[]`（全量事件，见 `docs/plan/online_wiring.md` 已登记者） | 复盘想讲清「这回合弹了哪些事件」；不补则只有 `keyEvents` 的 story_id |
-| 4 | 继承上限增量 `inheritLimitGains` 逐帧 | 实测样本仍是旧名 `illEffects`（改名契约未同步），需重核；有则继承判据更稳 |
+| 4 | 继承上限增量 `inheritLimitGains` 逐帧 | 新协议帧已带；旧 `illEffects` 帧不做兼容（直接不支持），继承判据只用新帧 |
 | 5 | `summer_camp_remain_turn_num` 递减语义 | 合宿判据依赖它（11-06 §7.2 待核） |
 | 6 | `actionPhase`（`before`/`after`） | 收掉 `isAfterTraining` 粘连（11-08 §7）；复盘按阶段对齐决策点会更稳，但可用 `seq` 兜底 |
 | 7 | `festa.advices` 全表（advice → fusion）+ `assistRemain` 次数 + `training[].gauges` 预测 | 帧里只发挂在该演目上的那一个`adviceId` 与 `assistSupportLeft(0/1)`，复盘要多算继承/教诲才需要；名称仍取 master 表 |
@@ -160,8 +161,8 @@
 
 ### 3.3 插件 ↔ 工具契约
 
-1. 工具优先读 `records/game{id}.zip`；无包则读同目录散帧（兼容老局与人工 zip）。
-2. `review.schema` 单调递增；工具按 `review.schema` 分支，未知字段忽略、缺字段降级；`review` 缺失 = 老包，走文件名推断。
+1. 工具优先读 `game{id}.zip`（含旧版 `records/game{id}.zip`）；无包则读同目录散帧（兼容老局与人工 zip）。
+2. `review.schema` 单调递增；工具按 `review.schema` 分支，未知字段忽略；`review` 缺失 / 旧协议帧 → **直接报错**，不做降级推断。
 3. 包内条目用相对路径、不带外层目录（与参考实现一致，便于整包解到临时目录）。
 4. `actions[].turn` 为 **0 基**（= `current_turn - 1`），工具侧统一用 0 基。
 5. 工具侧不依赖插件内部类型（只读 JSON），插件侧不感知 AI 是否存在。
@@ -177,10 +178,42 @@
 
 ### 3.5 插件端验收
 
-1. 6316 / 6317 真机：包内 78 回合帧 + finalScore 齐备，zip 可正常解压；finalScore 的 `review` 段字段自洽（frameCount/回合范围/缺帧/时间）。
-2. 反推一致性：6316 / 6317 上由帧 diff 得到的教诲落位（5 条）、转成（T23/T47）、技能点下降回合，与游戏内实际一致（用 AI 断点或肉眼对账）。
+1. 新协议真机局（`game6324` 起）：包内回合帧 + finalScore 齐备，zip 可正常解压；`review` 段字段自洽（frameCount / 回合范围 / 缺帧 / 时间）。
+2. 反推核对：由帧 diff 得到的教诲落位（5 条）、转成（T23/T47）、技能点下降回合，与游戏内实际一致（肉眼对账即可，不作自动化验收）。
 3. 中途载入局 `review.midEntry = true`；读档重开局 `review.loads` 非空且工具能分段；缺帧局 `missingTurns` 非空；下一局 `start` 兜底补包成功。
-4. 老包（无 `review` 段）仍能被工具读取（向后兼容）；未终局的局按「无 finalScore」判未终局。
+4. 未终局的局按「无 finalScore」判未终局；旧包/旧协议帧**不要求可读**（见 §11）。
+
+### 3.6 AI 在场标记（2026-11-14 新增）
+
+目的只有一个：**区分「开 AI 养的局」与「只开黑板自己养的局」**，过程信息一律不写。
+
+| 项 | 结论 |
+|---|---|
+| 写入方 | `matsuri-cli online`（只在真机模式；`--replay` 不写） |
+| 触发 | T77 帧到达时写一次（`turn == max_turn`，不要求是决策帧）；同局只写一份 |
+| 文件 | `PluginData/SendGameStatusPlugin/game{id}_ai-decision.json`（与帧同目录、扁平） |
+| 不完整局 | 不写（AI 中途退出 → 无文件） |
+| 写入失败 | `log::debug` 静默，不影响决策 |
+| 插件处理 | `PackGame` 收进 zip；`BuildReview` 读成 `review.ai`；`CleanupFrames` 打包后删除 |
+
+内容（只放最终状态）：
+
+```jsonc
+{
+  "schema": 1,
+  "game": 6324,
+  "turn": 77,          // 触发帧回合
+  "firstTurn": 0,      // AI 本局首次决策回合（>0 = 中途才开）
+  "lastTurn": 76,      // 最后一次决策回合（估分对应局面）
+  "expected": 86554,   // 官方口径期望终局分
+  "rank": "LG8",
+  "mode": "search",    // hand / search
+  "writtenAt": 1794632000000
+}
+```
+
+判定：文件存在 = 「开过 AI 且陪到局终」；不存在 = 「无 AI 标记」（老包、只开黑板、中途退出都落这里，不写“没开 AI”）。
+`expected`/`rank` 只作展示/调试 hint，**不做 AI 估分与实际终局的对照结论**（见 §6 不做项）。
 
 ---
 
@@ -202,7 +235,7 @@
 ### 5.1 子命令与按需重算
 
 ```
-review open   <game>                        # 只读帧+actions+终局 → facts.json / brief.md（全量 pending 标好）
+review open   <局目录|局包.zip> [--game id]  # 只读帧+actions+终局 → facts.json / brief.md（pending 标好）
 review eval   --turn N [--seq k] [--n 1024|8192]   # 单点：候选表 + regret + CI + T(n)，落缓存
 review curve  [--from A --to B] [--n 1024]         # 区间/全量 T(n) 与累计差（粗算档）
 review report [--narrative md]              # 合并 facts + 已缓存 eval/curve → digest / report.html
@@ -271,24 +304,121 @@ luck_n   = ΔT(n) − regret_n                 ← 运气实现
 
 **形态纪律**：step 有明确地址；ramp 是上游拖累；sawtooth **不标失误**。
 
+**不做项（2026-11-14 拍板）**：不做「AI 估分 vs 实际终局」的对照结论，也不做「在线轨迹 vs 重算轨迹」的一致性验收——AI 估分本身带误差，这类一致性只是程序调试 hint，不影响决策质量；AI 标记里的 `expected` 仅作展示。
+
 ---
 
 ## 7. 检查项（候选，四要素：判据 / 取数 / 输出 / 状态）
 
-| # | 检查项 | 判据 | 取数 | 状态 |
-|---|---|---|---|---|
-| 1 | 汇报会未大成功 | 该回合全演目 Lv 未达要求（T23/47/67） | 帧回合末演目 Lv + `checkPoints[].resultType` | 待实测（resultType 语义未核） |
-| 2 | 教诲落位偏离建议（最终生效） | 5 槽落位与价值矩阵比对；硬约束（如 801 协助须落担当最多演目） | 帧 `acts[].adviceId` 反推 + `advice.rs` 矩阵 | 可实现 |
-| 3 | 转成漏选 / 选差 | T23 选 2、T47 选 3 与价值排序比对 | 帧 `acts[].fusionId` 反推 + 演目教诲 | 可实现 |
-| 4 | 合宿缺席 | 每年 4 个非比赛合宿回合未满 | 帧 `camp` 状态 | 可实现 |
-| 5 | 必赛未赢 | `goal_races` 回合不在 `raceHistory` | 帧 `raceHistory` + `schedule` | 可实现 |
-| 6 | 体力低点 / 强制休息 | 回合末 `vital` 低于阈值；守门 ④ `vital < 32` 且无 0% 失败训练 | 帧体力 + 训练表 | 可实现 |
-| 7 | 干劲掉落未恢复 | 掉落后 3 回合无出行 / 休息且未回升 | 帧 `motivation` | 可实现 |
-| 8 | 演目槽满未稽古 / 锁卡 | gauge 满但训练选择非该演目稽古 | 帧 `acts[].gauge/level` + 动作 | 可实现 |
-| 9 | 神驹 / 嘉宾缺席帧 | 名单与 `avail_turn` 对账 | 帧 `persons` | 可实现（已修还原侧） |
-| 10 | URA 决赛输 / 技能点未花 | 72–77 结局；终局 `skillPt > 0` | 终局帧 | 可实现 |
+> 口径按 2026-11-14 用户逐条拍板更新；级别：**gate**（门禁，必须报）/ **warn**（警告）/ **info**（陈述）/ **collect**（先收集数据，不下结论）。
 
-先实现 4 / 5 / 6 / 7 / 8 / 10 六条；1 / 2 / 3 / 9 待真机与语义核对后补。
+| # | 检查项 | 判据 | 取数 | 级别 | 状态 |
+|---|---|---|---|---|---|
+| B1 | 汇报会未大成功 | 该回合全演目 Lv 未达要求（T23/47/67；资产要求 5 个演目达 Lv3/5/6） | 帧回合末 `acts[].level`（先用 Lv 自判，不看 `resultType`） | **gate** | 可做；正常养未成功是小概率，但保留门禁 |
+| B2 | 教诲落位 vs 建议 | 先比「实际落位」与「建议落位」的**同局面估分差**（配对 CI）：跨零 → 同等优解、不算问题；显著 → 再结合终局五维 / PT 分项解释（可能评分低但 PT 或某维更高） | 帧 `advice_slots` 反推 + 重算两者期望分 | **collect** | 复杂，先收集数据（见下） |
+| B3 | 転成选择 vs 预设 | 同 B2：实际融合 vs AI 预设/候选的估分差 + CI；显著时同样看五维/PT | 帧 `advice_fused` + `fusion` 预设 | **collect** | 同上，先收集数据 |
+| B4 | **合宿延长** | 列出本局所有 `camp.extended = true` 的回合（不是“缺席”）；附每年延长回合数 | 帧 `camp.extended` / `camp.counted` | info | 可做 |
+| B5 | 必赛未赢 | `goal_races` 回合不在 `raceHistory` | 帧 `raceHistory` + `schedule` | **warn** | 可做（警告，不是问题） |
+| B6 | 体力线硬练 | 回合末 `vital < 32` 且当回合无 0% 失败训练（守门④） | 帧 `vital` + 训练表 | **gate** | 可做（门禁检查点） |
+| B7 | 干劲掉落未恢复 | 掉落后 3 回合无出行/休息且未回升 | 帧 `motivation` 序列 | **gate** | 可做（门禁检查点） |
+| — | 演目槽满未稽古 / 神驹缺席 / URA 决赛输 | — | — | — | **不检测**（2026-11-14 拍板） |
+
+**判据总纲：选择偏差（B2/B3/C1/C2 共用）**
+
+对任何可枚举候选的决策点（训练 / 休息 / 出行 / 比赛 / 事件选项 / 教诲 / 転成）：
+
+1. 取「实际选择」与「首选候选」的**同局面期望分**（同一随机流配对 rollout），得 `Δ = E(best) − E(actual)` 与配对 95% CI；
+2. **CI 跨零 → 视为同等优解，可接受**（玩家命中 2/3 选不算问题）；
+3. 显著 → 才算“选择偏差”，再进一步分析：选的是第几选、损失多少、是否有五维 / PT / 资源路线上的取舍解释（可能评分低但 PT 或某维更高）；
+4. 报告措辞：不显著只陈述“与实际选择差距在噪声内”，显著才写“这里有一条更优路线”。
+
+C 组（决策类）按同一套判定：
+
+| # | 检查项 | 判据 | 取数 | 级别 | 状态 |
+|---|---|---|---|---|---|
+| C1 | 训练/休息/出行/比赛选择偏差 | 实际 vs 一选的估分差 + 配对 CI | `actions` + 候选表 | collect | 需 `eval` |
+| C2 | 事件选项选择偏差 | 同上（事件候选用事件表效果） | `actions.choice_number` + 事件候选 | collect | 需 `eval` |
+| C3 | 训练失败 | 建议训练 + 五维零增长 + 体力有消耗 | 前后帧差 + 训练表 | **gate** | 可做（门禁检查点） |
+| C4 | 关键资源 | 吾妻出行 5 段 / 助力支撑剩余（只陈述是否用满） | 帧 `friend.out_used` / `assist_support_left` | **gate** | 可做（门禁检查点） |
+| C5 | 干劲 | 同 B7，合并 | — | **gate** | 合并 |
+
+E7（自选赛打满时机，info）：逐区间列出「required 场数 / 实际完成场数 / 打满回合」，用于看是否拖到最后才补赛；数据取 `umaDB` 的 freeRaces 区间 + 帧 `race` 回合序列。
+
+**B2 / B3 的数据收集（先只收集、不判定）**
+
+每个教诲窗口（T2/11/23/35/47/59）与転成点（T23/T47）各记一行：
+
+```json
+{
+  "turn": 2, "kind": "advice",
+  "actual": [[act, adviceId], ...5],
+  "suggested": [[act, adviceId], ...5],
+  "actualExpected": 86210.0, "suggestedExpected": 86554.0,
+  "delta": 344.0, "ci95": 260.0,
+  "fiveExpected": [[...], [...]], "ptExpected": [...],
+  "finalFive": [...], "finalPt": 11000
+}
+```
+
+累计若干局后再定「显著」阈值（优先用配对 CI 跨零判定）。收集阶段报告只写「落位与建议不同 / 估分差 X±Y」，不下“失误”结论。
+
+### 7.1 剧本专属判据（2026-11-14 增补）
+
+**（1）演目等级增长**
+
+- 按卡位分组：未带卡位（该训练位无支援卡，如 speed_build 根位）只判**结算达标**（T23/47/67 = Lv3/5/6）；带卡位才判**快慢**。
+- 取数：逐帧 `acts[].level/gauge`；首次到达 Lv2…Lv10 的回合；稽古成功次数 = Lv 增量 − 合宿结算 3 次（15/39/63 各 +1）。
+- 快慢标准：由 §7.3 基线程序给出「到达 Lv k 的回合」分位，真机对自身历史分位比较；收集期只陈述曲线与节点。
+- 随机性：稽古失败不升 Lv，慢不等于选择差。
+
+**（2）友人出行**
+
+- 三个判定：A 出道赛前解锁（`umaDB[uma].races[0]`，105902 = T11）；B 第一年（T23 前）走完 5 段；C 收益陈述（每段 +1 最低演目 Lv，最多 +5）。
+- 取数：`friend.out_state / out_used[5] / next_step`；解锁回合 = 首次进入“已解锁”，完成回合 = 5 段全 true。
+- 级别 warn；解锁有概率，不写“失误”。
+
+**（3）运气波动**
+
+- `swings`：ΔT 分解为 `score_parts` 七分量（五维 + PT + skill）+ 状态差分；标签 `机制 / 局面 / 操作 / 混合`。
+- 判定优先级：机制结算 → `regret` 的 CI（`eval` 后）→ 状态驱动启发式（属性/PT 由随机判定驱动=局面；体力/干劲/技能点由选择驱动=操作）。
+- 结构性落后：`gap_k(t) = 实际累计增量 − 基线中位累计增量`；拆成**练得少 / 练得差 / 练得晚**；阴跌段（5 回合窗口累计 ΔT < −300）与 gap 对齐归因。
+- 超/未达预期：仅训练回合，期望增量取在线候选或基线分位。
+
+**（4）继承质量**
+
+- 已知口径：模拟约 **400 点/次**（两次 ≈ 800），真机常达不到 → 继承回合 `T(n)` 下移属**正常波动**，不判操作；≥p75 记“运气好”。
+- 输出 `inherit[]`：`turn(30/54) / total / baselineMedian / percentile / verdict / luckImpact / gains / limitGains`。
+
+**（5）追加稽古**
+
+- **以触发事件为准**：`actions.check_event.event_id = 400015106`（name 追加の稽古；choice1 = 加练 −5 体/智+20/羁绊+5，choice2 = 休息 +5 体）。
+- 位置：触发时帧 `kensan_act / kensan_rate`（仅标注，不参与识别）；`phase`（普通/合宿/URA）、`slotFull`。
+- 执行：选 1 后下一帧该演目是否真的走稽古（`practice[act]` 且 `ActTrain`）。
+- 输出 `kensan.triggers[]` + `total/add/rest/executed/wasted` + `byAct/byPhase`；倾向跨局聚合。
+
+**（6）状态资源（切者/小切、心情盾、幸运体质）**
+
+- 取数：`isQieZhe / isXiaoQie / PositiveThinkingCount / LuckyCount / isRefreshMind / isIll / motivation`。
+- **小切**：局外固定（`[pre] qie`），口径系数 PT×1.04，**不算运气**；**切者**：随机事件，**好运（大幅）**，PT×1.1；切者清小切。
+- 心情盾 / 幸运体质：计数与事件对齐——事件发生且计数 −1 = 生效；计数未变 = 该事件不被挡（标“机制待核”，不判失效）；无事件 = 未派上用场。
+- 输出 `status: { qie, mindShield, lucky }`，info 级。
+
+### 7.2 统计点清单
+
+**逐局（`facts.json`）**：数据健康 4 条；机制 B1/B4/B5/B6/B7；决策 C3/C4 + E7；剧本（1）曲线/节点/稽古次数/卡位、（2）出行状态、（3）swings 分解、（4）继承实际值、（5）追加稽古明细、（6）状态资源。
+
+**基线（`baseline` 程序）**：每维每回合累计增量分位、演目节点 Lv 与到达回合分位、友人解锁/完成回合分位与通过率、继承单次总量分位、追加稽古触发频率分布。
+
+**跨局聚合**：选择偏差分布（B2/B3/C1/C2 的 Δ±CI）、追加稽古按位置/时机倾向、同卡组近 N 局自我参照。
+
+**实现优先级**：P0 纯帧（健康 + B1/B4/B5/B6/B7 + C3/C4 + E7 + （1）（2）（4）（5）（6）实际值 + （3）swings 分解）→ P1 基线程序（分位与快慢/超预期）→ P2 `eval`（regret + CI，B2/B3/C1/C2）→ P3 跨局聚合。
+
+### 7.3 基线测量程序
+
+- 新 bin `baseline`（`matsuri-tools`）：`--games N --seed --uma --deck-profile --trainer --out`；
+- 先抽 `matsuri-sim` 的 pub `play()`（带逐回合回调），供 bench / baseline / P2 反事实共用；
+- 输出 `benchmark/baselines/acts_friend_<deck>_<uma>.json`（分位表 + 条件头：seed 块 / 局数 / 训练员 / 卡组 / 版本），stdout 一张汇总表；
+- 条件纪律：同卡组 / 同马娘 / 同训练员才可比；主基线用手写档 1000–3000 局，搜索档单独 20–50 局作对照。
 
 ---
 
@@ -323,15 +453,15 @@ luck_n   = ΔT(n) − regret_n                 ← 运气实现
 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
-| **P0-A 插件数据面** | 局包归档 + 终局帧 `review` 段（局边界/完整性/时间）+ `loads` 时间线（**不扩 actions、不加文件**） | §3.5 四条；6316/6317 真机复核 |
-| **P0-B 工具事实层** | `review open`：pack / replay / score / 简化 trajectory / decisions 命中 / brief + digest | 6316/6317 跑通；161 条 actions 全落候选表；终局估分与在线 `final` 一致；同输入两次逐位一致 |
+| **P0-A 插件数据面** | 局包归档 + 终局帧 `review` 段（局边界/完整性/时间）+ `loads` 时间线 + AI 标记收录（**不扩 actions**） | §3.5 四条；`game6324` 起的新协议真机复核 |
+| **P0-B 工具事实层** | `review open`：pack / replay / score / decisions 命中 / brief + digest | 用 `game6324.zip` 跑通；160 条 actions 全落候选表；同输入两次逐位一致 |
 | **P1-A 轨迹与形态** | 累计差曲线、step/ramp/sawtooth、伪信号标记、4 图报告 | 曲线终值 = 实际终局 − T(0)；标记回合不计损失；sawtooth 不标失误 |
 | **P1-B 估值与归因** | `eval`（regret + CI）、缓存、分环节归因（决策类型汇总） | CI 跨零一律「不可判定」；重算幂等；`pending` 不编数 |
-| **P1-C 重算一致性** | `curve --n 1024` 全量 + 与在线 sidecar 对账 | 同 seed 同配置逐候选差 = 0（N 相同时） |
-| **P1-D 技能** | `matsuri_review` 六个文件 | 用 6316/6317 走一遍 open→eval→report，产出 narrative 并注入 HTML |
+| **P1-C 技能** | `matsuri_review` 六个文件 | 用新协议局走一遍 open→eval→report，产出 narrative 并注入 HTML |
 | **P2（仅模拟局）** | `matsuri-sim` 提 pub `play()`（合并三份私有副本）+ 动作复演（E 线）+ 同 seed 多局 O 线 | O ≥ E；反事实给 3–5 回合主变线；不拼接局部最优 |
 
-> 依赖顺序：P0-A 与 P0-B 可并行（P0-B 先用散帧 + 老包降级路径）；P1-B 依赖 P0-B 的 facts；P1-C 依赖 P0-A（真机包）。
+> 依赖顺序：P0-A 与 P0-B 可并行（P0-B 先用 `6324` 的 zip 验证；无 zip 时读散帧）；P1-B 依赖 P0-B 的 facts。
+> **不做**（2026-11-14 拍板）：AI 估分与实际终局的对照、在线轨迹与重算轨迹的一致性——AI 估分本身有误差，这类一致性只作程序调试 hint，不进功能与验收。
 
 ---
 
@@ -340,9 +470,9 @@ luck_n   = ΔT(n) − regret_n                 ← 运气实现
 1. **统计功效**：单局 78 个决策点，单局结论近似噪声；跨局聚合才算手法，报告不写「水平 / 评级」。
 2. **真机不可复现**：不给上限、不做同随机流反事实；一切 `recomputed` 标估算。
 3. **插件闭包**：5 包成套；只升一个包会「调用不存在的方法」。
-4. **schema 演进**：帧字段改名（如 `illEffects` → `charaEffects`）会让老包不可比；`review.pluginVersion` 记版本，工具按版本分支。
+4. **只支持新协议**：帧字段一律按 `charaEffects` 后的契约解析；旧 `illEffects` 帧与无 `review` 段的老包不做兼容（直接报错）。
 5. **数据隐私**：局包含角色 id / 时间；只在本机留存，不入库、不外传。
-6. **老包兼容**：无 `review` 段 / 无 actions 的包必须能读，且标注降级；无 finalScore 的局判未终局。
+6. **未终局**：无 finalScore 的局判未终局；无 `ai-decision` 的局判「无 AI 标记」，不写“没开 AI”。
 7. **口径混用**：`online` 与 `recomputed` 不混比；不同 N 不混比。
 8. **插件进程状态**：`TurnSequence` / `FinalScoreWritten` / `ActionLog` 全在内存，插件重启后同回合序号从 1 重来、actions 只剩后半局；复盘按 `frame_count` 与 `missing_turns` 判残缺。
 9. **写盘路径**：`PluginData/SendGameStatusPlugin` 相对进程 CWD，宿主换工作目录时数据会落到别处；工具侧找不到包时提示而不是静默。
@@ -385,7 +515,7 @@ luck_n   = ΔT(n) − regret_n                 ← 运气实现
 | `crates/matsuri-tools/Cargo.toml` | 新增 `[[bin]] review`；依赖加 `matsuri-ai.workspace = true`、`serde.workspace = true`、`serde_json.workspace = true`（工作区已备；按纪律用 `cargo add` 而非手改） |
 | `src/bin/review.rs` | 子命令 `open`（首个）/`eval`/`curve`/`report`；参数沿用仓内 `std::env::args` 风格（与 `bench` 一致，不引 clap） |
 | `src/review/mod.rs` | 模块声明 + `ReviewError` + 共用类型（`Source`：`Measured/Online/Recomputed/Pending/Unavailable`） |
-| `src/review/pack.rs` | 输入解析：`records/game{id}.zip` 优先，否则散帧目录；局 → turn → 文件名排序；读 `finalScore.review` 段；老包按文件名 + mtime 降级 |
+| `src/review/pack.rs` | 输入解析：`game{id}.zip`（含旧 `records/` 位置）优先，否则散帧目录；局 → turn → 文件名排序；读 `finalScore.review` 段；无 `review` 段直接报错 |
 | `src/review/replay.rs` | `ParsedFrame::parse` → `to_base_game` → `MatsuriGame::restore` → 回合状态行（五维 / 体力 / 干劲 / 演目 / 教诲 / 合宿 / 比赛 / 技能点） |
 | `src/review/score.rs` | `calc_score` / `score_parts` / `rank_name` / 五维显示值（`DISPLAY_HALF_FROM_STATUS`） |
 | `src/review/facts.rs` | `facts.json`：逐回合状态 + 终局 + 每项 `source` 标记（`pending` 带 `turn/seq/kind/est_cost`） |
@@ -413,3 +543,5 @@ luck_n   = ΔT(n) − regret_n                 ← 运气实现
 4. 阻塞项：D5 的 `records/` 目录约定（默认按建议值先落，若改只需换常量）、D1 保留策略（默认不删）。
 
 **落地状态（2026-11-13 首切片）**：`review open` 已实现并在真机 6316 散帧上跑通——131 帧 / T0–T77 / 终局 81361（LG8）/ 155 条 actions / 0 解析失败；两次运行 `facts.json` 与 `brief.md` 逐字节一致。当前输出 `facts.json`（逐回合事实 + 终局 + 检查项 + pending）与 `brief.md`（§0/§1/§5/§7 + pending）。待补：zip 输入、`eval` / `curve` / `report`、`--game` 选择（多局混放）、末帧体力上限字段。
+
+**落地状态（2026-11-14 第二切片）**：`review open` 支持目录与局包 zip（`zip` 依赖已登记）；`--game` 可多局混放时选局；旧协议帧（`illEffects`）直接报错。真机 `game6324.zip`：132 帧 / T0–T77 / 终局 77932（LG3）/ 160 条 actions / 0 解析失败；两次输出 hash 一致。`game6323` 散帧（无终局）正确判「未终局」并给 `no_final` 警告。

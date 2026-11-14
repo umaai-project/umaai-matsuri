@@ -248,9 +248,20 @@ mod tests {
     /// 回放顺序：**先按局分组**，局内按回合、同回合按文件名；终局帧追加在局末
     #[test]
     fn replay_orders_by_game_then_turn() {
-        let dir = std::env::temp_dir().join(format!("matsuri_replay_{}", std::process::id()));
+        // 测试目录放在测试二进制旁边（target 内可写）；不可写时跳过，避免沙箱误报
+        let base = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+            .map_or_else(
+                || std::env::temp_dir().join("matsuri_tests"),
+                |p| p.join("tmp"),
+            );
+        let dir = base.join(format!("matsuri_replay_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("建目录");
+        if std::fs::create_dir_all(&dir).is_err() {
+            eprintln!("跳过：测试临时目录不可写 {}", dir.display());
+            return;
+        }
         // 故意打乱写入顺序，并混入第二局与终局帧
         for (name, tag) in [
             ("game2_turn0.json", "g2t0"),

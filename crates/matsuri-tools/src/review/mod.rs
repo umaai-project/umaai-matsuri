@@ -3,7 +3,7 @@
 //! 本模块只做「读局包 → 还原 → 出事实」：不跑搜索、不重算估值。
 //! 需要 T(n) / regret 的回合标 `pending`，由后续 `review eval` 按需补。
 //!
-//! 输入优先级：局目录（散帧 + finalScore）→ 后续再支持 zip。
+//! 输入：局目录（散帧 + finalScore）或局包 zip，两者同一条解析路径。
 
 pub mod brief;
 pub mod discover;
@@ -21,8 +21,10 @@ use facts::{Facts, open_session};
 
 /// `review open` 参数
 pub struct OpenArgs<'a> {
-    /// 局目录（含 `game{id}_turn*.json` 与 `game{id}_finalScore.json`）
+    /// 局目录或局包 zip（含 `game{id}_turn*.json` 与 `game{id}_finalScore.json`）
     pub input: &'a Path,
+    /// 多局混放时指定局号；`None` = 取帧数最多的一局
+    pub game: Option<u64>,
     /// 输出目录；`None` = `<input>/review`
     pub out: Option<&'a Path>,
     /// 数据根；`None` = 仓内 `data/`
@@ -31,7 +33,7 @@ pub struct OpenArgs<'a> {
 
 /// 跑事实层并落盘 `facts.json` / `brief.md`，返回输出目录
 pub fn open(args: OpenArgs<'_>) -> Result<PathBuf> {
-    let files = GameFiles::scan(args.input)?;
+    let files = GameFiles::scan(args.input, args.game)?;
     let data_root = args
         .data_root
         .map_or_else(|| matsuri_core::testing::data_dir(), Path::to_path_buf);
@@ -42,9 +44,16 @@ pub fn open(args: OpenArgs<'_>) -> Result<PathBuf> {
     let mut session = open_session(&engine, data, config)?;
 
     let facts = Facts::build(&files, &mut session)?;
-    let out = args
-        .out
-        .map_or_else(|| args.input.join("review"), Path::to_path_buf);
+    let out = args.out.map_or_else(
+        || {
+            if args.input.is_dir() {
+                args.input.join("review")
+            } else {
+                args.input.with_extension("review")
+            }
+        },
+        Path::to_path_buf,
+    );
     std::fs::create_dir_all(&out)?;
     std::fs::write(
         out.join("facts.json"),

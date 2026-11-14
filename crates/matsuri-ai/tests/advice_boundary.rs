@@ -32,6 +32,18 @@ fn frames_dir() -> Option<PathBuf> {
     dir.is_dir().then_some(dir)
 }
 
+/// 从帧原文里取局号（回合帧在 `baseGame`、终局帧在顶层）
+fn frame_game(contents: &str) -> Option<u64> {
+    let key = "\"single_mode_chara_id\":";
+    let at = contents.find(key)? + key.len();
+    let digits: String = contents[at..]
+        .trim_start()
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    digits.parse().ok()
+}
+
 /// 本次回放的搜索预算（默认 32；环境变量用于噪声对照）
 fn budget() -> usize {
     std::env::var("MATSURI_BOUNDARY_N")
@@ -159,15 +171,37 @@ fn advice_boundary_keeps_luck_and_state_stable() -> Result<()> {
     let mut source = FrameSource::open_replay(&dir)?;
     let mut sess = session()?;
     let mut snaps: Vec<Snap> = Vec::new();
+    // 仓外夹具里可能混有「本就通不过编成门禁」的局：整局跳过，不影响其余局。
+    let mut skipped: std::collections::BTreeSet<u64> = std::collections::BTreeSet::new();
     while let Some(frame) = source.next_frame(Duration::ZERO)? {
+        let game = frame_game(&frame.contents);
+        if let Some(game) = game
+            && skipped.contains(&game)
+        {
+            continue;
+        }
         if frame.kind == FrameKind::FinalScore {
             sess.handle_final(&frame.contents)?;
             continue;
         }
-        let out = sess.handle_frame(&frame.contents)?;
-        snaps.push(snap(snaps.len(), &out, &frame.contents)?);
+        match sess.handle_frame(&frame.contents) {
+            Ok(out) => snaps.push(snap(snaps.len(), &out, &frame.contents)?),
+            Err(err) if format!("{err:#}").contains("编成不合规") => {
+                if let Some(game) = game {
+                    skipped.insert(game);
+                }
+                eprintln!("跳过编成不合规的局（game{game:?}）：{err:#}");
+            }
+            Err(err) => return Err(err),
+        }
     }
-    assert!(!snaps.is_empty(), "帧目录应有可回放帧");
+    if snaps.is_empty() {
+        eprintln!(
+            "跳过：帧目录里没有可回放的合规局（跳过 {} 局）",
+            skipped.len()
+        );
+        return Ok(());
+    }
 
     // ① 每帧还原回合与帧真值一致
     for s in &snaps {

@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use matsuri_ai::{OnlineSession, TrainerKind, parse_final_score};
 use matsuri_core::{DISPLAY_HALF_FROM_STATUS, MatsuriConfig, MatsuriData};
 use serde::Serialize;
@@ -166,10 +166,8 @@ impl Facts {
     pub fn build(files: &GameFiles, session: &mut OnlineSession) -> Result<Self> {
         let mut turns = Vec::new();
         let mut failed = Vec::new();
-        for path in &files.frames {
-            let text = std::fs::read_to_string(path)
-                .with_context(|| format!("读取帧失败：{}", path.display()))?;
-            match session.handle_frame(&text) {
+        for frame in &files.frames {
+            match session.handle_frame(&frame.contents) {
                 Ok(out) => {
                     let view = out.view;
                     let score = out.game.search_score(1.0).unwrap_or(f64::NAN);
@@ -202,21 +200,17 @@ impl Facts {
                     });
                 }
                 Err(error) => {
-                    failed.push(format!(
-                        "{}: {error}",
-                        path.file_name().and_then(|n| n.to_str()).unwrap_or("?")
-                    ));
+                    failed.push(format!("{}: {error}", frame.name));
                 }
             }
         }
 
-        let (final_score, review) = match files.final_frame.as_deref() {
-            Some(path) => {
-                let text = std::fs::read_to_string(path)
-                    .with_context(|| format!("读取终局帧失败：{}", path.display()))?;
-                let frame = parse_final_score(&text)?;
-                let out = session.handle_final(&text)?;
-                let raw: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+        let (final_score, review) = match files.final_frame.as_ref() {
+            Some(final_frame) => {
+                let text = &final_frame.contents;
+                let frame = parse_final_score(text)?;
+                let out = session.handle_final(text)?;
+                let raw: Value = serde_json::from_str(text).unwrap_or(Value::Null);
                 let review = raw.get("review").cloned();
                 let fact = match (out.accepted, out.score, out.rank) {
                     (true, Some(score), Some(rank)) => Some(FinalFact {
@@ -254,7 +248,7 @@ impl Facts {
         Ok(Self {
             game: files.game,
             source: SourceFact {
-                kind: "frames".to_string(),
+                kind: files.source.clone(),
                 frames: files.frames.len(),
             },
             coverage: Coverage {

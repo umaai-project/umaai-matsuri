@@ -30,6 +30,18 @@ fn frames_dir() -> Option<PathBuf> {
     dir.is_dir().then_some(dir)
 }
 
+/// 从帧原文里取局号（回合帧在 `baseGame`、终局帧在顶层）
+fn frame_game(contents: &str) -> Option<u64> {
+    let key = "\"single_mode_chara_id\":";
+    let at = contents.find(key)? + key.len();
+    let digits: String = contents[at..]
+        .trim_start()
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    digits.parse().ok()
+}
+
 fn budget() -> usize {
     std::env::var("MATSURI_DIAG_N")
         .ok()
@@ -171,17 +183,42 @@ fn diag_advice_window_shift() -> Result<()> {
     let (mut sess, cfg) = session(1)?;
     let mut source = FrameSource::open_replay(&dir)?;
     let mut snaps: Vec<(i32, usize, String, String, MatsuriGame)> = Vec::new();
+    // 仓外夹具可能混有通不过编成门禁的局：整局跳过，不影响其余局。
+    let mut skipped: std::collections::BTreeSet<u64> = std::collections::BTreeSet::new();
     while let Some(frame) = source.next_frame(Duration::ZERO)? {
         if frame.kind == FrameKind::FinalScore {
             continue;
         }
-        let out = sess.handle_frame(&frame.contents)?;
+        let game = frame_game(&frame.contents);
+        if let Some(game) = game
+            && skipped.contains(&game)
+        {
+            continue;
+        }
+        let out = match sess.handle_frame(&frame.contents) {
+            Ok(out) => out,
+            Err(err) if format!("{err:#}").contains("编成不合规") => {
+                if let Some(game) = game {
+                    skipped.insert(game);
+                }
+                eprintln!("跳过编成不合规的局（game{game:?}）：{err:#}");
+                continue;
+            }
+            Err(err) => return Err(err),
+        };
         let kind = out
             .record
             .as_ref()
             .map_or_else(|| "skipped".to_string(), |r| r.kind.clone());
         let skip = out.skip_reason.clone().unwrap_or_default();
         snaps.push((out.turn, snaps.len(), kind, skip, out.game.clone()));
+    }
+    if snaps.is_empty() {
+        eprintln!(
+            "跳过：帧目录里没有可回放的合规局（跳过 {} 局）",
+            skipped.len()
+        );
+        return Ok(());
     }
     println!("=== 回放 {} 帧；评估预算 N={n} ===", snaps.len());
     let find =

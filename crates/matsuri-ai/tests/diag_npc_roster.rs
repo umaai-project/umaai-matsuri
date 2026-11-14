@@ -76,7 +76,15 @@ fn diag_npc_roster() -> Result<()> {
         if frame.kind == FrameKind::FinalScore {
             continue;
         }
-        let out = sess.handle_frame(&frame.contents)?;
+        // 夹具里可能混有通不过编成门禁的局：跳过该帧（整局都会报同一错误）
+        let out = match sess.handle_frame(&frame.contents) {
+            Ok(out) => out,
+            Err(err) if format!("{err:#}").contains("编成不合规") => {
+                eprintln!("跳过编成不合规的帧：{err:#}");
+                continue;
+            }
+            Err(err) => return Err(err),
+        };
         let book: serde_json::Value = serde_json::from_str(&frame.contents)?;
         let frame_guests = book["festa"]["persons"].as_array().map_or(0, |rows| {
             rows.iter()

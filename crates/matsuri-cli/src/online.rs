@@ -30,6 +30,7 @@ use umaai::{Config, FrameKind, LuckAttach};
 use umaai_cli::render::term;
 use umaai_core::Data;
 
+use crate::ai_trace::AiTrace;
 use crate::logging;
 use crate::panel::{BoardPanel, choice_effect_label, paint};
 
@@ -81,6 +82,11 @@ pub fn run(args: Args) -> Result<()> {
         None if search_n > 0 => TrainerKind::Search,
         None => TrainerKind::Hand,
     };
+    let ai_mode = if trainer.is_search() {
+        "search"
+    } else {
+        "hand"
+    };
     if !args.json {
         eprintln!(
             "在线档：训练员 {}（[search].search_n = {search_n}；0 = 手写）",
@@ -93,6 +99,7 @@ pub fn run(args: Args) -> Result<()> {
     }
     let mut session = OnlineSession::new(&cfg, data, matsuri_cfg, trainer, args.verify)?;
 
+    let mut live_root: Option<PathBuf> = None;
     let mut source = match &args.replay {
         Some(dir) => FrameSource::open_replay(dir)
             .with_context(|| format!("打开回放目录失败：{}", dir.display()))?,
@@ -101,10 +108,12 @@ pub fn run(args: Args) -> Result<()> {
             if !args.json {
                 eprintln!("监听真机帧目录：{}", umaai::plugin_dir(&root).display());
             }
+            live_root = Some(root.clone());
             FrameSource::open_live(&root)?
         }
     };
     let replay = source.is_replay();
+    let mut ai_trace = AiTrace::default();
 
     // 面板：JSON 模式一律关色（stdout 只允许 JSON）；在线档用精简档（不显示演目分配表）
     let color = term::use_color(args.json);
@@ -173,6 +182,15 @@ pub fn run(args: Args) -> Result<()> {
                             decisions += 1;
                         }
                         render(&mut stdout, &output, args.json, color)?;
+                        if let Some(root) = &live_root {
+                            ai_trace.observe(&output);
+                            if output.view.turn.turn == output.view.turn.max_turn
+                                && let Err(err) =
+                                    ai_trace.flush(&output, &umaai::plugin_dir(root), ai_mode)
+                            {
+                                log::debug!("写 AI 决策标记失败：{err:#}");
+                            }
+                        }
                     }
                     Err(err) => {
                         // 真机档单帧失败不终止循环（等下一帧）；回放档累计后在结束时报错

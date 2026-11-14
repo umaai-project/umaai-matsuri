@@ -1060,6 +1060,7 @@ dependencies = [
  "umaai",
  "umaai-core",
  "umasim",
+ "zip",
 ]
 
 [[package]]

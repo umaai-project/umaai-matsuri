@@ -391,6 +391,14 @@ fn clip(detail: &str) -> String {
 mod tests {
     use super::*;
 
+    /// 测试临时目录：放测试二进制旁边（target 内可写），沙箱下系统临时目录不可写
+    fn temp_base() -> std::path::PathBuf {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+            .map_or_else(|| std::env::temp_dir(), |p| p.join("tmp-tests"))
+    }
+
     /// 造一份四频道结论
     fn status(
         program: ChannelState,
@@ -519,7 +527,7 @@ mod tests {
     fn plugins_channel_offline_roundtrip() {
         use umaai_update::{Source, TestTransport, sha256_hex};
 
-        let dir = std::env::temp_dir().join(format!("matsuri-plugins-{}", std::process::id()));
+        let dir = temp_base().join(format!("matsuri-plugins-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let plugins = dir.join(PORTABLE_DIR).join("Plugins");
         std::fs::create_dir_all(&plugins).unwrap();

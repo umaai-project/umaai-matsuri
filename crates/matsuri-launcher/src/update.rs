@@ -317,6 +317,14 @@ pub(super) fn confirm() -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 测试临时目录：放测试二进制旁边（target 内可写），沙箱下系统临时目录不可写
+    fn temp_base() -> std::path::PathBuf {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+            .map_or_else(|| std::env::temp_dir(), |p| p.join("tmp-tests"))
+    }
     use umaai_update::FileEntry;
 
     /// 构造一个指定文件集的检查结果
@@ -405,7 +413,7 @@ mod tests {
     fn plugins_channel_install_offline() {
         use umaai_update::{Options, Source, TestTransport, sha256_hex, update};
 
-        let dir = std::env::temp_dir().join(format!("matsuri-plugin-inst-{}", std::process::id()));
+        let dir = temp_base().join(format!("matsuri-plugin-inst-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let plugins = dir.join(PORTABLE_DIR).join("Plugins");
         let runtime = dir

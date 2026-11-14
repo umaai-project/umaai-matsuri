@@ -83,11 +83,13 @@ workspace 六 crate：
   手写训练员三档（21101 / 12101 / 11102）由 CMA-ES 联合调参（`scripts/ga_trainer.py`，需 numpy），
   再经搜索档 N=8192 配对验收（`scripts/search_check.py`）后定档。
   方案与结果见 [`docs/plan/deck_param_scan.md`](docs/plan/deck_param_scan.md) §9–§10。
-- **复盘（事实层）**：`matsuri-tools` 新增 `review` bin：`review open <帧目录>` 读局帧 → `facts.json` /
-  `brief.md`（逐回合事实、终局、检查项、`pending` 待重算项）；**不跑搜索、不做估值**（`eval` / `curve` /
-  `report` 按需补）。真机 `game6316` 已跑通（131 帧 / T0–T77 / 终局 81361（LG8）/ 0 解析失败），
-  两次输出逐字节一致。数据面与口径见
-  [`docs/plan/review_tool_plan_2026-11-13.md`](docs/plan/review_tool_plan_2026-11-13.md)。
+- **复盘（事实层）**：`matsuri-tools` 新增 `review` bin：`review open <局目录|局包.zip> [--game id]`
+  读局帧 → `facts.json` / `brief.md`（逐回合事实、终局、检查项、`pending` 待重算项）；
+  **不跑搜索、不做估值**（`eval` / `curve` / `report` 按需补）。只吃新协议帧（`charaEffects`），
+  旧 `illEffects` 帧直接报错。真机 `game6324.zip` 已跑通（132 帧 / T0–T77 / 终局 77932（LG3）/
+  160 条 actions / 0 解析失败），两次输出 hash 一致；AI 在场标记 `game{id}_ai-decision.json` 由
+  `matsuri online` 在 T77 帧写入、插件收进局包。判据、统计点与基线程序见
+  [`docs/plan/review_tool_plan_2026-11-13.md`](docs/plan/review_tool_plan_2026-11-13.md) §7。
 
 ## 快速开始
 
@@ -113,8 +115,9 @@ cargo run --release --bin matsuri -- online --help
 ./target/release/cardtest run --decks benchmark/_local/scan/candidates.csv \
   --matsuri-config benchmark/_local/scan/scan.toml --ref ref_stamina --games 5000 --seed 87000
 
-# 复盘（事实层；输入为含 game{id}_turn*.json + finalScore 的局目录）
+# 复盘（事实层；输入可以是局目录，也可以是插件产出的局包 zip）
 ./target/release/review open <帧目录> --out <输出目录>
+./target/release/review open <game{id}.zip> --game 6324 --out <输出目录>
 ```
 
 主要环境变量：`MATSURI_SEARCH_N`、`MATSURI_SEARCH_RADICAL`、`MATSURI_EXPLAIN`、`MATSURI_ROOT`。

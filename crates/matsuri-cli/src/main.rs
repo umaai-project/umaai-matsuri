@@ -8,6 +8,7 @@
 //! （缺省 `matsuri`；可切 `random`——引擎随机基线、`manual`——机制核对面板（人工逐决策）；
 //! 数据根是代码级配置 [`DATA_ROOT`]，不暴露在命令行）
 
+mod ai_trace;
 mod explain;
 mod logging;
 mod manual;

@@ -43,6 +43,7 @@ log.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+zip.workspace = true
 
 # 仅 `--features profile`：SIGPROF 采样 + SVG 火焰图（不依赖 perf_event / root）
 pprof = { version = "0.15.0", features = ["flamegraph"], optional = true }

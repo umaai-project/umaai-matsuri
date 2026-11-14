@@ -43,7 +43,7 @@ pub fn render(facts: &Facts) -> String {
         if facts.coverage.has_review {
             "有"
         } else {
-            "无（老包）"
+            "无（未终局或无终局帧）"
         },
         facts.coverage.failed_frames.len()
     );

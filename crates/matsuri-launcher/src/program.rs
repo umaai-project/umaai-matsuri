@@ -501,6 +501,14 @@ fn signature_of(path: &Path) -> Result<(String, String)> {
 mod tests {
     use super::*;
 
+    /// 测试临时目录：放测试二进制旁边（target 内可写），沙箱下系统临时目录不可写
+    fn temp_base() -> std::path::PathBuf {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+            .map_or_else(|| std::env::temp_dir(), |p| p.join("tmp-tests"))
+    }
+
     /// 造一份最小清单（files 为白名单全集）
     fn manifest(name: &str, files: &[&str]) -> ProgramManifest {
         ProgramManifest {
@@ -560,7 +568,7 @@ mod tests {
     /// 待更新判定：缺失算待更新，写入相同内容后不再待更新
     #[test]
     fn pending_detects_missing_and_matching() {
-        let dir = std::env::temp_dir().join(format!("matsuri-program-{}", std::process::id()));
+        let dir = temp_base().join(format!("matsuri-program-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join("data")).unwrap();
         let body = b"hello";
@@ -589,7 +597,7 @@ mod tests {
     /// 解压时拒绝清单外条目
     #[test]
     fn extract_rejects_entry_outside_whitelist() {
-        let dir = std::env::temp_dir().join(format!("matsuri-program-zip-{}", std::process::id()));
+        let dir = temp_base().join(format!("matsuri-program-zip-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let zip_path = dir.join("app.zip");
@@ -613,8 +621,7 @@ mod tests {
     /// 替换成功后旧文件留在同目录 `.old`
     #[test]
     fn install_keeps_old_backup() {
-        let dir =
-            std::env::temp_dir().join(format!("matsuri-program-install-{}", std::process::id()));
+        let dir = temp_base().join(format!("matsuri-program-install-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let install_dir = dir.join("app");
         let extract = dir.join("new");
@@ -653,8 +660,7 @@ mod tests {
     /// 成功后清理临时目录与非启动器 `.old`；启动器自身留给新进程
     #[test]
     fn cleanup_removes_temp_and_old() {
-        let dir =
-            std::env::temp_dir().join(format!("matsuri-program-clean-{}", std::process::id()));
+        let dir = temp_base().join(format!("matsuri-program-clean-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let install_dir = dir.join("app");
         fs::create_dir_all(install_dir.join(WORK_ROOT).join(TEMP_DIR).join("extract")).unwrap();
@@ -679,7 +685,7 @@ mod tests {
     /// 中途失败回滚已替换项（第二个源文件缺失）
     #[test]
     fn install_rolls_back_on_failure() {
-        let dir = std::env::temp_dir().join(format!("matsuri-program-rb-{}", std::process::id()));
+        let dir = temp_base().join(format!("matsuri-program-rb-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let install_dir = dir.join("app");
         let extract = dir.join("new");
