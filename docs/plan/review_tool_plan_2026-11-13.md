@@ -318,7 +318,7 @@ luck_n   = ΔT(n) − regret_n                 ← 运气实现
 | B2 | 教诲落位 vs 建议 | 先比「实际落位」与「建议落位」的**同局面估分差**（配对 CI）：跨零 → 同等优解、不算问题；显著 → 再结合终局五维 / PT 分项解释（可能评分低但 PT 或某维更高） | 帧 `advice_slots` 反推 + 重算两者期望分 | **collect** | 复杂，先收集数据（见下） |
 | B3 | 転成选择 vs 预设 | 同 B2：实际融合 vs AI 预设/候选的估分差 + CI；显著时同样看五维/PT | 帧 `advice_fused` + `fusion` 预设 | **collect** | 同上，先收集数据 |
 | B4 | **合宿延长** | 列出本局所有 `camp.extended = true` 的回合（不是“缺席”）；附每年延长回合数 | 帧 `camp.extended` / `camp.counted` | info | 可做 |
-| B5 | 必赛未赢 | `goal_races` 回合不在 `raceHistory` | 帧 `raceHistory` + `schedule` | **warn** | 可做（警告，不是问题） |
+| B5 | 必赛未跑（退赛） | 目标赛回合不在 `raceHistory` → 该赛未跑；**帧无名次，输赢不可判**（不写“未赢”） | 帧 `raceHistory` / `isRacing` + `umaDB.races` | **暂缓** | 2026-11-14 用户：**不查 B5**（基期对账也停）；保留条目备后续 |
 | B6 | 体力线硬练 | 回合末 `vital < 32` 且当回合无 0% 失败训练（守门④） | 帧 `vital` + 训练表 | **gate** | 可做（门禁检查点） |
 | B7 | 干劲掉落未恢复 | 掉落后 3 回合无出行/休息且未回升 | 帧 `motivation` 序列 | **gate** | 可做（门禁检查点） |
 | — | 演目槽满未稽古 / 神驹缺席 / URA 决赛输 | — | — | — | **不检测**（2026-11-14 拍板） |
@@ -373,26 +373,32 @@ E7（自选赛打满时机，info）：逐区间列出「required 场数 / 实�
 
 **（2）友人出行**
 
-- 三个判定：A 出道赛前解锁（`umaDB[uma].races[0]`，105902 = T11）；B 第一年（T23 前）走完 5 段；C 收益陈述（每段 +1 最低演目 Lv，最多 +5）。
-- 取数：`friend.out_state / out_used[5] / next_step`；解锁回合 = 首次进入“已解锁”，完成回合 = 5 段全 true。
-- 级别 warn；解锁有概率，不写“失误”。
+- 两条 warn（2026-11-14 拍板，均不判“损失”，措辞用“注意”）：
+  - B 第一年段数：T23 前已走段数 < 4 →「第一年只走了 N/5 段」；
+  - C 截止线：T36 前未走满 5 段 →「T36 前只走完 N/5 段」（合宿 36–39 / 60–63 与 URA 会挤压可用回合）。
+- 解锁时点**不作判据**（2026-11-14 取消）：解锁是首次点击后的羁绊概率判定，随机性大；只记录「解锁回合 / 各段回合 / 走满回合」作陈述。
+- 收益陈述（info）：每段 +1 最低演目 Lv，最多 +5；不折算分数。
+- 取数：`friend_stage / friend_outgoingUsed`（0/1/2 = UnClicked / BeforeUnlock / AfterUnlock）或 `friend.out_used[5]`；完成回合 = 5 段全 true。
+- 基线触发率（2048×50）：T36 前走满 speed 手写 50/50、搜索 45/50，wisdom 手写 50/50、搜索 37/50；T23 前 ≥4 段 手写 44–47/50、搜索 28–34/50。
 
 **（3）运气波动**
 
 - `swings`：ΔT 分解为 `score_parts` 七分量（五维 + PT + skill）+ 状态差分；标签 `机制 / 局面 / 操作 / 混合`。
 - 判定优先级：机制结算 → `regret` 的 CI（`eval` 后）→ 状态驱动启发式（属性/PT 由随机判定驱动=局面；体力/干劲/技能点由选择驱动=操作）。
-- 结构性落后：`gap_k(t) = 实际累计增量 − 基线中位累计增量`；拆成**练得少 / 练得差 / 练得晚**；阴跌段（5 回合窗口累计 ΔT < −300）与 gap 对齐归因。
-- 超/未达预期：仅训练回合，期望增量取在线候选或基线分位。
+- 阴跌段：只陈述「5 回合窗口累计 ΔT < −300」的时段与对应状态变化，归因到机制 / 随机 / 选择三类启发式。
+- **不做属性 gap 与“超/未达预期”**（2026-11-14 用户：每维每回合累计增量分位无法获得，不作为判据）。
 
 **（4）继承质量**
 
-- 已知口径：模拟约 **400 点/次**（两次 ≈ 800），真机常达不到 → 继承回合 `T(n)` 下移属**正常波动**，不判操作；≥p75 记“运气好”。
-- 输出 `inherit[]`：`turn(30/54) / total / baselineMedian / percentile / verdict / luckImpact / gains / limitGains`。
+- 已知口径：模拟约 **400 点/次**（两次 ≈ 800），真机常达不到 → 继承回合 `T(n)` 下移属**正常波动**，不判操作。
+- **不做分位判定**（2026-11-14 用户：inheritGains 分布无法获得）：只出实际值（两次各自总量 + 各维明细 + 上限增量）与可配置标准（默认 400/次）的对照陈述。
+- **该标准做成代码可配置**（2026-11-14 用户：后续可能调整）：不硬编码判据，放在 review 侧 tuning（默认 400/次，可被 CLI 参数覆盖）；不改 `matsuri_config.toml`（避免污染游戏配置与内置默认锁）。
+- 输出 `inherit[]`：`turn(30/54) / total / expectedStandard / delta / gains / limitGains`（不做分位与 verdict）。
 
 **（5）追加稽古**
 
 - **以触发事件为准**：`actions.check_event.event_id = 400015106`（name 追加の稽古；choice1 = 加练 −5 体/智+20/羁绊+5，choice2 = 休息 +5 体）。
-- 位置：触发时帧 `kensan_act / kensan_rate`（仅标注，不参与识别）；`phase`（普通/合宿/URA）、`slotFull`。
+- 位置：`kensan_act`（研鑽演目）+ `kensan_rate`。**未転成 701 时 `kensan_act = None`，此时不会触发追加稽古**，所以位置直接取该值，不必回看上一回合训练（2026-11-14 更正）。
 - 执行：选 1 后下一帧该演目是否真的走稽古（`practice[act]` 且 `ActTrain`）。
 - 输出 `kensan.triggers[]` + `total/add/rest/executed/wasted` + `byAct/byPhase`；倾向跨局聚合。
 
@@ -405,13 +411,13 @@ E7（自选赛打满时机，info）：逐区间列出「required 场数 / 实�
 
 ### 7.2 统计点清单
 
-**逐局（`facts.json`）**：数据健康 4 条；机制 B1/B4/B5/B6/B7；决策 C3/C4 + E7；剧本（1）曲线/节点/稽古次数/卡位、（2）出行状态、（3）swings 分解、（4）继承实际值、（5）追加稽古明细、（6）状态资源。
+**逐局（`facts.json`）**：数据健康 4 条；机制 B1/B4/B6/B7（B5 暂缓）；决策 C3/C4 + E7；剧本（1）曲线/节点/稽古次数/卡位、（2）出行状态、（3）swings 分解、（4）继承实际值、（5）追加稽古明细、（6）状态资源。
 
-**基线（`baseline` 程序）**：每维每回合累计增量分位、演目节点 Lv 与到达回合分位、友人解锁/完成回合分位与通过率、继承单次总量分位、追加稽古触发频率分布。
+**基线（`baseline` 程序）**：演目节点 Lv 与到达回合分位、友人解锁/完成回合分位与通过率、追加稽古触发频率分布。**不采**每维增量分位与继承分布（2026-11-14 用户：无法获得，不作判据）。
 
 **跨局聚合**：选择偏差分布（B2/B3/C1/C2 的 Δ±CI）、追加稽古按位置/时机倾向、同卡组近 N 局自我参照。
 
-**实现优先级**：P0 纯帧（健康 + B1/B4/B5/B6/B7 + C3/C4 + E7 + （1）（2）（4）（5）（6）实际值 + （3）swings 分解）→ P1 基线程序（分位与快慢/超预期）→ P2 `eval`（regret + CI，B2/B3/C1/C2）→ P3 跨局聚合。
+**实现优先级**：P0 纯帧（健康 + B1/B4/B6/B7 + C3/C4 + E7 + （1）（2）（4）（5）（6）实际值 + （3）swings 分解）→ P1 基线程序（Lv/出行分位与快慢）→ P2 `eval`（regret + CI，B2/B3/C1/C2）→ P3 跨局聚合。
 
 ### 7.3 基线测量程序
 
@@ -545,3 +551,30 @@ E7（自选赛打满时机，info）：逐区间列出「required 场数 / 实�
 **落地状态（2026-11-13 首切片）**：`review open` 已实现并在真机 6316 散帧上跑通——131 帧 / T0–T77 / 终局 81361（LG8）/ 155 条 actions / 0 解析失败；两次运行 `facts.json` 与 `brief.md` 逐字节一致。当前输出 `facts.json`（逐回合事实 + 终局 + 检查项 + pending）与 `brief.md`（§0/§1/§5/§7 + pending）。待补：zip 输入、`eval` / `curve` / `report`、`--game` 选择（多局混放）、末帧体力上限字段。
 
 **落地状态（2026-11-14 第二切片）**：`review open` 支持目录与局包 zip（`zip` 依赖已登记）；`--game` 可多局混放时选局；旧协议帧（`illEffects`）直接报错。真机 `game6324.zip`：132 帧 / T0–T77 / 终局 77932（LG3）/ 160 条 actions / 0 解析失败；两次输出 hash 一致。`game6323` 散帧（无终局）正确判「未终局」并给 `no_final` 警告。
+
+**落地状态（2026-11-14 第三切片）**：新增 `crates/matsuri-tools/src/review/derive.rs`（帧 diff 反推），事实层扩到 P0 机制门禁。
+- 反推：教诲落位（同回合多帧按回合末折叠，避免一次分配拆成两轮）、転成、学技能（用帧原值 `skillPt`，不是回加 `skillPtSpent` 的口径）、追加稽古（`storyId = 400015106`；插件未采集该事件的 `check_event`，选择标不可判并陈述同回合训练命令）、终局 `actions` 归类、训练回合与帧预览**按命令 id 精确匹配**（命令 id 与 `baseGame.training` 键同源，6324 57/57）、继承逐次。
+- 判据：数据健康 4 条（无终局 / 缺回合 / 解析失败 / 终局帧无 `review` 段）+ B1 / B4 / B6 / B7 / C3 / C4。B1 在「局没打到该回合」时不判（6323 只到 T15 不再误报 T23/47/67）；C4 只在正常终局判。
+- 回归：`game6324.zip`（132 帧）终局 77932 / 训练 57 次（稽古 37、普通 20、失败 0）/ 追加稽古触发 15 次 / 检查项仅「末帧仍有 1 次助力支撑未用」；`game6323` 散帧（26 帧、无终局）只报 `no_final`。
+- 待补：B2 / B3 / C1 / C2 需 `eval`（regret + CI）；E7 与剧本专属 (1)(2)(3)(4)(5)(6) 为下一刀；`review/tuning.rs` 与 `review infer` 子命令未开工。
+
+**落地状态（2026-11-14 第六切片）**：曲线 / 报告 / 技能文件。
+- `review curve <局> [--from A] [--to B] [--n] [--force]`：复用 eval 逐点（带缓存），输出 `curve.json`（points + summary：首末 T(n)、最大单步跌幅、形态 step/ramp/sawtooth/flat、终局 − 末点 T(n)）。
+- `review report <局> [--narrative md]`：合并 facts + 已缓存 eval/curve → `digest.json` + `report.html`（4 张内嵌 SVG：分数轨迹 / 五维 / eval 点 best-chosen / 决策构成；`narrative.md` 注入叙事区，转义后展示）。
+- 技能文件落在 `skills/matsuri_review/`：`SKILL.md` + `reference/{metrics_glossary,pitfalls,persona,probe_prompts,uma_specific}.md`（工作流、口径、坑位、平实口吻、追问模板、马娘相关）。
+- 实测 `game6324`：`eval --all`（N=64）78 点 → 显著 5 / 跨零 47 / 不可判 26；`curve --from 20 --to 40` 21 点、形态 sawtooth、终局 − 末点 −814；`report` 22 KB / 4 图。
+
+**落地状态（2026-11-14 第五切片）**：事实层补齐剧本专属判据，并补 `infer` 与 `eval --all`。
+- `review/tuning.rs`：`Tuning { inherit_expect: 400.0 }`（模拟口径约 400/次），`open --inherit-expect` 覆盖；不进 `matsuri_config`。判据 (4) 只出实际值 + 标准对照（`script.inherit`），不做 verdict。
+- `facts.script` 新增：演目节点 / 局末 Lv / 稽古次数 / 卡位（判据 1）、出行段回合与 T23/T36 两条 warn（判据 2）、5 回合阴跌窗口（判据 3）、继承对照（判据 4）、状态资源（判据 6）、自选赛进度（E7，info）。
+- `review infer <局> [--what advice,fusion,skill,kensan|all] [--turn N] [--json]`：与 `open` 共用事实层，只写 `infer.json` + 摘要。
+- `review eval --all`：本局每个有决策面的回合逐点重算，汇总「显著 / 跨零 / 不可判」。
+- 实测 `game6324`：演目1 节点 T7→Lv10、演目4 无卡位只到 Lv6；出行 5/5（T10/11/13/19/22，走满 T22）；继承 T30 216（Δ−184）、T54 150（Δ−250）；状态 小切 / 盾 1 / 幸运 1；自选赛 T12–T26 1/1（达标 T23）；`eval --all` 78 点 → 显著 9 / 跨零 43 / 不可判 26（不可判主要是强制比赛回合走 fallback 与多事件回合）。
+
+**落地状态（2026-11-14 第四切片）**：新增 `review eval`（单点重算）与 rollout 健康度检测。
+- 入口：`review eval <局目录|zip> --turn N [--seq k] [--n 1024] [--force]`。只从目标回合**单帧**还原（`OnlineSession::replay_frame`），搜索自己 rollout 到终局；种子与在线同口径（`(master, turn, Probe)`），结果写 `<out>/recompute/turn{NN}_{seq}.json`（候选表 / chosen / best / regret / 配对 CI / T(n) / rollout 健康度）并打一行摘要。
+- 实际选择反推：训练命令精确映射（`5101–5105` → 稽古、`301`/`command_type 3` → 休息、`race_entry` → 比赛、`101–106` → 用训练预览与实际帧增量反查训练位）；教诲按回合**末帧**槽位匹配候选（授权帧还没落位）；事件仅当该回合**恰好一条** `check_event` 时判，否则标不可判（帧 storyId 与请求 event_id 不同源）。
+- 配对 CI：`record_ordered_rollouts` + `MatsuriSearchTrainer::last_ordered()`，逐 rollout 序号求 best−chosen 的差再算 95% 区间（CRN 下比独立近似少假阴性）。
+- rollout 健康度：`FlatSearch::with_probe` 取 planned/succeeded/failed，`MatsuriTerminal` 新增 `career_failed` 维度（自选赛未达标是合法终局、不是 Err），`last_health()` 汇总；在线模式只在 **stderr** 告警（不动小黑板 JSON 契约），eval 落盘。
+- 验证（`game6324`，N=256）：T2 教诲 regret 11±150（跨零）、T12 训练 1203±453（显著）、T16 训练 389±433（跨零）、T11 事件因多条 `check_event` 标不可判并给备注；四点 rollout 均 `planned = succeeded`、`career_failed = 0`；同参数二次运行命中缓存（18 ms）。
+- 待补：`--all` 批量跑 pending 点；advice 匹配未计 `enforce_advice_constraints` 的重排（实测 T2 命中，失败时留空不猜）；`curve` / `report` / `tuning` / `infer` 仍待做。

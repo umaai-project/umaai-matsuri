@@ -506,7 +506,7 @@ mod tests {
         std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
-            .map_or_else(|| std::env::temp_dir(), |p| p.join("tmp-tests"))
+            .map_or_else(std::env::temp_dir, |p| p.join("tmp-tests"))
     }
 
     /// 造一份最小清单（files 为白名单全集）

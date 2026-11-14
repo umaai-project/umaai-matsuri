@@ -6,8 +6,14 @@
 //! 输入：局目录（散帧 + finalScore）或局包 zip，两者同一条解析路径。
 
 pub mod brief;
+pub mod curve;
+pub mod derive;
 pub mod discover;
+pub mod eval;
 pub mod facts;
+pub mod infer;
+pub mod report;
+pub mod tuning;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -18,6 +24,7 @@ use matsuri_core::{MatsuriConfig, MatsuriData};
 
 use discover::GameFiles;
 use facts::{Facts, open_session};
+use tuning::Tuning;
 
 /// `review open` 参数
 pub struct OpenArgs<'a> {
@@ -29,6 +36,8 @@ pub struct OpenArgs<'a> {
     pub out: Option<&'a Path>,
     /// 数据根；`None` = 仓内 `data/`
     pub data_root: Option<&'a Path>,
+    /// 复盘口径（继承标准等）
+    pub tuning: Tuning,
 }
 
 /// 跑事实层并落盘 `facts.json` / `brief.md`，返回输出目录
@@ -36,14 +45,14 @@ pub fn open(args: OpenArgs<'_>) -> Result<PathBuf> {
     let files = GameFiles::scan(args.input, args.game)?;
     let data_root = args
         .data_root
-        .map_or_else(|| matsuri_core::testing::data_dir(), Path::to_path_buf);
+        .map_or_else(matsuri_core::testing::data_dir, Path::to_path_buf);
     ensure_data(&data_root)?;
     let engine = umaai::Config::load_with_overlay_file(&data_root, ".")?;
     let data = Arc::new(MatsuriData::load(&data_root)?);
     let config = MatsuriConfig::load_with_overlay_file(&data_root, ".")?;
-    let mut session = open_session(&engine, data, config)?;
+    let mut session = open_session(&engine, Arc::clone(&data), config)?;
 
-    let facts = Facts::build(&files, &mut session)?;
+    let facts = Facts::build(&files, &mut session, data.as_ref(), &args.tuning)?;
     let out = args.out.map_or_else(
         || {
             if args.input.is_dir() {

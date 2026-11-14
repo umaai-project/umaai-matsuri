@@ -10,7 +10,7 @@
 //! `search_n` 是**每个候选**的 rollout 次数（引擎口径）。搜索 interval 内全部
 //! `diag!` 由引擎 `DiagGuard` 静默，结束后只打一行摘要。
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use anyhow::{Result, bail};
@@ -19,7 +19,10 @@ use rand::rngs::StdRng;
 use umaai_core::Data;
 use umaai_core::gamedata::{EventChoice, EventData};
 use umasim::game::{Game, Trainer, UmaFlagsExt};
-use umasim::search::{FlatSearch, FlatSearchGame, RolloutOutcome, SearchConfig, SearchOutput};
+use umasim::search::{
+    FlatSearch, FlatSearchGame, OrderedRollouts, RolloutOutcome, SearchConfig, SearchOutput,
+    SearchProbe,
+};
 
 use crate::config::{MatsuriConfig, SearchScopeConfig};
 use crate::diag;
@@ -42,6 +45,7 @@ umasim::define_terminal_record!(
         guts => { key: "guts", label: "根性", unit: "status" },
         wisdom => { key: "wisdom", label: "智力", unit: "status" },
         pt => { key: "pt", label: "PT", unit: "pt" },
+        career_failed => { key: "career_failed", label: "育成失败", unit: "flag" },
     }
 );
 
@@ -56,6 +60,8 @@ impl MatsuriTerminal {
             guts: f64::from(five[3]),
             wisdom: f64::from(five[4]),
             pt: f64::from(game.uma().total_pt().unwrap_or(0)),
+            // 育成失败（自选赛未达标）是合法终局，不是 rollout 错误；单独记一维供在线告警
+            career_failed: if game.career_failed { 1.0 } else { 0.0 },
         }
     }
 }
@@ -166,6 +172,40 @@ pub struct SearchSummary {
     pub expected_rank: String,
 }
 
+/// 一次搜索的 rollout 健康度（在线告警 / eval 样本可信度）
+///
+/// 两条"失败"分开记：`failed` 是 rollout 真报错（引擎 `CandidateAccum.failed`），
+/// `career_failed_rate` 是育成失败（自选赛未达标）比例——后者不是错误，但会让该候选
+/// 的期望分系统性偏低，必须能被调用方看见。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RolloutHealth {
+    /// 计划 rollout 总数
+    pub planned: usize,
+    /// 成功 rollout 总数
+    pub succeeded: usize,
+    /// 失败（`Err`）rollout 总数
+    pub failed: usize,
+    /// 每候选育成失败率（下标与 `SearchSummary.candidates` 对齐）
+    pub career_failed_rate: Vec<f64>,
+}
+
+impl RolloutHealth {
+    /// 是否完全干净（无 `Err`、无育成失败样本）
+    #[must_use]
+    pub fn is_clean(&self) -> bool {
+        self.failed == 0 && self.max_career_failed_rate() <= f64::EPSILON
+    }
+
+    /// 候选里最高的育成失败率
+    #[must_use]
+    pub fn max_career_failed_rate(&self) -> f64 {
+        self.career_failed_rate
+            .iter()
+            .copied()
+            .fold(0.0f64, f64::max)
+    }
+}
+
 /// FlatSearch 搜索训练员
 pub struct MatsuriSearchTrainer {
     /// 引擎扁平搜索内核
@@ -178,6 +218,12 @@ pub struct MatsuriSearchTrainer {
     pt_favor_rate: f64,
     /// 最近一次搜索摘要（在线档取候选分；`None` = 本次走了手写 fallback）
     last: Mutex<Option<SearchSummary>>,
+    /// 引擎探针输出（每次搜索 push 一条；取最后一条算 rollout 健康度）
+    probe: Arc<Mutex<Vec<SearchProbe>>>,
+    /// 最近一次搜索的按序号原始分（配对差 / eval 的 CI 用）
+    last_ordered: Mutex<Option<OrderedRollouts>>,
+    /// 最近一次搜索的健康度
+    last_health: Mutex<Option<RolloutHealth>>,
 }
 
 impl MatsuriSearchTrainer {
@@ -197,15 +243,20 @@ impl MatsuriSearchTrainer {
         let pt_favor_rate = search.pt_favor_rate;
         let scope = config.search.clone();
         let fallback = MatsuriTrainer::new(config.clone());
+        let probe = Arc::new(Mutex::new(Vec::new()));
         let searcher = FlatSearch::<MatsuriGame>::new(search)
             .with_rollout_trainer(MatsuriTrainer::new(config))
-            .with_parallel(true);
+            .with_parallel(true)
+            .with_probe(Arc::clone(&probe));
         Ok(Self {
             search: searcher,
             fallback,
             scope,
             pt_favor_rate,
             last: Mutex::new(None),
+            probe,
+            last_ordered: Mutex::new(None),
+            last_health: Mutex::new(None),
         })
     }
 
@@ -215,6 +266,24 @@ impl MatsuriSearchTrainer {
     #[must_use]
     pub fn last_search(&self) -> Option<SearchSummary> {
         self.last
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// 最近一次搜索的 rollout 健康度（`None` = 走了手写 fallback 或尚未搜索）
+    #[must_use]
+    pub fn last_health(&self) -> Option<RolloutHealth> {
+        self.last_health
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// 最近一次搜索的按序号原始分（配对差用；需要 `record_ordered_rollouts`）
+    #[must_use]
+    pub fn last_ordered(&self) -> Option<OrderedRollouts> {
+        self.last_ordered
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone()
@@ -234,6 +303,44 @@ impl MatsuriSearchTrainer {
             .last
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+        *self
+            .last_ordered
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+        *self
+            .last_health
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
+
+    /// 搜索结束后收集有序样本与健康度（探针取最后一条）
+    fn record_rollout(&self, out: &SearchOutput<Action, MatsuriTerminalStats>) {
+        *self
+            .last_ordered
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = out.ordered_rollouts.clone();
+        let probe = self.probe.lock().ok().and_then(|mut list| list.pop());
+        let career_failed_rate = out
+            .terminal_results
+            .iter()
+            .map(|stats| stats.career_failed.mean())
+            .collect();
+        let health = match probe {
+            Some(probe) => RolloutHealth {
+                planned: probe.total_planned(),
+                succeeded: probe.total_succeeded(),
+                failed: probe.total_failed(),
+                career_failed_rate,
+            },
+            None => RolloutHealth {
+                career_failed_rate,
+                ..RolloutHealth::default()
+            },
+        };
+        *self
+            .last_health
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(health);
     }
 
     /// 搜索结果 → 摘要（`index_map` 把搜索输入下标映射回完整候选空间）
@@ -366,6 +473,7 @@ impl MatsuriSearchTrainer {
             |index| actions[index].decision_label(),
             chosen,
         ));
+        self.record_rollout(&out);
         diag!(
             "【搜索】T{} Train 候选 {} × {} → #{} {} 均值={:.0} 耗时={}ms",
             game.turn(),
@@ -409,6 +517,7 @@ impl MatsuriSearchTrainer {
             },
             chosen,
         ));
+        self.record_rollout(&out);
         diag!(
             "【搜索】T{} 教诲 候选 {}→{} × {} → 方案{} 均值={:.0} 耗时={}ms",
             game.turn(),
@@ -483,6 +592,7 @@ impl MatsuriSearchTrainer {
             |index| format!("选项{}", index + 1),
             picked,
         ));
+        self.record_rollout(&out);
         diag!(
             "【搜索】T{} 事件#{} {} 选项{} × {} → 第{}项 均值={:.0} 耗时={}ms",
             game.turn(),

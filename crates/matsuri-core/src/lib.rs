@@ -30,7 +30,9 @@ pub use game::{
     TrainingBreakdown, TrainingLayers, TrainingPreview, TurnPlan, TurnView, URA_START_TURN,
     UmaView, build_game, restore_displayed_gain,
 };
-pub use search::{LeafEvaluator, MatsuriSearchTrainer, ScoreLeaf, SearchCandidate, SearchSummary};
+pub use search::{
+    LeafEvaluator, MatsuriSearchTrainer, RolloutHealth, ScoreLeaf, SearchCandidate, SearchSummary,
+};
 pub use trainer::{ActionExplanation, MatsuriTrainer};
 
 /// 诊断日志宏（引擎 `umaai_core::diag!` 的统一入口）
