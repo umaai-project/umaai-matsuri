@@ -38,6 +38,7 @@ const PROGRAM_FILES: [&str; 8] = [
     "matsuri-ai.exe",
 ];
 /// 允许的签名证书指纹（自签 `CN=UmaAI`）
+#[cfg(windows)]
 const SIGNER_THUMBPRINTS: [&str; 1] = ["327CCE93FC7AAA25CD88CADD5C7280B9FFA58E92"];
 /// 更新完成后由新进程读取的标记环境变量
 const UPDATED_ENV: &str = "MATSURI_UPDATED";
@@ -506,7 +507,7 @@ mod tests {
         std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
-            .map_or_else(|| std::env::temp_dir(), |p| p.join("tmp-tests"))
+            .map_or_else(std::env::temp_dir, |p| p.join("tmp-tests"))
     }
 
     /// 造一份最小清单（files 为白名单全集）

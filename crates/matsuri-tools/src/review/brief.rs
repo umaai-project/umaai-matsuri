@@ -62,7 +62,7 @@ pub fn render(facts: &Facts) -> String {
                 final_score.score,
                 final_score.rank,
                 final_score.skill_pt,
-                final_score.actions.map_or(0, |n| n)
+                final_score.actions.unwrap_or(0)
             );
             let five: Vec<String> = (0..5)
                 .map(|i| super::facts::display(final_score.five[i]).to_string())

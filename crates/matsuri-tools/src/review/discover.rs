@@ -42,10 +42,9 @@ impl GameFiles {
     }
 
     fn collect(entries: Vec<(String, String)>, source: &str, only: Option<u64>) -> Result<Self> {
-        let mut by_game: std::collections::BTreeMap<
-            u64,
-            (Vec<(i32, u32, FrameText)>, Option<FrameText>),
-        > = std::collections::BTreeMap::new();
+        type GameEntry = (Vec<(i32, u32, FrameText)>, Option<FrameText>);
+        let mut by_game: std::collections::BTreeMap<u64, GameEntry> =
+            std::collections::BTreeMap::new();
         for (name, contents) in entries {
             let base = basename(&name).to_string();
             let Some((game, rest)) = base.trim_end_matches(".json").split_once('_') else {
