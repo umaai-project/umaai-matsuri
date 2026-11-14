@@ -141,3 +141,18 @@
 3. **提交范围**：涵盖工作树下由 Agent 与用户做的全部修改。
 4. 提交说明需点明**默认行为是否等价**（引擎侧）；剧本侧数值位移须在剧本仓文档记口径分歧。
 5. 遵循 Git 安全协议，避免破坏性操作。
+
+## Agent skills
+
+### Issue 追踪器（Issue tracker）
+
+使用 GitHub Issues（`umaai-project/umaai-matsuri`，通过 `gh` CLI）追踪 Issue。详见 `docs/agents/issue-tracker.md`。
+
+### 分诊标签（Triage labels）
+
+使用五角色中文分诊标签（`待分诊`、`待补充信息`、`Agent就绪`、`需人工处理`、`不予处理`）。详见 `docs/agents/triage-labels.md`。
+
+### 领域文档（Domain docs）
+
+单上下文布局（仓库根目录 `GLOSSARY.md` + `docs/adr/`）。详见 `docs/agents/domain.md`。
+
