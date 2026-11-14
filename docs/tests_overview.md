@@ -7,6 +7,7 @@
 > 测试 cwd 在各 crate 目录；路径统一经 `matsuri_core::testing` 取仓根。
 > **测试基准马娘 = 105902（目白多伯）**；106301 / 106302 只做「铁心」专项验证，不作普适调参 / 基线（评分虚高）。
 > 基线复跑：`bench baseline [--name …] [--trainer hand|search|both] [--games N]`，判定在 `matsuri-sim::baseline`。
+> `cargo clippy` 只在 Windows 侧运行；CI 以 `-D warnings` 作为硬门禁。
 
 ## 1. 分 crate
 

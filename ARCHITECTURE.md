@@ -51,14 +51,14 @@ matsuri-tools ──▶ matsuri-sim ─┼─▶ matsuri-core ──▶ umaai_ne
 
 ### `crates/matsuri-cli`（终端入口，bin `matsuri`）
 
-- `main.rs`：命令行入口（切换 `matsuri` / `random` / `manual` 等模式）与静态 `DATA_ROOT` 注入。
+- `main.rs`：命令行入口（`clap` 解析，`--help` / `--version`，切换 `matsuri` / `random` / `manual` / `online` 等模式）与静态 `DATA_ROOT` 注入。
 - `manual.rs`：手动核对面板（消费 `MatsuriView` 纯呈现，用于机制人工核对）。
 - `online.rs` / `panel.rs`：在线模式驱动与终端呈现面板。
 - `explain.rs` / `ai_trace.rs` / `logging.rs`：决策解释、AI 轨迹与 `diag!` stderr 日志器。
 
 ### `crates/matsuri-tools`（外围离线工具）
 
-- **工具 bin（`src/bin/`）**：`bench`（性能测量）、`sweep`（开局因子扫参）、`cardtest`（测卡与配对跑测）、`review`（局包复盘）、`rhythm`（演目 Lv 与友人节奏统计）、`audit_search`、`probe_fail`。
+- **工具 bin（`src/bin/`）**：`bench`（性能测量）、`sweep`（开局因子扫参）、`cardtest`（测卡与配对跑测）、`review`（局包复盘）、`rhythm`（演目 Lv 与友人节奏统计）、`audit_search`、`probe_fail`（CLI 参数手写解析）。
 - **复盘模块（`src/review/`）**：`discover` / `facts` / `derive` / `curve` / `eval` / `infer` / `brief` / `report` / `tuning`，将在线/模拟局包解析为事实层并重算估值报告。
 
 ### `crates/matsuri-launcher`（发布启动器，bin `matsuri-ai`）

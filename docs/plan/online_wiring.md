@@ -511,7 +511,7 @@ T40 `[2,3,2,2,3]` + kensan `[F,T,F,T,F]`）。即「单点 0 + 稽古」在现�
 | `matsuri-ai` | `session.rs`（新） | 装配：`BaseParams`（吾妻 / `809052001`）、`Arc<MatsuriData>`、`MatsuriConfig`、`DecisionSource` |
 | `matsuri-ai` | `output.rs`（新） | `OnlineTurnOutput { turn, scenario, kind, record: DecisionRecord, view: MatsuriView, notes }`；JSON 与面板共用同一 DTO |
 | `matsuri-cli` | `online.rs`（新） | 循环 + 两渲染器：human 复用 `panel.rs::BoardPanel`；`--json` 逐行序列化旧 10 字段 |
-| `matsuri-cli` | `main.rs` | `--version` 前置分流；`online` 子命令（`--root / --replay / --trainer / --json / --verify-training`）手写解析，**不引 clap** |
+| `matsuri-cli` | `main.rs` | `clap` 统一解析子命令与 `--help` / `--version`（`online` 含 `--root / --replay / --trainer / --json / --verify-training`） |
 
 **必须照抄的 4 条引擎口径**（否则与离线 / 真机不一致）：
 

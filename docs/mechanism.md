@@ -918,7 +918,7 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
   （UCB 开时是每候选预算上限，实际按 UCB 动态分配）。
 - **三类作用面**（`[search] train` / `advice` / `event`）：
   - `train`：全部 `Train` 候选直接 `FlatSearch::search`（ramen 口径，不剪枝）；
-  - `advice`：120 排列先按手写价值矩阵剪到 top-16，再对子集搜索，结果映射回原下标；
+  - `advice`：120 排列先按 801 硬约束去重，再按手写价值矩阵剪到 top-16 后搜索，结果映射回原下标；
   - `event`：事件不是 `Action`，用 dummy action token 走 `FlatSearch::search_with`，闭包内
     应用当前选项后，从 `event_queue` 的下一个事件继续（`event_cursor` 留在局面上），
     再跑后续 stage 到终局。
