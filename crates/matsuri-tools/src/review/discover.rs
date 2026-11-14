@@ -17,6 +17,9 @@ pub struct FrameText {
     pub contents: String,
 }
 
+/// 扫描期按局号聚合的条目：回合帧（回合 / 序号 / 原文）+ 终局帧
+type GameEntries = std::collections::BTreeMap<u64, (Vec<(i32, u32, FrameText)>, Option<FrameText>)>;
+
 /// 一局的帧集合
 #[derive(Debug, Clone)]
 pub struct GameFiles {
@@ -42,9 +45,7 @@ impl GameFiles {
     }
 
     fn collect(entries: Vec<(String, String)>, source: &str, only: Option<u64>) -> Result<Self> {
-        type GameEntry = (Vec<(i32, u32, FrameText)>, Option<FrameText>);
-        let mut by_game: std::collections::BTreeMap<u64, GameEntry> =
-            std::collections::BTreeMap::new();
+        let mut by_game: GameEntries = std::collections::BTreeMap::new();
         for (name, contents) in entries {
             let base = basename(&name).to_string();
             let Some((game, rest)) = base.trim_end_matches(".json").split_once('_') else {

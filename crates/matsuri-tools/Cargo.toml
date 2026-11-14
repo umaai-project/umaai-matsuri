@@ -27,6 +27,11 @@ path = "src/bin/cardtest.rs"
 name = "review"
 path = "src/bin/review.rs"
 
+# 节奏基线：模拟局逐回合采集友人解锁/出行与演目 Lv 上升
+[[bin]]
+name = "rhythm"
+path = "src/bin/rhythm.rs"
+
 [features]
 # CPU 剖面（pprof）：只在 bench 的 `prof` 子命令用到，默认不编译、不进 core / 下游
 profile = ["dep:pprof"]

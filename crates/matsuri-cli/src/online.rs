@@ -182,6 +182,7 @@ pub fn run(args: Args) -> Result<()> {
                             decisions += 1;
                         }
                         render(&mut stdout, &output, args.json, color)?;
+                        report_health(output.turn, session.last_health());
                         if let Some(root) = &live_root {
                             ai_trace.observe(&output);
                             if output.view.turn.turn == output.view.turn.max_turn
@@ -239,6 +240,32 @@ fn search_banner(color: bool) -> String {
         paint(&"─".repeat(36), Some("90"), color),
         paint("AI计算中…", Some("96"), color)
     )
+}
+
+/// 搜索 rollout 健康度告警（**只走 stderr**，不动 stdout 面板与 JSON 契约）
+///
+/// 两条"失败"分开报：`failed` 是 rollout 真报错（与自选赛无关）；育成失败
+/// （自选赛未达标）是合法终局，只提示样本被拉低。
+fn report_health(turn: i32, health: Option<matsuri_core::RolloutHealth>) {
+    let Some(health) = health else {
+        return;
+    };
+    if health.is_clean() {
+        return;
+    }
+    if health.failed > 0 {
+        eprintln!(
+            "警告：T{turn} 搜索有 {} 次 rollout 报错（计划 {} 次），该决策样本不足、排序可能不稳",
+            health.failed, health.planned
+        );
+    }
+    let rate = health.max_career_failed_rate();
+    if rate > f64::EPSILON {
+        eprintln!(
+            "警告：T{turn} 搜索样本含育成失败（自选赛未达标）最高 {:.1}%，该候选期望分被拉低（自选赛截止回合属预期）",
+            rate * 100.0
+        );
+    }
 }
 
 /// 渲染一帧的输出

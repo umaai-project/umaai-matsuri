@@ -27,7 +27,7 @@ use matsuri_core::game::advice::advice_display_name;
 use matsuri_core::game::restore::RestoreInput;
 use matsuri_core::{
     Action, DEFAULT_DECK, MAX_TURN, MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer,
-    MatsuriTrainer, SearchSummary, Stage, deck_comp,
+    MatsuriTrainer, RolloutHealth, SearchSummary, Stage, deck_comp,
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -659,6 +659,27 @@ impl OnlineSession {
             rank: Some(frame.rank_name()?),
             reason: None,
         })
+    }
+
+    /// 只还原一帧局面（不做决策；eval / 回放用）
+    ///
+    /// 与在线同一条还原路径（帧解析 → `MatsuriGame::restore`）。单帧即可作为
+    /// 「从该回合往后算」的起点：搜索自己会 rollout 到终局，不需要整局逐帧回放。
+    pub fn replay_frame(&mut self, contents: &str) -> Result<MatsuriGame> {
+        let frame = ParsedFrame::parse(contents)?;
+        self.sync_epoch(frame.epoch_key());
+        self.sync_deck(&frame.status.card_id)?;
+        let (game, _notes) = self.restore(&frame)?;
+        Ok(game)
+    }
+
+    /// 最近一次搜索的 rollout 健康度（在线告警用；手写档恒 `None`）
+    #[must_use]
+    pub fn last_health(&self) -> Option<RolloutHealth> {
+        match &self.trainer {
+            TrainerChoice::Hand(_) => None,
+            TrainerChoice::Search(trainer) => trainer.last_health(),
+        }
     }
 
     /// 帧 → 局面

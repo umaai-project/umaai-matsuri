@@ -12,7 +12,7 @@ workspace 六 crate：
 | `matsuri-sim` | 离线模拟与基线裁判 |
 | `matsuri-ai` | 在线帧解析、一帧一决策会话、路由与输出 DTO |
 | `matsuri-cli` | 终端入口：离线跑局、在线帧 / 回放、手动核对、面板与日志 |
-| `matsuri-tools` | 外围测量：`bench` / `sweep` / `cardtest` 与诊断工具 |
+| `matsuri-tools` | 外围测量与复盘：`bench` / `sweep` / `cardtest` / `review` 与诊断工具 |
 | `matsuri-launcher` | Windows 发布启动器 `matsuri-ai`（菜单 / 子进程装配 / 通道体检 / 启动自检更新；交互选择用 `inquire`，不依赖业务 crate） |
 
 - 引擎以 Git Submodule 挂载在 `umaai_next/`，引用 `umaai-core` / `umasim` / `umaai` / `umaai-cli` / `umaai-update`；不 fork 引擎、不在引擎仓加剧本 crate。
@@ -83,12 +83,15 @@ workspace 六 crate：
   手写训练员三档（21101 / 12101 / 11102）由 CMA-ES 联合调参（`scripts/ga_trainer.py`，需 numpy），
   再经搜索档 N=8192 配对验收（`scripts/search_check.py`）后定档。
   方案与结果见 [`docs/plan/deck_param_scan.md`](docs/plan/deck_param_scan.md) §9–§10。
-- **复盘（事实层）**：`matsuri-tools` 新增 `review` bin：`review open <局目录|局包.zip> [--game id]`
-  读局帧 → `facts.json` / `brief.md`（逐回合事实、终局、检查项、`pending` 待重算项）；
-  **不跑搜索、不做估值**（`eval` / `curve` / `report` 按需补）。只吃新协议帧（`charaEffects`），
-  旧 `illEffects` 帧直接报错。真机 `game6324.zip` 已跑通（132 帧 / T0–T77 / 终局 77932（LG3）/
-  160 条 actions / 0 解析失败），两次输出 hash 一致；AI 在场标记 `game{id}_ai-decision.json` 由
-  `matsuri online` 在 T77 帧写入、插件收进局包。判据、统计点与基线程序见
+- **复盘工具**：`matsuri-tools` 的 `review` bin 五个子命令——`open`（零重算出 `facts.json` /
+  `brief.md`：逐回合事实、终局、帧 diff 反推、检查项、剧本专属事实、`pending` 待重算项）、
+  `eval`（单点或 `--all` 批量重算：候选表 + regret + **配对差 95% CI** + T(n) + rollout 健康度，
+  缓存 `recompute/turn*.json`）、`infer`（纯帧反推：教诲落位 / 転成 / 学技能 / 追加稽古）、
+  `curve`（区间 T(n) 与形态）、`report`（`digest.json` + `report.html` 4 图，可 `--narrative` 注入）。
+  在线搜索的 rollout 报错 / 育成失败样本只走 **stderr** 告警（不动 JSON 契约）。
+  复盘技能在 [`skills/matsuri_review/`](skills/matsuri_review/SKILL.md)。
+  只吃新协议帧（`charaEffects`），旧 `illEffects` 帧直接报错；AI 在场标记 `game{id}_ai-decision.json`
+  由 `matsuri online` 在 T77 帧写入、插件收进局包。判据、统计点与基线程序见
   [`docs/plan/review_tool_plan_2026-11-13.md`](docs/plan/review_tool_plan_2026-11-13.md) §7。
 
 ## 快速开始
@@ -115,9 +118,13 @@ cargo run --release --bin matsuri -- online --help
 ./target/release/cardtest run --decks benchmark/_local/scan/candidates.csv \
   --matsuri-config benchmark/_local/scan/scan.toml --ref ref_stamina --games 5000 --seed 87000
 
-# 复盘（事实层；输入可以是局目录，也可以是插件产出的局包 zip）
-./target/release/review open <帧目录> --out <输出目录>
-./target/release/review open <game{id}.zip> --game 6324 --out <输出目录>
+# 复盘（输入可以是局目录，也可以是插件产出的局包 zip）
+./target/release/review open   <game{id}.zip> --out <输出目录>          # facts.json + brief.md
+./target/release/review eval   <game{id}.zip> --all --n 256             # 全量决策点：regret + 配对 CI
+./target/release/review eval   <game{id}.zip> --turn 23 --seq 0 --n 1024
+./target/release/review infer  <game{id}.zip> --what all                # 教诲 / 転成 / 技能 / 追加稽古
+./target/release/review curve  <game{id}.zip> --from 20 --to 40 --n 1024
+./target/release/review report <game{id}.zip> --narrative narrative.md  # digest.json + report.html
 ```
 
 主要环境变量：`MATSURI_SEARCH_N`、`MATSURI_SEARCH_RADICAL`、`MATSURI_EXPLAIN`、`MATSURI_ROOT`。
@@ -136,8 +143,8 @@ cargo clippy --workspace --all-targets --offline -- -D warnings
 [`docs/tests_overview.md`](docs/tests_overview.md) 与 [`docs/perf_profiling.md`](docs/perf_profiling.md)。
 clippy 只在 Windows 侧跑；CI 也是 `-D warnings` 硬门禁。
 
-基线快照（2026-11-13，`pt_score_rate` 2.0 → 1.88 后重录）：手写 `a-normal` 82808.8 / `b-ideal` 87411.2，
-搜索 N=8192 `a-normal` 86554.8 / `b-ideal` 90067.6 —— **MCTS 比手写高 +2656 ~ +3746 分**（详见
+基线快照（2026-11-14，默认 `extra_count` 下调后重录）：手写 `a-normal` 81802.8 / `b-ideal` 86813.5，
+搜索 N=8192 `a-normal` 86212.7 / `b-ideal` 89543.0 —— **MCTS 比手写高 +2730 ~ +4410 分**（详见
 [`docs/tests_overview.md`](docs/tests_overview.md) §4.2）。
 
 ## 文档
