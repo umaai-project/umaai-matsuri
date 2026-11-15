@@ -1,12 +1,13 @@
 # 测试一览（骏大祭 / matsuri）
 
-> **前期验证以对话核对为主**：机制是否成立由用户按 [`plan/intake.md`](plan/intake.md) 的确认清单逐条核对，
+> **前期验证以对话核对为主**：机制是否成立按 [`mechanism.md`](mechanism.md) 与 [`stubs.md`](stubs.md) 核对，
 > 自动化测试随业务落地逐步补齐，不用测试代替机制确认。
 > 分工：单元（内联，私有细节 / 纯函数，`assert`）/ 机制集成（`tests/`，打印 + `Result`）/
 > 冒烟（`cli/tests/`）/ 基线（`benchmark/baselines/`，自动判定）。
 > 测试 cwd 在各 crate 目录；路径统一经 `matsuri_core::testing` 取仓根。
 > **测试基准马娘 = 105902（目白多伯）**；106301 / 106302 只做「铁心」专项验证，不作普适调参 / 基线（评分虚高）。
 > 基线复跑：`bench baseline [--name …] [--trainer hand|search|both] [--games N]`，判定在 `matsuri-sim::baseline`。
+> `cargo clippy` 只在 Windows 侧运行；CI 以 `-D warnings` 作为硬门禁。
 
 ## 1. 分 crate
 
@@ -51,7 +52,7 @@
 ### 2.1 L2 数据层集成（`core/tests/data.rs`）
 
 > 从仓根 `data/` 载入**真实资产 + 配置**并抽查关键数值；mdb 重导出过错时在这里失败，
-> 不必等 S3+ 跑局才发现。数据来源映射见 [`plan/intake.md`](plan/intake.md) §4.1。
+> 不必等 S3+ 跑局才发现。数据来源映射见 [`intake.md`](intake.md) §4.1。
 
 | 用例 | 守门内容 |
 |---|---|

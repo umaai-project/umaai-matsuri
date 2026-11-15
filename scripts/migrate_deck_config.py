@@ -7,7 +7,7 @@
     python3 scripts/migrate_deck_config.py --dir lab/config --out-dir lab/config-new
     python3 scripts/migrate_deck_config.py old.toml --comp 1,2,1,0,1
 
-口径（见 docs/plan/deck_config.md）：
+口径（见 docs/mechanism.md §6.1）：
 - 旧顶层 `[fusion]` / `[trainer]` 变成 `[decks.default.fusion]` / `[decks.default.trainer]`；
 - 旧配置没有 `[advice]` 时补当前内置默认落位（101–501 六窗口）；
 - `[pre]` / `[search]` 原样保留；
