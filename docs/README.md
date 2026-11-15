@@ -9,7 +9,6 @@
 | [`mechanism.md`](mechanism.md) | 当前生效的机制公式、流程、实现落点与测试对应（含 `[decks.*]` 与外部评分参考） | 核对或修改剧本机制与估值口径时 |
 | [`online_protocol.md`](online_protocol.md) | 在线帧协议（`festa` / `baseGame`）、还原规则与 `--verify-training` 验算口径 | 修改在线监听、帧解析或面板契约时 |
 | [`release.md`](release.md) | 发布启动器（`matsuri-ai`）目录布局、四频道更新与签名发版流程 | 变更启动器菜单、更新频道或打包发布时 |
-| [`matsuri_memo_cn.md`](matsuri_memo_cn.md) | 上游中文机制原始备忘 | 核对上游一手情报时 |
 | [`adr/`](adr/) | 架构与核心算法范式决策记录（规范见 [`agents/domain.md`](agents/domain.md)） | 探索架构边界、评估或推翻架构/算法范式决策时 |
 | [`changelog.md`](changelog.md) | 按日期升序的历史裁定与基线位移流水账（非日常查阅入口） | 仅在拍板新口径/重录基线时追加，或需追溯历史裁定原因时按关键词检索 |
 | [`tests_overview.md`](tests_overview.md) | 分 crate 测试面、基线快照与验收说明 | 增删测试、重录基线或排查验收时 |

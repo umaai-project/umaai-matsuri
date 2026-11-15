@@ -1,7 +1,7 @@
 //! 人头名单与担当分配（建局 / NPC 加入时的一次性动作）
 //!
-//! 五步流水线（link 钉位 → 卡按类型本位 → 外派链 → NPC 每演目 1 人 → 带吾妻余额 1 人）见
-//! `docs/matsuri_memo_cn.md` §2.2；本文件只决定「谁担当哪个演目」，**每回合站位由 `distribute.rs` 决定**。
+//! 五步流水线（link 钉位 → 卡按类型本位 → 外派链 → NPC 每演目 1 人 → 带吾妻余额 1 人）口径见
+//! `docs/mechanism.md` §2.1；本文件只决定「谁担当哪个演目」，**每回合站位由 `distribute.rs` 决定**。
 //!
 //! 随机非 link 角色的离线口径：真机从马娘池随机抓；本模拟**从 `chara_id` 1001 起按序取**
 //! 第一个满足条件者（非剧本 link / 非育成马娘 / 未出现过）。**同 `chara_id` 不允许两个人头**
@@ -25,7 +25,7 @@ const GUEST_FIRST_TURN: i32 = 2;
 /// 编成外神驹第 2 批可用回合（turn 47 结算后；0 基）
 const GUEST_SECOND_TURN: i32 = 48;
 
-/// 外派链：卡属性 → 依次尝试的演目（`docs/matsuri_memo_cn.md` §2.2(a)④）
+/// 外派链：卡属性 → 依次尝试的演目
 fn dispatch_chain(card_type: i32) -> &'static [usize] {
     match card_type {
         0 => &[3, 1],

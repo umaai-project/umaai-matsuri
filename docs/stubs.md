@@ -5,7 +5,7 @@
 > - 占位集中放在剧本资产 / 配置 / 常量表，代码里不散落魔法数；
 > - 代码标记统一为 `STUB:`（临时占位）与 `TBD:`（待补逻辑/数值），并在此表登记；
 > - 替换为确认值后：重录基线，并在 [`changelog.md`](changelog.md) 的决定记录写明位移原因与影响面；
-> - 机制口径以 [`mechanism.md`](mechanism.md) 与 [`matsuri_memo_cn.md`](matsuri_memo_cn.md) 为准；功能性开发待办见 [`todo.md`](todo.md)。
+> - 机制口径以 [`mechanism.md`](mechanism.md) 为准；功能性开发待办见 [`todo.md`](todo.md)。
 
 ## 登记表
 
@@ -44,6 +44,10 @@
 | 在线 `resultType` 0 / 1 取值（G3） | `2` 为大成功；失败/普通档未采样 | `online_protocol.md` | `game/restore.rs` | 真机采样失败/普通档発表会帧核对 | 仅在线还原 | TBD（真机采样） |
 | 在线 `fatigueRecovery` 消费时点（G8） | 帧直读状态 45 | `online_protocol.md` | `game/restore.rs` | 验证与引擎一次性 flag 等价性 | 仅在线还原 | TBD（真机验证） |
 | 在线延长段 `campRemain` 递减（G9） | 未采样到延长段连续帧 | `online_protocol.md` | `game/restore.rs` | 采样延长段连续帧核实 `camp.counted` | 仅在线还原 | TBD（真机采样） |
+| 育成终了部分大成功混合档（U14） | 按全成功档处理 | `memo` 2026-10-31 | `game/settle.rs` | 真机打出「部分大成功」收尾样本核对 | 会位移 | TBD（真机复核） |
+| `scenario_data_array` `15001 = 46`（U26） | 未建模（疑似五演目 Lv 之和） | 上游协议 | — | 不同演目 Lv 结局对比该值 | 无（仅校验） | TBD |
+| turn 47 非大成功是否 +5 人（U27） | 按「大成功才加」实现 | 推演 | `game/settle.rs` | Classic 汇报会走成功档对照 `evaluation_info_array` | 会位移 | TBD（真机复核） |
+| 第 6 名 NPC 全并列 tie-break（U32） | 按「人数最少 → 属性序」实现 | 推演 | `game/roster.rs` | `1/1/1/1/1` 卡组 + 吾妻实测全并列落点 | 会位移 | TBD（真机复核） |
 
 ## 代码标记约定
 
