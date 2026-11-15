@@ -14,7 +14,7 @@
 //! | `assistSupportLeft` | 0 = 没有助力支撑（有效值）；缺字段 = 未知 |
 //! | `checkPoints` | 空 = 尚未结算过発表会（有效值）；缺字段 = 未知 |
 //! | `trainLevelTotal` | **整组 0 = 本帧无有效等级**（合宿期 `command` 帧、`load/event/special`
-//!   帧都是整组 0，见 `docs/plan/online_wiring.md` §3.6 / `G12`）；缺字段 = 未知 |
+//!   帧都是整组 0，见 `docs/online_protocol.md`）；缺字段 = 未知 |
 //! | `kensan` | `[false; 5]` 是有效值（本回合没掷中） |
 //!
 //! 前三个用 `Option` 区分「缺字段」；`trainLevelTotal` 既用 `Option` 也用「逐位 > 0」判空

@@ -6,10 +6,10 @@
 //! 数据来源：`master.mdb` 的 `single_mode_15_*` 11 张表 + `single_mode_training_effect`
 //! （scenario 15，普通训练 / Junior 稽古）+ 官方 / `memo` 口径（普通训练 Lv2–5、Classic 稽古、
 //! 属性上限按 1200 以上不减半口径存（官方 2200 一组换算为 3200 一组）、一次性奖励成功档等）；
-//! 资产 ↔ 表映射见 [`docs/plan/intake.md`] §4.1。
+//! 资产 ↔ 表映射见 [`docs/intake.md`] §4.1。
 //! 所有回合字段已转 **0 基**（`mdb` 为 1 基）。
 //!
-//! [`docs/plan/intake.md`]: ../../../docs/plan/intake.md
+//! [`docs/intake.md`]: ../../../docs/intake.md
 
 use std::path::Path;
 
@@ -79,7 +79,7 @@ pub struct MatsuriData {
     ///
     /// 目前只有 `400015104`（駿大祭合宿の申し出，合宿直前 11/35/59）与 `400015106`
     /// （追加の稽古，代码触发）；主剧本其余事件为过场说明、无数值，不入资产
-    /// （口径见 `docs/plan/scenario_dev_plan.md`）。
+    /// （口径见 `docs/mechanism.md`）。
     pub scenario_events: Vec<EventData>,
     /// 事件额外效果（引擎 `ActionValue` 表达不了的部分：演目 gauge / 解 debuff）
     pub event_extras: Vec<EventExtra>,
@@ -396,7 +396,7 @@ pub enum RewardResult {
 ///
 /// 发表会 / 本番的场次由 `schedule` 表示（1–3，对应 `MatsuriData::schedule[schedule-1].turn`）；
 /// 育成终了没有场次，`schedule` 省略。粉丝奖励不建模（本项目不处理粉丝机制），数值见
-/// `docs/plan/intake.md` §3.6。
+/// `docs/mechanism.md` §4 / §5。
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Reward {

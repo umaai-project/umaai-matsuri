@@ -8,7 +8,7 @@
 #
 # 默认档 = GA run2 冠军 g0269（2026-11-09 定档；起点 = lab 冠军 `ga-r2`）：
 #   手写档对 ga-r2 +3758；搜索档 N=8192 配对 39 局 +898 ±259（t 3.47）。
-#   耐 / 智两档同法独立调参，见文件末尾；口径与过程见 docs/plan/deck_param_scan.md §10。
+#   耐 / 智两档同法独立调参，见文件末尾；口径与过程见 benchmark/README.md 与 docs/changelog.md。
 # 改这里必须同步 `deck_config.rs` 的 `DeckParams::default()`（`tests/data.rs` 断言两者相等）。
 #
 # 融合校验：第 2 年（turn 23 结束）恰 2 组、第 3 年（turn 47 结束）恰 3 组；
