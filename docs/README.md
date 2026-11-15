@@ -16,7 +16,6 @@
 | [`todo.md`](todo.md) | 跨阶段收拢的真实未完成功能待办清单 | 认领待办或规划下一轮开发时 |
 | [`intake.md`](intake.md) | `master.mdb` 数据表字典与资产溯源映射 | 核对数据表结构或重导出资产时 |
 | [`stubs.md`](stubs.md) | 数值占位（`STUB` / `TBD`）与待真机核对项登记 | 新增、排查或替换占位参数时 |
-| [`search_sh.md`](search_sh.md) | 搜索预算分配（Successive Halving）设计稿 | 评审或实施搜索分配改造时 |
 | [`handoff.md`](handoff.md) | 长会话交接文档 | 需交接给下一位 Agent 时 |
 
 ## 2. 引擎通用文档（`umaai_next/`）
