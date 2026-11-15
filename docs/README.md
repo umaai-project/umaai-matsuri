@@ -9,6 +9,7 @@
 | [`mechanism.md`](mechanism.md) | 机制公式、流程、实现落点与测试对应 | 核对或修改剧本机制与估值口径时 |
 | [`matsuri_memo_cn.md`](matsuri_memo_cn.md) | 上游中文机制备忘与未决问题清单 | 查验或更新原始机制情报与未决项时 |
 | [`../GLOSSARY.md`](../GLOSSARY.md) | 领域术语与官方译名的单一事实源 | 新增、修正术语或译名时 |
+| [`adr/`](adr/) | 架构决策记录 | 评估、做出或推翻架构决策时 |
 | [`changelog.md`](changelog.md) | 按日期升序的口径裁定与历史分歧日志 | 每次口径拍板或重录基线时 |
 | [`tests_overview.md`](tests_overview.md) | 分 crate 测试面、基线快照与验收说明 | 增删测试、重录基线或排查验收时 |
 | [`perf_profiling.md`](perf_profiling.md) | 性能测量工具、热点拆解与复现命令 | 性能分析或优化轮次时 |
@@ -23,7 +24,7 @@
 | [`../skills/matsuri_review/SKILL.md`](../skills/matsuri_review/SKILL.md) | 局包复盘执行规范与报告工作流 | 执行或调整复盘技能流程时 |
 | [`plan/search_sh.md`](plan/search_sh.md) | 搜索预算分配（Successive Halving）设计稿 | 评审或实施搜索分配改造时 |
 | [`plan/round_2026-11-09.md`](plan/round_2026-11-09.md) | 历史轮次修改与待办快照（归档参考） | 追溯 2026-11-09 轮次上下文时 |
-| [`handoff.md`](handoff.md) | 长会话交接文档（按 [`agents/handoff.md`](agents/handoff.md) 生成） | 需交接给下一位 Agent 时 |
+| [`handoff.md`](handoff.md) | 长会话交接文档 | 需交接给下一位 Agent 时 |
 
 ## 2. 引擎通用文档（`umaai_next/`）
 
@@ -40,6 +41,6 @@
 
 ## 3. 写入边界
 
-- **单一归属**：机制结论写 `mechanism.md`，口径裁定写 `changelog.md`，未确认机制标 `❓`，数值占位记入 `plan/stubs.md`（规则见 [`agents/domain.md`](agents/domain.md)），不互相抄录。
+- **单一归属**：机制结论写 `mechanism.md`，口径裁定写 `changelog.md`，架构决策写 `adr/`（规范见 [`agents/domain.md`](agents/domain.md)），未确认机制标 `❓`，数值占位记入 `plan/stubs.md`，不互相抄录。
 - **`changelog.md` 只追加**：不删改历史行；被取代的结论在原「决定」列加注修正去向，并填写「基线影响」。
 - **相对路径**：文档内链接使用仓内相对路径，不写本机绝对路径。
