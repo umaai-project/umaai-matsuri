@@ -26,5 +26,8 @@
 
 - **Issue 追踪器**：读取、创建或更新 GitHub Issues 时，按 [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md) 执行。
 - **分诊标签**：为 Issue 添加或映射分诊标签时，使用 [docs/agents/triage-labels.md](docs/agents/triage-labels.md) 中的映射表。
+- **任务路线图**：规划单次会话无法容纳的超大型任务，在 Issue 追踪器上建立决策工单路线图时，按 [docs/agents/wayfinder.md](docs/agents/wayfinder.md) 执行。
+- **追问审视**：对计划、决策或想法进行多轮结构化追问与压力测试时，按 [docs/agents/grilling.md](docs/agents/grilling.md) 执行。
+- **一手调研**：基于一手资料开展后台调研并落盘引用结论时，按 [docs/agents/research.md](docs/agents/research.md) 执行。
 - **领域文档**：探索代码库、使用领域术语、评估或做出架构决策时，按 [docs/agents/domain.md](docs/agents/domain.md) 执行。
 - **会话交接**：上下文过长或需交接给下一位 Agent 时，按 [docs/agents/handoff.md](docs/agents/handoff.md) 执行。

@@ -40,7 +40,7 @@ GitHub 的 Issue 与 PR 共用同一套编号空间，因此单纯的 `#42` 可�
 
 ## Wayfinding 操作约定
 
-供 `/wayfinder` 使用。**地图（map）**是一个主 Issue，**子任务（child）**作为其子 Issue。
+供 `/wayfinder`（见 [wayfinder.md](wayfinder.md)）使用。**地图（map）**是一个主 Issue，**子任务（child）**作为其子 Issue。
 
 - **地图（Map）**：单个带有 `wayfinder:map` 标签的 Issue，正文包含 Notes / Decisions-so-far / Fog。创建命令：`gh issue create --label wayfinder:map`。
 - **子任务（Child ticket）**：作为 GitHub 子 Issue 关联到地图（见**将 Issue 设为父任务的子 Issue**）。若未启用子 Issue，则将子任务添加到地图正文的任务列表中，并在子 Issue 正文顶部写 `Part of #<map>`。标签格式：`wayfinder:<type>`（`research` / `prototype` / `grilling` / `task`）。认领后将任务指派给当前开发者。
