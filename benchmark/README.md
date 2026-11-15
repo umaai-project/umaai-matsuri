@@ -1,67 +1,22 @@
 # benchmark/ — 基准与测卡数据
 
-本目录放**基准门禁数据、测卡夹具与试验归档**。`logs/` 只作运行时输出（`.gitignore` 整目录忽略），
-不再承载需要留存的结果；新增工具或脚本的缺省输出路径须遵守本约定，不用 `logs/` 下的子目录承载结果数据。
+本目录存放**基准门禁数据、测卡夹具与试验结论归档**。需要留存的结论 `.md` 统一落盘至 `benchmark/_local/<主题>/`；`logs/` 仅用于运行期输出（`data/ai_config.toml` `[record].root`）。
 
 ## 目录分工
 
-| 路径 | 是否入库 | 内容 |
+| 路径 | 跟踪状态 | 用途与说明 |
 |---|---|---|
-| `README.md` | ✅ 跟踪 | 本文件：分工、跟踪口径、复跑方式 |
-| `baselines/` | ✅ 跟踪（3） | `a-normal.json` / `b-ideal.json` + `README.md`。`bench baseline` 门禁数据、`repo_baselines_parse` 自检对象，人工维护，口径变更须重录 |
-| `decks/` | ✅ 跟踪（5） | `measured.csv` / `panel.csv` / `speed_build.csv` / `stamina_build.csv` / `wisdom_build.csv`。`cardtest` 与 `ga_trainer.py` 的默认卡组夹具 |
-| `_local/*.md` | ✅ 跟踪（26） | 结论文档：`FINAL` / `RESULT` / `STATUS` / `REPORT` / `SUMMARY` / `STAGE_*` / `ranking_*` / 退役备份 `README.md`。由 `.gitignore` 的 `!` 例外放行，**入库** |
-| `_local/` 其余 | ❌ 忽略（174） | 试验产物：原始 CSV / TXT / TOML、回放帧、一次性卡组夹具等，由 `.gitignore` 的 `/benchmark/_local/**` 过滤 |
-
-**跟踪口径：`benchmark/` 共 35 个文件入库（3 基线 + 5 夹具 + 本 README + 26 结论 md），
-其余 174 个试验产物不入库。** 结论 md 与配套原始行同目录存放，但只有 md 随仓库分发。
-`.gitignore` 的三段写法不能合并：先排除 `_local/` 全部内容，再放开子目录，最后放开 `*.md`——
-父目录若被排除，`!` 例外不会生效。
-
-## `_local/` 里有什么
-
-按原目录名平铺，来源均为 `logs/` 里被文档当作结论或复现依据引用的数据：
-
-- `newcard/` — 2026-11-10 新卡测卡（`RESULT.md` + 配对 CSV / TXT，36 文件）
-- `deckselect/` / `advscan/` / `statusscan/` / `knobscan/` — 四轮扫描的 `FINAL.md` / `RESULT.md` / `STATUS.md` / `STAGE_*.md`、`ranking_p*.md`，以及结论数字来源 `REVIEW_*_result.csv`、`*_result.csv`
-- `deckselect/retired_2026-11-07/` — 文档引用的退役夹具备份
-- `decks/newcard_3032*.csv` — 11-10 一次性测卡夹具（18 个，与上面 5 个长期夹具区分）
-- `replay_*` / `scan/` / `_scratch/` / `cardtest_*` / `perf/` / `inherit_sweep/` — 在线回放帧、扫参夹具、3000 局测卡结果、性能与继承报告
-- `advice_choice/` — 2026-11-13 教诲分配实测（`RESULT.md` 入库 + 原始 N=2048 stdout 不入库）
-
-其中 **26 个 `*.md` 结论文档入库**，随仓库分发：`benchmark/_local/.../FINAL.md` / `RESULT.md` 在克隆仓库后仍可查。
-其余 173 个原始产物（CSV / TXT / 帧数据）**不入库**，克隆后这些数字来源需按下面的方式复跑或从备份还原。
-
-## 复原与备份
-
-- 清理前 `logs/` 的**完整快照**：`../Backup/umaai-matsuri-logs-20261111/`（2289 文件 / 711,380,024 bytes，
-  已核对文件清单、字节总数与 25 个结论文档 md5）。`_local/` 里的内容都在其中。
-- **被清出的 2109 个文件（隔离区）**：`../Backup/_trash-umaai-matsuri-logs-20261111/`。
-  本环境系统回收站 API 不可用，按「不永久删除」纪律改为移到隔离区：
-  `logs/` 已清空，但内容可完整还原。确认无需回溯后可手动删除该目录释放约 575 MB（完整快照仍保留）。
-- 全量 md5 对账已通过：备份 2289 个文件在「隔离区 + `_local/`」中**零缺失**；相对 logs 快照额外 27 个文件为
-  本目录的 8 个夹具 / `README.md` 与 18 个 `newcard_*.csv`（原本在仓根 `decks/`，不在 logs 快照内）。
-- 重新生成：`cardtest run` / `bench` / `sweep` 的输出按 `docs/tests_overview.md`、
-  `docs/perf_profiling.md` 与下方「定卡与扫参规范」的命令复跑；回放帧取自真机帧目录。
-- 基线重录仍按 `baselines/README.md` 与 `docs/changelog.md` 写入纪律执行，路径已改为
-  `benchmark/baselines/*.json`。
-
-## 关于历史文档里的旧路径
-
-`docs/changelog.md` 遵守「只追加、不改历史行」，2026-11-10 及更早的决定行里仍有
-`baselines/*.json`、`logs/knobscan/FINAL.md`、`logs/deckselect/retired_2026-11-07/` 等旧写法。
-映射规则：`logs/<X>`（结论 / 备份 / 帧 / 夹具）→ `benchmark/_local/<X>`；
-`baselines/*.json` → `benchmark/baselines/*.json`；`decks/<夹具>.csv` → `benchmark/decks/<夹具>.csv`。
-`logs/diag/prior_ab/`、`logs/perf/base/bench*` 等纯试验产物已随清理移除，仅在上方备份中保留。
-
-（原 `scenario_dev_plan.md` 2026-11-07 已归档）里的「实验输出入 `logs/`（已忽略）」是旧约定，
-自 2026-11-11 起以本文件约定为准。
+| `README.md` | ✅ 跟踪 | 本文件：目录分工、定卡/扫参门禁与种子块规范 |
+| `baselines/` | ✅ 跟踪 | `a-normal.json` / `b-ideal.json` 与 [`baselines/README.md`](baselines/README.md)；`bench baseline` 门禁及 `repo_baselines_parse` 自检对象 |
+| `decks/` | ✅ 跟踪 | 长期卡组夹具（`measured` / `panel` / `speed_build` / `stamina_build` / `wisdom_build.csv`），供 `cardtest` 与 `ga_trainer.py` 读取 |
+| `_local/**/*.md` | ✅ 跟踪 | 实验结论归档（`.gitignore` `!` 例外放行）。历史记录中偶见的 `logs/<X>`、`baselines/*.json`、`decks/<夹具>.csv` 旧路径分别对应 `_local/<X>`、`baselines/*.json`、`decks/<夹具>.csv` |
+| `_local/` 其余文件 | ❌ 忽略 | 原始 CSV / TXT / 帧数据等临时试验产物（`.gitignore` 过滤） |
 
 ## 定卡、扫参与种子块规范
 
 - **定卡方法（单卡控制变量）**：固定其余 5 个位置，每次只换 1 个槽位；按 build × 类型/槽位做配对排名，先选主卡组并保留影子卡组对照。
-- **判据门禁**：「独立块 95% CI 不跨零 + 影子卡组同向」才允许落入 `data/matsuri_config.toml` 的 `[decks.*]`；遵循**「换卡与换参分开」**原则。
-- **测试专用配置入口**：测卡与扫参通过 `cardtest` / `bench` 的 `--matsuri-config` 传入变体配置（玩家 CLI 不暴露 `[decks.*]` 覆盖）。
+- **判据门禁**：「独立块 95% CI 不跨零 + 影子卡组同向」才允许落入 `data/matsuri_config.toml` 的 `[decks.*]`，遵循「换卡与换参分开」原则。
+- **配置入口**：测卡与扫参通过 `cardtest` / `bench` 的 `--matsuri-config` 传入变体配置（`matsuri-cli` 仅读取默认配置）。
 
 | 用途 | 已分配种子块 |
 |---|---|
@@ -72,8 +27,8 @@
 | GA `run3` 耐（+10M）/ 智（+20M） | `15,000,000+` / `16M` / `17M`；`25,000,000+` / `26M` / `27M` |
 | 搜索档验收 | `30,000,000–30,000,085` |
 
-## 清理范围（2026-11-11）
+## 延伸指针
 
-`logs/` 里除本节列出的 198 个归档文件外，其余 2109 个旧 stdout/stderr 日志、旧测试输出与试验中间产物
-（大头为 `logs/perf/scratch/` 441M 的构建产物）已移入上述隔离区；`logs/` 目录本身保留，供
-`data/ai_config.toml [record].root = "logs"` 与 `bench prof` 缺省输出使用。
+- 基线复跑与重录纪律：[`baselines/README.md`](baselines/README.md)
+- 测试清单与基线快照：[`docs/tests_overview.md`](../docs/tests_overview.md)
+- 性能剖面与火焰图（`bench prof` 缺省输出至 `_local/perf/`）：[`docs/perf_profiling.md`](../docs/perf_profiling.md)

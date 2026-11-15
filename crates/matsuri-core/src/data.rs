@@ -6,7 +6,7 @@
 //! 数据来源：`master.mdb` 的 `single_mode_15_*` 11 张表 + `single_mode_training_effect`
 //! （scenario 15，普通训练 / Junior 稽古）+ 官方 / `memo` 口径（普通训练 Lv2–5、Classic 稽古、
 //! 属性上限按 1200 以上不减半口径存（官方 2200 一组换算为 3200 一组）、一次性奖励成功档等）；
-//! 资产 ↔ 表映射见 [`docs/intake.md`] §4.1。
+//! 资产 ↔ 表映射见 [`docs/intake.md`] §2。
 //! 所有回合字段已转 **0 基**（`mdb` 为 1 基）。
 //!
 //! [`docs/intake.md`]: ../../../docs/intake.md
@@ -133,14 +133,14 @@ pub struct TrainingData {
 /// 演目稽古基础值（两档）
 ///
 /// 时期切换点 = turn 23 的進捗発表会（「演目排练强化」），成功 / 大成功都切档（见 `mechanism.md` §3.2）。
-/// **只有两档**：第二档（`classic`）覆盖 Classic 与 Senior，无第三档（见 `intake.md` §3.2）；
-/// **基础值没有 Lv2–10 维度**（`command_level` 只查演目效果 / UI，见 `intake.md` §3.2）。
+/// **只有两档**：第二档（`classic`）覆盖 Classic 与 Senior，无第三档（见 `mechanism.md` §3.2）；
+/// **基础值没有 Lv2–10 维度**（`command_level` 只查演目效果 / UI，见 `mechanism.md` §3.2）。
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KeikoTraining {
     /// Junior 档（= `mdb` 5101–5105）
     pub junior: Vec<[i32; 7]>,
-    /// Classic 及以后档（第二档，覆盖 Classic / Senior；见 `intake.md` §3.2）
+    /// Classic 及以后档（第二档，覆盖 Classic / Senior；见 `mechanism.md` §3.2）
     pub classic: Vec<[i32; 7]>,
 }
 

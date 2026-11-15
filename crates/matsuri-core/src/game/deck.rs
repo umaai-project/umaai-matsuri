@@ -2,7 +2,7 @@
 //!
 //! 担当机制对编成非常敏感：**禁止项**直接拒绝建局（`newgame` 返回 `Err`）；**警告项**不阻止
 //! 建局，随 `MatsuriGame::deck_warnings` / `MatsuriView` 下发给宿主展示。
-//! 规则来源见 `docs/matsuri_memo_cn.md` §2.2（担当编排 / link / 外派链 / 余额）。
+//! 规则来源见 `docs/mechanism.md` §2.1 与 `roster.rs`（担当编排 / link / 外派链 / 余额）。
 //!
 //! 宿主可在建局前先调 [`inspect_deck`] 自查（用 `SupportCard::new(idrank)` 构造卡组）。
 
