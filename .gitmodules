@@ -1,0 +1,3 @@
+[submodule "umaai_next"]
+	path = umaai_next
+	url = https://github.com/umaai-project/umaai-next.git

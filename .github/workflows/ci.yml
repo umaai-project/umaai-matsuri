@@ -1,19 +1,12 @@
-# 骏大祭剧本仓 CI：需要把引擎仓检出到并列目录（默认 `../umaai_next`，仅作 path 依赖编译）。
+# 骏大祭剧本仓 CI：引擎仓作为 Git Submodule 挂载于 `umaai_next/`，checkout 时启用 submodules 即可。
 # 数据自持：引擎静态数据已拷入统一数据目录 `data/`（含双配置默认层），测试零参数即跑。
-#
-# 2026-11-03 修复（配方来自 lab 实验仓实测跑绿版本，只保留与主仓相关部分）：
-#   1. **引擎检出位置**：根 `Cargo.toml` 的 path 依赖是 `../umaai_next`（工作区**并列**目录），
-#      而 actions/checkout 只能检进工作区内 → 检出后补并列位置软链；缺引擎立即红，
-#      不要 continue-on-error（原版正是这么把失败吞掉的）。
-#   2. **工具链钉死 1.99.0**：剧本仓自身没有 rust-toolchain.toml，cargo 从本仓跑时**不读引擎仓的
-#      rust-toolchain.toml**（引擎那边钉的是 1.99.0）；用 `@stable` 会让 runner 的 cargo 版本漂移，
-#      偏旧版本解析不了引擎清单（workspace `default-features` 覆盖）→ 三条门一起崩。
-#   3. 测试命令显式 `--workspace`，避免虚拟 workspace 下漏成员。
 name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -25,20 +18,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-
-      - name: Checkout engine repo
-        uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/umaai-next
-          path: umaai_next
-          token: ${{ secrets.ENGINE_REPO_TOKEN || github.token }}
+          submodules: true
 
-      - name: Link engine as sibling
-        run: |
-          ln -s "$GITHUB_WORKSPACE/umaai_next" "$GITHUB_WORKSPACE/../umaai_next"
-          test -f ../umaai_next/crates/umasim/Cargo.toml || { echo "引擎并列目录缺失"; exit 1; }
-
-      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
