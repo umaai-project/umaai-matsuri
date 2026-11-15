@@ -2,7 +2,7 @@
 
 - **状态**：已采纳
 - **日期**：2026-11-15
-- **关联**：`matsuri-core/src/game/{stage.rs, traits.rs}`、[ARCHITECTURE.md](../../ARCHITECTURE.md)
+- **关联**：`matsuri-core/src/game/{stage.rs, traits.rs}`、[ARCHITECTURE.md](../../../ARCHITECTURE.md)
 
 ## 背景（Context）
 
