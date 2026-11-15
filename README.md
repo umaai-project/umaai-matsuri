@@ -30,7 +30,7 @@ workspace 六 crate：
 - **卡组配置**：`data/matsuri_config.toml` 分 `[decks.*]`；`[decks.default]` 为完整默认档（GA 冠军 `g0269`，21101），
   其他档深合并；未匹配 comp 走 default；`variant = true` 仅显式选择。
   非默认档 `stamina_build`（12101）/ `wisdom_build`（11102）为 GA 独立调参的完整档，按构成自动触发（在线按帧内实际卡组）；
-  guts 20111 未建档，回落 default。
+  `guts_build`（20111）为 2026-11-15 手写档定档（只写教诲六窗口与五维系数的差异，其余继承 default）。
 - **搜索**：`[search].search_n` 为每候选 rollout 数（默认 **8192**，`0` = 手写档）；
   `[search].threads` 固定 rayon 全局池线程数（默认 **0** = 自动，显式 `RAYON_NUM_THREADS` 优先），
   在在线 / 离线入口首次搜索前应用；Train / 教诲 / 事件分开关；

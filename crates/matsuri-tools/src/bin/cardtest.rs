@@ -22,7 +22,8 @@ use std::time::Instant;
 use anyhow::{Context, Result, bail, ensure};
 use matsuri_core::game::deck::inspect_deck;
 use matsuri_core::{
-    Action, MatsuriConfig, MatsuriData, MatsuriGame, MatsuriTrainer, Qie, build_game,
+    Action, MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer, MatsuriTrainer, Qie,
+    build_game,
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -89,13 +90,22 @@ impl Env {
             None => MatsuriConfig::load_with_overlay_file(&data_root, ".")
                 .context("载入剧本配置失败")?,
         };
-        // 本工具只测手写档：默认层已开搜索，这里就地关掉
-        if config.search.search_n != 0 {
-            eprintln!(
-                "# 手写档工具：忽略 search_n={}，本次按 0 跑",
-                config.search.search_n
-            );
-            config.search.search_n = 0;
+        // 默认仍只测手写档（缺省旧行为：配置里的 search_n 归零）；显式 `--search-n`
+        // 才按搜索档跑——终局五维 / PT / 演目 Lv / 决策分布的口径不变。
+        match parse_arg(args, "--search-n") {
+            Some(raw) => {
+                config.search.search_n = raw
+                    .parse()
+                    .with_context(|| format!("--search-n 非法: {raw}"))?;
+            }
+            None if config.search.search_n != 0 => {
+                eprintln!(
+                    "# 手写档工具：忽略 search_n={}，本次按 0 跑（跑搜索档请显式 --search-n）",
+                    config.search.search_n
+                );
+                config.search.search_n = 0;
+            }
+            None => {}
         }
         Ok(Self {
             engine,
@@ -401,16 +411,16 @@ impl Counts {
     }
 }
 
-/// 计数的训练员包装：决策语义与 `MatsuriTrainer` 逐位一致，只额外统计动作分布
-struct CountingTrainer {
-    inner: MatsuriTrainer,
+/// 计数的训练员包装：决策语义与内层训练员逐位一致，只额外统计动作分布
+struct CountingTrainer<T> {
+    inner: T,
     counts: RefCell<Counts>,
 }
 
-impl CountingTrainer {
-    fn new(config: MatsuriConfig) -> Self {
+impl<T: Trainer<MatsuriGame>> CountingTrainer<T> {
+    fn new(inner: T) -> Self {
         Self {
-            inner: MatsuriTrainer::new(config),
+            inner,
             counts: RefCell::new(Counts::default()),
         }
     }
@@ -420,7 +430,7 @@ impl CountingTrainer {
     }
 }
 
-impl Trainer<MatsuriGame> for CountingTrainer {
+impl<T: Trainer<MatsuriGame>> Trainer<MatsuriGame> for CountingTrainer<T> {
     fn select_action(
         &self,
         game: &MatsuriGame,
@@ -463,23 +473,44 @@ fn play(
 ) -> Result<(Observation, Counts)> {
     let mut game = build_game(engine, env.data.clone())?.with_config(config.clone());
     game.set_rule_master(seed);
-    let trainer = CountingTrainer::new(config.clone());
     let mut rng = StdRng::seed_from_u64(seed);
-    game.run_stage(&trainer, &mut rng)?;
-    while game.next() {
-        game.run_stage(&trainer, &mut rng)?;
+    // 搜索档：与 bench 同口径（引擎搜索内核 + 剧本 search_n）；手写档语义不变
+    if config.search.search_n > 0 {
+        let search = engine.search.clone().with_search_n(config.search.search_n);
+        let trainer = CountingTrainer::new(MatsuriSearchTrainer::new(config.clone(), search)?);
+        run_to_end(&mut game, &trainer, &mut rng)?;
+        return Ok((observe(&game)?, trainer.into_counts()));
     }
-    game.on_simulation_end(&trainer, &mut rng)?;
+    let trainer = CountingTrainer::new(MatsuriTrainer::new(config.clone()));
+    run_to_end(&mut game, &trainer, &mut rng)?;
+    Ok((observe(&game)?, trainer.into_counts()))
+}
+
+/// 推进一局到终局（阶段机循环 + 收尾，与 Runner 同序）
+fn run_to_end<T: Trainer<MatsuriGame>>(
+    game: &mut MatsuriGame,
+    trainer: &T,
+    rng: &mut StdRng,
+) -> Result<()> {
+    game.run_stage(trainer, rng)?;
+    while game.next() {
+        game.run_stage(trainer, rng)?;
+    }
+    game.on_simulation_end(trainer, rng)?;
+    Ok(())
+}
+
+/// 终局观测（评分七分量 + 五维终值 + PT + 演目 Lv）
+fn observe(game: &MatsuriGame) -> Result<Observation> {
     let parts = game.uma().score_parts()?;
-    let observation = Observation {
+    Ok(Observation {
         score: parts.total(),
         pt: game.uma().total_pt()?,
         skill: parts.skill,
         five_score: parts.five_status,
         five: game.uma().five_status,
         acts: game.acts.level,
-    };
-    Ok((observation, trainer.into_counts()))
+    })
 }
 
 /// 一套卡组在种子块上的逐局观测（并行跑；同种子块 = 与其它卡组可直接配对）
@@ -501,6 +532,12 @@ fn run_deck(
         }
     };
     let config = &config;
+    // 搜索档单局已吃满核：多线程跑局只会互相抢核，按单线程跑（手写档保持原并行度）
+    let threads = if config.search.search_n > 0 {
+        1
+    } else {
+        threads
+    };
     let next = AtomicUsize::new(0);
     let slots: Mutex<Vec<Option<(Observation, Counts)>>> = Mutex::new(vec![None; games]);
     std::thread::scope(|scope| -> Result<()> {
