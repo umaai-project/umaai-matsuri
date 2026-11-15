@@ -597,7 +597,7 @@ M1 的 round-trip 是**整套方案的核心守门**：它能在没有真机的�
   `FinalScoreFrame` / 评分零件；该决定**替代**本文早期版本的 `Rc<RefCell<Option<FestaFrame>>>` 共享槽方案。
 - 插件侧帧契约：`URA_Plugins/SendGameStatusPlugin/README.md`（骏大祭段、`baseGame.training`、终局帧）。
 - 机制口径：`mechanism.md`（何时结算、`plan` 含义）、`matsuri_memo_cn.md` §2.2（担当五步流水线）。
-- 术语：[`../../GLOSSARY.md`](../../GLOSSARY.md)（追加稽古 / 助力支撑 / 合宿延长；`MatsuriView` 边界见 [`../adr/0003-accepted-matsuri-view-boundary.md`](../adr/0003-accepted-matsuri-view-boundary.md)）。
+- 术语：[`../../GLOSSARY.md`](../../GLOSSARY.md)（追加稽古 / 助力支撑 / 合宿延长；`MatsuriView` 边界见 [`../adr/0003-已采纳-MatsuriView呈现层单一数据源与边界.md`](../adr/0003-已采纳-MatsuriView呈现层单一数据源与边界.md)）。
 - 引擎契约：`../../umaai_next/docs/scenario/contracts.md` §5（`Session` 帧驱动）、§7（View DTO）。
 - 进度：`plan/scenario_dev_plan.md` S8「在线外壳」；落地后本文件升为实施记录，`G#` 结论写回 `changelog.md`。
 
