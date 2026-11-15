@@ -259,6 +259,9 @@ def parseUma(cfg: Config, uma_list, trans):
             entry = cfg.special_races[chara_id]
             if "races" in entry:
                 races.extend(entry["races"])
+            if "removeRaces" in entry:
+                dropped = set(entry["removeRaces"])
+                races = [turn for turn in races if turn not in dropped]
             if "freeRaces" in entry:
                 freeRaces.extend(entry["freeRaces"])
             if "note" in entry:

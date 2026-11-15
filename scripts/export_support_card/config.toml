@@ -136,6 +136,11 @@ chara_id = 1062 # 诗歌剧
 note = "AI按不比第三年日本杯计算"
 
 [[special_races]]
+chara_id = 1067 # 里见光钻（106701/106702/106703 共用该 chara）
+free_races = [{ start_turn = 12, end_turn = 29, count = 1 }]
+note = "补充粉丝数自选比赛"
+
+[[special_races]]
 chara_id = 1069 # 狗狗
 races = [58]
 note = "第三年打安田纪念"
@@ -146,9 +151,9 @@ races = [43]
 note = "事件不影响比赛回合"
 
 [[special_races]]
-chara_id = 1079 # 狂怒
-races = [53]
-note = "事件不影响比赛回合"
+chara_id = 1079 # 狂怒乐章
+remove_races = [53]
+note = "回合 53 的比赛固定取消（该回合可做其他事）"
 
 [[special_races]]
 chara_id = 1081 # 希望城

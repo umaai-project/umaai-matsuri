@@ -101,6 +101,8 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
         item: dict = {}
         if "races" in entry:
             item["races"] = _as_int_list(entry["races"], f"special_races {chara_id} races")
+        if "remove_races" in entry:
+            item["removeRaces"] = _as_int_list(entry["remove_races"], f"special_races {chara_id} remove_races")
         if "free_races" in entry:
             free_races = []
             for free in entry["free_races"]:
