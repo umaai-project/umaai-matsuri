@@ -4,7 +4,7 @@
 > 范围：`umaai-matsuri` + `umaai_next`。只改搜索分配与终局选择，不改剧本机制、
 > 估值口径、随机流、卡组参数与训练员权重。
 >
-> 关联：[`round_2026-11-09.md`](round_2026-11-09.md)（UCB 审计现状）、
+> 关联：[`todo.md`](todo.md)（待办清单）、
 > [`../umaai_next/crates/umasim/src/search/flat_search.rs`](../umaai_next/crates/umasim/src/search/flat_search.rs)（当前实现）。
 
 ## 1. 问题：UCB 的「不等样本终局比较」
@@ -198,7 +198,7 @@ event = true
 | `crates/matsuri-core/src/config.rs` | `search_n` 语义与校验；默认 4096 |
 | `data/matsuri_config.toml`、`data/ai_config.toml` | 默认值与注释；惰性字段标注 |
 | `crates/matsuri-tools/src/bin/audit_search.rs` | 新增 SH 模式；输出每轮分配、早轮误杀率、终局翻转率；沿用 `gap/indep_se/counts` |
-| `benchmark/baselines/`、`README.md`、`docs/plan/round_2026-11-09.md` | 新分配下重录基线与本轮记录 |
+| `benchmark/baselines/`、`README.md`、`docs/changelog.md` | 新分配下重录基线与决策记录 |
 
 `ADVICE_TOPK = 16` 的候选剪枝仍留在 matsuri（属剧本决策面）；引擎只接收剪枝后的候选。
 

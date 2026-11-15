@@ -2,7 +2,7 @@
 
 - **状态**：已采纳
 - **日期**：2026-11-05
-- **关联**：`matsuri-ai`、[mechanism.md](../../mechanism.md)、[search_sh.md](../../plan/search_sh.md)
+- **关联**：`matsuri-ai`、[mechanism.md](../../mechanism.md)、[search_sh.md](../../search_sh.md)
 
 ## 背景（Context）
 

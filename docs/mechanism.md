@@ -2,7 +2,7 @@
 
 > 只写**公式、流程与实现落点**；术语以 [`../GLOSSARY.md`](../GLOSSARY.md) 为准、口径裁定以
 > [`changelog.md`](changelog.md) 为准，不在此重复。
-> 未确认的机制标 `❓`，不要写成结论；数值占位见 [`plan/stubs.md`](plan/stubs.md)。
+> 未确认的机制标 `❓`，不要写成结论；数值占位见 [`stubs.md`](stubs.md)。
 > 数值来源：`master.mdb` 静态表 + 游戏内帮助文案；真机协议 / 运行时为「只读初析」，标 `frame*`。
 
 ## 1. 回合与阶段
@@ -231,8 +231,7 @@
 | 5104 大曳神輿 | 3 | 0 | 2 | 15 | 0 | 10 | -25 |
 | 5105 飛駆 | 3 | 0 | 0 | 0 | 12 | 8 | -25 |
 
-- 普通训练 **Lv1** 如上表（= `master.mdb`）；**Lv2–5** 见 [`plan/intake.md`](plan/intake.md) §3.2
-  （`memo` 2026-10-31，已入资产 `training.normal`）。
+- 普通训练 **Lv1** 如上表（= `master.mdb`）；**Lv2–5** 已入资产 `data/scenario_matsuri.json`（`training.normal`）。
 - **URA 期全变稽古（2026-11-04 确认）**：72–77 的 5 个训练位全部按稽古处理（锁担当 / 全灵感 /
   编成卡 +1 人按全排练口径）；与合宿不同，**URA 稽古成功仍按日常结算 Lv+1 / 清槽**（合宿冻结规则不适用）。
 - **训练Lv 口径（2026-11-03 核对）**：每种普通训练**成功**执行 4 次 → 该训练位基础 Lv +1
@@ -260,13 +259,10 @@
   卡面 / 通用项（友情、训练效果、人数、干劲、成长率等）都在下层。**剧本加成相关的数值全部体现在上层**：
   演目 Lv 效果、教え、発表会 buff、稽古 +10 等按上面的“友情合计 / 训练效果合计 / 获得量合计”叠加，
   **不重复计入下层已有项**。每个剧本 buff 的乘区归属按规则表落实现；两层结构已定，具体数值细节仍可复核。
-- **上层实现（S5）**：`game/train.rs` `training_upper` 用剧本侧合计按上式算主 / 副 / SP 增量，
-  再按**上昇量上限**封顶；**上限 = 规则 100 + 特化教え `status_limit`（按参与担当聚合）+
-  稽古且 5 种卡时该演目 Lv9/10 的 `status_limit`；SP 上限同法并叠加 `sp_limit`**（2026-11-01 拍板；
-  属性基础上限 2200 组是否同步上抬未确认，见 `stubs.md`）。
-  体力：稽古按体力教え / 転成 `keiko_vital_cost_drop` 百分比降耗；URA 训练（**仅 72–77**）再 +30 体 /
-  +1 干劲（本番演出；空窗期 68–71 不生效）。体力先结算稽古耗体 / 训练扣体 / 失败率下降，再叠加 +30 回体，
-  因此 URA 训练常为**净回体**。
+- **上层实现（S5 + 在线实测修正）**：
+  - **下层单次增益上限（先裁后算）**：`traits.rs::clip_lower_gain` 先对下层基础增量（`status_pt[0..6]`，含 PT）逐轴截断 `min(lower, rules.training_upper_cap)`（= 100），再将截断后的 `lower` 送入 `game/train.rs` `training_upper` 算上层增量。
+  - **上层上昇量上限**：属性上限 `status_cap = 100 + 特化教え status_limit（按参与担当聚合）+ 稽古且 5 种卡时该演目 Lv9/10 的 status_limit`；**SP 上限 `sp_cap` 只叠加 `rules.training_upper_cap + 稽古且 5 种卡时的演目 sp_limit`，不吃特化 `status_limit`**；稽古 `keiko_flat`（全五维 +10）加在上层上限裁切之外。总增量最后再受 `five_status_limit - five_status` 截断。
+  - **体力**：稽古按体力教え / 転成 `keiko_vital_cost_drop` 百分比降耗；URA 训练（**仅 72–77**）再 +30 体 / +1 干劲（本番演出；空窗期 68–71 不生效）。体力先结算稽古耗体 / 训练扣体 / 失败率下降，再叠加 +30 回体，因此 URA 训练常为**净回体**。
 - **取整（2026-10-30）**：所有乘算收益（比赛加成、剧本倍率等）统一 **floor**，不用 round；
   目标赛 SP `72 × 1.3 = 93.6 → 93` 已按此口径。
 - **演目稽古基础值按时期两档**（Junior / Classic 及以后；见 §3.2 注）；**无 Senior 第三档**
@@ -323,7 +319,7 @@
   研鑽追加稽古在 `Begin` 用策略流预掷、训练成功且绑定演目担当参与时按 50/50 上 / 下档结算
   （上档：直前训练属性 +20 / SP +20 / 最低演目槽 +1 / 理事长羁绊 +5 / 体力 -5 / 简化解一个 debuff；
   下档：属性 +5 / 体力 +5）。教诲 5 槽永远满、效果随改派即时换级。
-- 逐级数值见 [`plan/intake.md`](plan/intake.md) §3.4；下表只记口径：
+- 逐级数值见 `data/scenario_matsuri.json`（`advices`）；下表只记口径：
 
 | 教え | 作用 | 关键口径 |
 |---|---|---|
@@ -433,7 +429,7 @@
   分布 / 训练生效；**T23 / T47 的融合 + 重排仍在 `End`、剧本结算之后**。融合先应用、再 5 槽重排。
 - **决策空间**：默认融合固定，每个窗口只有 `5! = 120`（改派可 +1 保持）；仅运行时融合选择 / auto 才是
   `C(5,2) × 2! × 5! = 2,400` / `3! × 5! = 720`。完整枚举可行，不需要百万级搜索。
-- 転成效果逐条见 [`plan/intake.md`](plan/intake.md) §3.5；升级后的基础效果取 `fusion_effect` 固定档，
+- 転成效果逐条见 `data/scenario_matsuri.json`（`fusion`）；升级后的基础效果取 `fusion_effect` 固定档，
   新教诲效果叠加其上。具体数值口径仍待真机复核。
 
 ### 5.2 進捗発表会 / 本番
@@ -441,7 +437,7 @@
 - `turn 23 / 47 / 67` 检查全演目 Lv ≥3 / ≥5 / ≥6。
 - `check_point_effect` 是**永久 buff 表**：`202` 友情加成、`4` 得意率、`2` 灵感发生率、
   `204` レースボーナス；20/20 行与 memo 表逐项吻合，`schedule 0` 的 `4 = 20` 是第 1 回前基线。
-  逐档见 [`plan/intake.md`](plan/intake.md) §3.6。
+  逐档见 `data/scenario_matsuri.json`（`check_points`）。
 - **一次性奖励另计**（Wiki 文案，大成功）：
   - t24：全能力 +5、技能Pt +200、粉丝 +1000、训练全种 Lv+1、理事长羁绊 +15、演目稽古强化；
   - t48：全能力 +10、技能Pt +300、粉丝 +20000、「全身全霊」Hint Lv+1、训练全种 Lv+1、
@@ -656,12 +652,13 @@
   - year3：`501→801`（体力+协力）、`301→901`（Hint+不屈）、`401→1001`（助力+两道）。
 - turn 23 / 47 结束时先应用融合配置，再进入 5 槽分配；若在线覆盖，先 `apply_fusion_plan` 再分配。
 - 配置加载校验：year2 恰好 2 个基础槽、year3 必须是剩余 3 个、每个新教诲只用一次、不能重复融合。
-- **2026-11-07 配置归位**：融合 / 教诲落位 / 训练员旋钮统一放 `[decks.*]`；`[decks.default]`
-  是完整默认档（原 speed_build 参数），未匹配卡组走 default；`variant = true` 只用于扫参。
-  `settle.rs` 读 `config.deck.fusion`，`Model` 读 `config.deck.advice` / `config.deck.trainer`；
-  详见 [`plan/deck_config.md`](plan/deck_config.md)。
+- **2026-11-07 配置归位（`[decks.*]` schema）**：
+  - 融合 / 教诲落位 / 训练员旋钮统一放 `data/matsuri_config.toml` 的 `[decks.*]`，由 `crates/matsuri-core/src/deck_config.rs` 解析校验。
+  - `[decks.default]` 必须存在、非 variant 且字段完整；其余档 `comp` 必填，缺失字段按**深合并**继承 `default`：`fusion` 按 `year2`/`year3` 整段替换、`advice` 按窗口（`t2`..`t59`）替换、`trainer` 逐字段递归（`comp`/`note`/`variant` 不继承）。
+  - 非 variant 档的 `comp` 必须全局唯一（含 `default`）；按 `comp` 自动匹配，未命中回落 `default`；`variant = true` 仅可由 `--deck-profile <name>` 或 `for_profile(name)` 显式选中。
+  - `settle.rs` 读 `config.deck.fusion`，`Model` 读 `config.deck.advice` / `config.deck.trainer`。
 - **在线选档（2026-11-09）**：在线按帧 `cardId` 的构成选档（与离线按本局卡组同口径），
-  构成变化时重建训练员；见 [`plan/online_wiring.md`](plan/online_wiring.md) §9.10 ③。
+  构成变化时重建训练员；见 [`online_protocol.md`](online_protocol.md)。
 
 **分配：每窗口独立，`5! = 120` 全枚举**
 
@@ -930,7 +927,7 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
   11,785（1.0）→ 12,045（1.7271）→ 12,229（2.0）→ ~12,300–12,400（2.25–3.0 饱和），
   即 1.0 → 3.0 多 **+590 PT（+5.0%）**。代价是 `技能 + 五维`（= 总分 − 2×PT）同步下降
   62,133 → 61,332（−801），两者几乎对冲。**结论：该旋钮是「构成偏好」而非「分数旋钮」**，
-  提高它换来更多 PT（→ 更多技能）但等量丢面板分；默认 1.7271 在噪声内，无需单独改动（2026-11-09 起默认档随 GA 联合调参为 1.931954，见 `plan/deck_param_scan.md` §10）。
+  提高它换来更多 PT（→ 更多技能）但等量丢面板分；默认 1.7271 在噪声内，无需单独改动（2026-11-09 起默认档随 GA 联合调参为 1.931954，见 [`changelog.md`](changelog.md) 与 [`../benchmark/README.md`](../benchmark/README.md)）。
   采样精度提醒：10 局 N=2048 的分数 SE ≈ 500，±300 级差异分辨不出来（PT 的 SE ≈ 100，故 PT 结论可信）。
 - **排序与激进度**：中选下标用 `weighted_mean(radical_factor)`（`rank_ratio^rf` 加权）。
   `radical_factor_max = 0.0` 即普通均值；越大越偏高尾。理想测试（106301 + 小切 + 心情盾×2，
@@ -1004,3 +1001,11 @@ S5 设想的「5 步 `AssignAdvice` / `AssignPlan` top-K」未采用：手写档
 
 
 > 口径决定同时写入 [`changelog.md`](changelog.md) 的决定记录。
+
+## 9. 外部评分与技能价格参考（非剧本结算）
+
+> 来源：机制包 v1 附录 C / `参考实现/skill_price.py`、`engine_reward.py`，仅用于 AI 评价与工具面，**不参与剧本回合结算**。
+
+- **终局评分**：`score = 4.682 × Σrevise(五维) + 技能分`，其中 `revise(v) = v`（`v ≤ 1200`）或 `2v - 1200`（`v > 1200`），`技能分 ≈ 获得 PT × 2.46`（高折扣局可达 3.2 / PT）。
+  - 参考锚点：本机一局 `48,356 + 0 = 48,356`；视频样本 `59,555 + 26,727 = 86,282`；LF1 `59,958 + 32,420 = 92,378`。
+- **技能价格**：`single_mode_skill_need_point × (1 - 灵感折扣) × (1 - 剧本 10%)` 向上取整到 5 的倍数；灵感折扣 `{1:10%, 2:20%, 3:30%, 4:35%, 5:40%}`。

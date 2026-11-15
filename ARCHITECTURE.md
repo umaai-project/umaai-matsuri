@@ -58,8 +58,8 @@ matsuri-tools ──▶ matsuri-sim ─┼─▶ matsuri-core ──▶ umaai_ne
 
 ### `crates/matsuri-tools`（外围离线工具）
 
-- **工具 bin（`src/bin/`）**：`bench`（性能测量）、`sweep`（开局因子扫参）、`cardtest`（测卡与配对跑测）、`review`（局包复盘）、`rhythm`（演目 Lv 与友人节奏统计）、`audit_search`、`probe_fail`（CLI 参数手写解析）。
-- **复盘模块（`src/review/`）**：`discover` / `facts` / `derive` / `curve` / `eval` / `infer` / `brief` / `report` / `tuning`，将在线/模拟局包解析为事实层并重算估值报告。
+- **工具 bin（`src/bin/`）**：`bench`（性能测量）、`sweep`（开局因子扫参）、`cardtest`（测卡与配对跑测）、`review`（局包复盘：`open` / `eval` / `infer` / `curve` / `report`）、`rhythm`（演目 Lv 与友人节奏统计）、`audit_search`、`probe_fail`（CLI 参数手写解析）。
+- **复盘模块（`src/review/`）**：`discover` / `facts` / `derive` / `curve` / `eval` / `infer` / `brief` / `report` / `tuning`，将在线/模拟局包解析为事实层并按需重算估值报告；遵循 `measured` / `online` / `recomputed(N=...)` / `pending` / `unavailable` 五态口径，重算点缓存至 `<game>/recompute/turn{NN}_{seq}.json`（带 seed / 配置指纹 / 版本 / N 校验）。
 
 ### `crates/matsuri-launcher`（发布启动器，bin `matsuri-ai`）
 

@@ -29,8 +29,7 @@
 - `replay_*` / `scan/` / `_scratch/` / `cardtest_*` / `perf/` / `inherit_sweep/` — 在线回放帧、扫参夹具、3000 局测卡结果、性能与继承报告
 - `advice_choice/` — 2026-11-13 教诲分配实测（`RESULT.md` 入库 + 原始 N=2048 stdout 不入库）
 
-其中 **26 个 `*.md` 结论文档入库**，随仓库分发：README、`docs/plan/deck_param_scan.md`、
-`docs/plan/round_2026-11-09.md` 里的「详见 `benchmark/_local/.../FINAL.md`」在克隆仓库后仍可查。
+其中 **26 个 `*.md` 结论文档入库**，随仓库分发：`benchmark/_local/.../FINAL.md` / `RESULT.md` 在克隆仓库后仍可查。
 其余 173 个原始产物（CSV / TXT / 帧数据）**不入库**，克隆后这些数字来源需按下面的方式复跑或从备份还原。
 
 ## 复原与备份
@@ -42,8 +41,8 @@
   `logs/` 已清空，但内容可完整还原。确认无需回溯后可手动删除该目录释放约 575 MB（完整快照仍保留）。
 - 全量 md5 对账已通过：备份 2289 个文件在「隔离区 + `_local/`」中**零缺失**；相对 logs 快照额外 27 个文件为
   本目录的 8 个夹具 / `README.md` 与 18 个 `newcard_*.csv`（原本在仓根 `decks/`，不在 logs 快照内）。
-- 重新生成：`cardtest run` / `bench` / `sweep` 的输出按 `docs/plan/deck_param_scan.md`、
-  `docs/tests_overview.md`、`docs/perf_profiling.md` 的命令复跑；回放帧取自真机帧目录。
+- 重新生成：`cardtest run` / `bench` / `sweep` 的输出按 `docs/tests_overview.md`、
+  `docs/perf_profiling.md` 与下方「定卡与扫参规范」的命令复跑；回放帧取自真机帧目录。
 - 基线重录仍按 `baselines/README.md` 与 `docs/changelog.md` 写入纪律执行，路径已改为
   `benchmark/baselines/*.json`。
 
@@ -55,8 +54,23 @@
 `baselines/*.json` → `benchmark/baselines/*.json`；`decks/<夹具>.csv` → `benchmark/decks/<夹具>.csv`。
 `logs/diag/prior_ab/`、`logs/perf/base/bench*` 等纯试验产物已随清理移除，仅在上方备份中保留。
 
-`docs/plan/scenario_dev_plan.md` 2026-11-07 决策行里的「实验输出入 `logs/`（已忽略）」是旧约定，
-自 2026-11-11 起以本文件约定为准，历史行不改写。
+（原 `scenario_dev_plan.md` 2026-11-07 已归档）里的「实验输出入 `logs/`（已忽略）」是旧约定，
+自 2026-11-11 起以本文件约定为准。
+
+## 定卡、扫参与种子块规范
+
+- **定卡方法（单卡控制变量）**：固定其余 5 个位置，每次只换 1 个槽位；按 build × 类型/槽位做配对排名，先选主卡组并保留影子卡组对照。
+- **判据门禁**：「独立块 95% CI 不跨零 + 影子卡组同向」才允许落入 `data/matsuri_config.toml` 的 `[decks.*]`；遵循**「换卡与换参分开」**原则。
+- **测试专用配置入口**：测卡与扫参通过 `cardtest` / `bench` 的 `--matsuri-config` 传入变体配置（玩家 CLI 不暴露 `[decks.*]` 覆盖）。
+
+| 用途 | 已分配种子块 |
+|---|---|
+| 基线重录（`a-normal` / `b-ideal`） | `73200`（+ `93000` 独立复核） |
+| 定卡排名 / 定卡确认 | `85000–85999` / `86000–86999` |
+| 扫参初筛 / 精修复核 / 留出确认 | `87000–89999` / `90000–90999` / `91000–92999` |
+| GA `run2`（default）选择 / 复核 / 验收 | `5,000,000+` / `6,000,000` / `7,000,000` |
+| GA `run3` 耐（+10M）/ 智（+20M） | `15,000,000+` / `16M` / `17M`；`25,000,000+` / `26M` / `27M` |
+| 搜索档验收 | `30,000,000–30,000,085` |
 
 ## 清理范围（2026-11-11）
 

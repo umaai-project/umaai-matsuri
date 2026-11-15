@@ -2,7 +2,7 @@
 
 - **状态**：已采纳
 - **日期**：2026-11-15
-- **关联**：`matsuri-core/src/game/view.rs`、`matsuri-cli/src/manual.rs`、`matsuri-ai/src/output.rs`、[ARCHITECTURE.md](../../../ARCHITECTURE.md)、[online_wiring.md](../../plan/online_wiring.md)
+- **关联**：`matsuri-core/src/game/view.rs`、`matsuri-cli/src/manual.rs`、`matsuri-ai/src/output.rs`、[ARCHITECTURE.md](../../../ARCHITECTURE.md)、[online_protocol.md](../../online_protocol.md)
 
 ## 背景（Context）
 
