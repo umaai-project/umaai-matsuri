@@ -52,11 +52,11 @@
 ### 2.1 L2 数据层集成（`core/tests/data.rs`）
 
 > 从仓根 `data/` 载入**真实资产 + 配置**并抽查关键数值；mdb 重导出过错时在这里失败，
-> 不必等 S3+ 跑局才发现。数据来源映射见 [`intake.md`](intake.md) §4.1。
+> 不必等 S3+ 跑局才发现。数据来源映射见 [`intake.md`](intake.md) §2。
 
 | 用例 | 守门内容 |
 |---|---|
-| `load_repo_data` / `load_repo_config` | 资产 16 个顶层键可载入并通过校验；配置默认层 = `MatsuriConfig::default()`，且带 `stamina_build` / `wisdom_build` 两档 |
+| `load_repo_data` / `load_repo_config` | 资产 18 个顶层键可载入并通过校验；配置默认层 = `MatsuriConfig::default()`，且带 `stamina_build` / `wisdom_build` 两档 |
 | `limits` / `acts` | 五维基础上限 2200 组 / 绝对上限 2500 / 演目 → 命令 → 训练位 → 神驹映射 |
 | `training_table` | 普通训练 Lv1–5（含力量 Lv4/Lv5、根性 Lv5）与稽古 Junior / Classic 两档（S5 恢复） |
 | `act_effects` | Lv1 基线 / Lv8 跳档 / Lv9 基础上限 / Lv10 顶点 |
