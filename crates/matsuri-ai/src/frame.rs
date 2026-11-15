@@ -56,7 +56,7 @@ struct BaseGameExtra {
 /// 一条训练预览真值
 ///
 /// 两段都是**7 项定长**：速 / 耐 / 力 / 根 / 智 / 技能点 / 体力（负数为消耗）；
-/// `lower` 取游戏下层、`upper` 取剧本上层，逐项相加才是总增量，且**未做 1200 衰减**。
+/// `lower` 取游戏下层、`upper` 取剧本上层，逐项相加才是总增量，且五维为**表示値（`ReviseOver1200` 折半）**。
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrainingFrame {
