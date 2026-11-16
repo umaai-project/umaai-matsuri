@@ -57,6 +57,7 @@ pub fn report(args: ReportArgs<'_>) -> Result<(PathBuf, PathBuf)> {
     );
     std::fs::create_dir_all(&out)?;
     let evals = read_evals(&out)?;
+    let swaps = read_swaps(&out)?;
     let curve = read_curve(&out);
     let narrative = match args.narrative {
         Some(path) => Some(
@@ -85,11 +86,22 @@ pub fn report(args: ReportArgs<'_>) -> Result<(PathBuf, PathBuf)> {
             "kind": report.kind,
             "regret": report.regret,
             "ci95": report.ci95,
+            "hit": report.hit,
+            "swap": report.swap,
             "t_n": report.t_n,
             "best": report.best,
             "chosen": report.chosen,
             "rollout": report.rollout,
             "note": report.note,
+        })).collect::<Vec<_>>(),
+        "swaps": swaps.iter().map(|report| json!({
+            "turn": report.turn,
+            "chosen": report.chosen,
+            "target": report.swap.as_ref().map(|swap| &swap.target),
+            "delta": report.swap.as_ref().and_then(|swap| swap.delta),
+            "ci95": report.swap.as_ref().and_then(|swap| swap.ci95),
+            "paired_n": report.swap.as_ref().map_or(0, |swap| swap.paired_n),
+            "hit": report.swap.as_ref().map(|swap| swap.hit),
         })).collect::<Vec<_>>(),
         "curve": curve.as_ref().map(|curve| json!({
             "summary": curve.summary,
@@ -99,7 +111,7 @@ pub fn report(args: ReportArgs<'_>) -> Result<(PathBuf, PathBuf)> {
     let digest_path = out.join("digest.json");
     std::fs::write(&digest_path, serde_json::to_string_pretty(&digest)?)?;
 
-    let html = render(&facts, &evals, curve.as_ref(), narrative.as_deref());
+    let html = render(&facts, &evals, &swaps, curve.as_ref(), narrative.as_deref());
     let html_path = out.join("report.html");
     std::fs::write(&html_path, html)?;
     Ok((html_path, digest_path))
@@ -107,8 +119,17 @@ pub fn report(args: ReportArgs<'_>) -> Result<(PathBuf, PathBuf)> {
 
 /// 读已缓存的 eval 点（按回合升序）
 fn read_evals(out: &Path) -> Result<Vec<EvalReport>> {
-    let dir = out.join("recompute");
-    let Ok(entries) = std::fs::read_dir(&dir) else {
+    read_reports(&out.join("recompute"))
+}
+
+/// 读 `--swap` 结果（单独目录，避免与主表混读）
+fn read_swaps(out: &Path) -> Result<Vec<EvalReport>> {
+    read_reports(&out.join("recompute").join("swap"))
+}
+
+/// 读目录下一层 `*.json`，按（回合，序号）排序
+fn read_reports(dir: &Path) -> Result<Vec<EvalReport>> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
         return Ok(Vec::new());
     };
     let mut rows: Vec<EvalReport> = entries
@@ -131,6 +152,7 @@ fn read_curve(out: &Path) -> Option<CurveReport> {
 fn render(
     facts: &Facts,
     evals: &[EvalReport],
+    swaps: &[EvalReport],
     curve: Option<&CurveReport>,
     narrative: Option<&str>,
 ) -> String {
@@ -177,6 +199,10 @@ fn render(
     let _ = writeln!(out, "{}", svg_five(facts));
     let _ = writeln!(out, "<h2>eval 点：best / chosen</h2>");
     let _ = writeln!(out, "{}", svg_regret(evals));
+    if !swaps.is_empty() {
+        let _ = writeln!(out, "<h2>替代对比（--swap）</h2>");
+        let _ = writeln!(out, "{}", table_swaps(swaps));
+    }
     let _ = writeln!(out, "<h2>决策与检查构成</h2>");
     let _ = writeln!(out, "<div class=\"grid\">");
     let _ = writeln!(out, "<div class=\"card\">{}</div>", svg_decisions(facts));
@@ -370,6 +396,36 @@ fn svg_decisions(facts: &Facts) -> String {
         );
     }
     out.push_str("</svg>");
+    out
+}
+
+/// 替代对比表：回合 / 实际 / 替代 / Δ / CI / 判决
+fn table_swaps(swaps: &[EvalReport]) -> String {
+    let mut out = String::from(
+        "<table><tr><th>回合</th><th>实际</th><th>替代</th><th>Δ</th><th>±</th><th>判决</th></tr>",
+    );
+    for report in swaps {
+        let Some(swap) = &report.swap else { continue };
+        let actual = report
+            .chosen
+            .as_ref()
+            .map_or_else(|| "—".to_string(), |chosen| chosen.description.clone());
+        let delta = swap
+            .delta
+            .map_or_else(|| "—".to_string(), |value| format!("{value:+.0}"));
+        let ci = swap
+            .ci95
+            .map_or_else(|| "—".to_string(), |value| format!("{value:.0}"));
+        let _ = writeln!(
+            out,
+            "<tr><td>T{}</td><td>{}</td><td>{}</td><td>{delta}</td><td>{ci}</td><td>{}</td></tr>",
+            report.turn,
+            escape(&actual),
+            escape(&swap.target.description),
+            swap.hit.label()
+        );
+    }
+    out.push_str("</table>");
     out
 }
 

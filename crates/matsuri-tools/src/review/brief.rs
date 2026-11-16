@@ -14,7 +14,7 @@ pub fn render(facts: &Facts) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "> 由 review open 生成；只含事实与检查项。T(n) / regret 需要按需重算（见末尾 pending）。"
+        "> 由 review open 生成；只含事实与检查项。本文件的 `score` 是**当前局面评分**（五维得分 + PT + 技能分），\n> 不是期望终局分；期望分 / `regret` 需要 `review eval` 按需重算（见末尾 pending）。"
     );
     let _ = writeln!(out);
 

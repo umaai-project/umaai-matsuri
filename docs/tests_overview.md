@@ -11,8 +11,8 @@
 | `matsuri-core` | 内联单测 + `tests/{data,mechanics,diag,search,restore,diag_advice_choice}.rs` | L1 单元、L2 仓内资产/配置、全流程机制集成、诊断静默、搜索与还原层守门 |
 | `matsuri-sim` | `src/baseline.rs` 内联单测 | 基线 JSON 自检与合并标准误 × 相对容差判定（复跑入口在 `bench baseline`） |
 | `matsuri-cli` | 内联单测 + `tests/{manual,explain,search}_smoke.rs` | 面板呈现纯函数 + 手动/解释/搜索三档冒烟 |
-| `matsuri-ai` | 内联单测 + `tests/{replay,advice_boundary,w2,layers,diag_advice_shift,diag_npc_roster}.rs` | 帧解析（`charaEffects` / `storyId`）、按帧卡组选档、路由边界、回放顺序、偏差拆解与搜索根边界 |
-| `matsuri-tools` | `src/bin/bench.rs`（`cardtest` 等） | 性能与基线测量工具（无单测，用法见 [`perf_profiling.md`](perf_profiling.md)） |
+| `matsuri-ai` | 内联单测 | 帧解析（`charaEffects` / `storyId`）、按帧卡组选档、路由边界、回放顺序；原 `tests/{replay,advice_boundary,w2,layers,diag_advice_shift,diag_npc_roster}.rs` 只读仓外真机散帧，2026-11-16 删除 |
+| `matsuri-tools` | `src/stat.rs` 内联单测 + `src/bin/*`（`bench` / `review` / `rhythm` 等） | 复盘统计口径（配对差 / 分位 / 命中判定）+ 性能与基线测量工具（用法见 [`perf_profiling.md`](perf_profiling.md)） |
 | `matsuri-launcher` | `src/{update,startup,main,program}.rs` 内联单测 | 四频道白名单守卫、启动自检汇总、菜单编号、`program` 解压与 `.old` 回滚 |
 
 ## 2. 核心守门职责（索引到文件）
@@ -24,6 +24,8 @@
   - `core/src/game/{roster,stage,advice,distribute,train,event,settle,mod,view,diag}.rs`：担当五步分配、5 阶段链、合宿顺延、空窗期（68–71）/ URA（72–77）、教诲 120 排列与 801 约束、社交人头唯一性与吾妻补稽古位、双层训练公式、S6 事件链与变胖、発表会/本番/育成终了、`MatsuriView` 只读幂等、预览零克隆不串味。
   - `core/src/{search,trainer,value,game/traits}.rs`：单决策流随机字、自选比赛期限只搜比赛、`pt_favor_rate` 搜索分、手写守门链、溢出与末段稽古估值。
   - `cli/src/{panel,manual,online}.rs`：CJK 宽度、五维 >1200 显示压缩、图例配色、运气行期望/σ/档次渲染与按帧卡组选档行。
+  - `tools/src/stat.rs`：命中判定三态与边界（`abs(delta) <= ci95`）、配对差跳过缺样本并按 `变动臂 − 对照臂` 计、不足两对不下结论、分位线性插值。
+  - `tools/src/review/{eval,whatif}.rs`：**多决策面选帧**——同回合多帧 = 事件/训练/教诲三个面，`eval` 单点多面必须 `--seq`、`--all` 逐面各一点；`whatif` 教诲帧优先（special + ps=51）、事件面不支持、单候选回合直接拒绝。两者均无单测，靠真机局包手验。
   - `launcher/src/{update,startup,main,program}.rs`：频道白名单（`ai_data` 三表 / `ura_data` `.br` / `ura_plugins` `Plugins/*.zip`）、无状态自检汇总、Authenticode 白名单与失败逆序回滚。
 - **L2 数据层（`core/tests/data.rs`）**：直接加载仓内 `data/` 资产与配置，在 `mdb` 重导出或配置异常时于早期拦截。
 - **机制集成（`core/tests/mechanics.rs`）**：覆盖 78 回合全流程、赛程/合宿/URA 动作集分叉、比赛加成乘算与狄杜斯铁心、继承/小切/切者/心情盾、自选比赛义务区间与奖励、追加稽古端到端与手写确定性。

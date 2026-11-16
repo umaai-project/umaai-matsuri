@@ -110,6 +110,7 @@ pub fn curve(args: CurveArgs<'_>) -> Result<(PathBuf, CurveReport)> {
             data_root: args.data_root,
             force: args.force,
             all: false,
+            swap: None,
         };
         match eval(point) {
             Ok((_, report)) => points.push(CurvePoint {

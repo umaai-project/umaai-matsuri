@@ -330,26 +330,14 @@ fn main() -> Result<()> {
                     .join("|");
                 println!("alloc,{turn},{n},{s},{body}");
                 if let Some(ordered) = out.ordered_rollouts.as_ref() {
-                    let m = (counts[a].min(counts[b]) as usize)
-                        .min(ordered.per_candidate[a].len())
-                        .min(ordered.per_candidate[b].len());
-                    let mut diffs = Vec::with_capacity(m);
-                    for k in 0..m {
-                        if let (Some(x), Some(y)) = (
-                            ordered.per_candidate[a].get(k).copied().flatten(),
-                            ordered.per_candidate[b].get(k).copied().flatten(),
-                        ) {
-                            diffs.push(x - y);
-                        }
-                    }
-                    if diffs.len() > 1 {
-                        let md = diffs.iter().sum::<f64>() / diffs.len() as f64;
-                        let var = diffs.iter().map(|d| (d - md) * (d - md)).sum::<f64>()
-                            / (diffs.len() as f64 - 1.0);
-                        let pse = (var / diffs.len() as f64).sqrt();
+                    // 保持历史符号 `a − b`：`paired_diff(x, y)` 记 `y − x`，故两臂对调
+                    let empty: &[Option<f64>] = &[];
+                    let left = ordered.per_candidate.get(b).map_or(empty, Vec::as_slice);
+                    let right = ordered.per_candidate.get(a).map_or(empty, Vec::as_slice);
+                    if let Some(paired) = matsuri_tools::stat::paired_diff(left, right) {
                         println!(
-                            "pair,{turn},{n},{s},{a},{b},{},{md:.4},{pse:.4},{indep:.4}",
-                            diffs.len()
+                            "pair,{turn},{n},{s},{a},{b},{},{:.4},{:.4},{indep:.4}",
+                            paired.n, paired.mean, paired.se
                         );
                     }
                 }

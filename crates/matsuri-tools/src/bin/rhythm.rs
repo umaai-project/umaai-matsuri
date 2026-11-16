@@ -470,18 +470,7 @@ fn analyze(run: &Run) -> GameRow {
 
 /// 线性插值分位（空集返回 NaN）
 fn quantile(values: &mut [f64], q: f64) -> f64 {
-    if values.is_empty() {
-        return f64::NAN;
-    }
-    values.sort_by(|a, b| a.total_cmp(b));
-    let pos = q * (values.len() as f64 - 1.0);
-    let low = pos.floor() as usize;
-    let high = pos.ceil() as usize;
-    if low == high {
-        return values[low];
-    }
-    let weight = pos - low as f64;
-    values[low] * (1.0 - weight) + values[high] * weight
+    matsuri_tools::stat::quantile(values, q).unwrap_or(f64::NAN)
 }
 
 /// 分位串 P10/P50/P90

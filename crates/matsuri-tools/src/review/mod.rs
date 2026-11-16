@@ -14,6 +14,7 @@ pub mod facts;
 pub mod infer;
 pub mod report;
 pub mod tuning;
+pub mod whatif;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

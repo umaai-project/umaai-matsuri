@@ -29,7 +29,10 @@
 
 ## 4. 复盘工具链（原 `review_tool_plan_2026-11-13.md`）
 
-- [ ] **P0-C AI sidecar 记录层**：实现 `matsuri-cli online --record <dir>`、输出 `ai.jsonl` + `ai-meta.json`，并在 `matsuri-ai/src/output.rs` 补独立 `RecordRow` DTO。
-- [ ] **检查项与节奏分位基线**：补齐 B2/B3（教诲/転成样本阈值标定）、C1/C2 聚合；生成 `benchmark/baselines/acts_friend_*.json` 分位表，让判据 (1)(2) 支持快慢判定。
-- [ ] **模拟局 P2 复盘**：`matsuri-sim` 抽出 `pub fn play()`，支持同随机流 O/E/A 受约束上限与反事实对比。
-- [ ] **引擎最小增益 E1–E3**：`umaai_next` 增 `ActionResult::quantile`/`se` 与 `SearchOutput::paired_diff`（`--paired` 导出）；`umaai_next/docs/scenario/` 补「复盘数据契约」。
+- [ ] **选择偏差判据统一**：B2/B3/C1/C2 合并为一条判据——`eval` 的 `abs(regret) ≤ ci95` 即命中（实际选择在随机误差内，不展开），显著才分析（第几选、损失、五维/PT 取舍）；`brief`/`report` 增加「实际 / 替代 / 最优」三列与命中标记。不实现 `ai.jsonl` sidecar（原 P0-C 作废）。
+- [ ] **`eval --swap <动作名>`**：以指定候选替换实际动作，输出「替代 − 实际」终局差 ± 配对 CI（复用现有候选表与 `OrderedRollouts`）。动作名取 `Action::decision_label`，精确匹配优先、唯一前缀次之；歧义或无匹配时报错并打印该回合候选表。`--all --swap` 仅作逐点敏感性，不作连续换手结论。
+- [ ] **统计口径收敛**：新增 `crates/matsuri-tools/src/stat.rs`（`hit` / `paired_ci` / `quantile`，转调 `umaai_core::stats`），替换 `review/eval.rs`、`bin/audit_search.rs`、`bin/rhythm.rs` 三处重复实现，并统一符号为 `best − chosen`。
+- [ ] **whatif 反事实（主体已落地）**：`review whatif --turn N --swap <动作名>[,<动作名>…] [--horizon 8|0] [--k 100]`（固定手写训练员，search 口径由 `eval --swap` 承担）；基线默认历史实际动作（失败降级标 `actual_source`），多替代；`--horizon 0` 跑满终局给终局分。统计口径：K=100 手写局（秒级），频数差 >10pt、均值差 >2SE；维度含体力/干劲/五维属性/五维分/演目 Lv/技能点/PT/评分 + 分维。边界：事件回合不做、教诲帧优先、单候选回合提示。`play()` 原语抽取与整局对比暂不做。
+- [ ] **节奏分位口径**：以 `benchmark/_local/acts_friend/summary.md` 结论为准，不入库 `baselines/acts_friend_*.json`；`review` 不自动判快慢。
+
+> 已取消：跨局聚合、AI sidecar 记录层、引擎 E1–E3（理由见 `changelog.md` 2026-11-16）。

@@ -8,3 +8,4 @@
 //!
 //! 形态：单 bin 多子命令；依赖与 bin 在实现时登记。
 pub mod review;
+pub mod stat;

@@ -2,6 +2,7 @@
 //!
 //! 只从目标回合的**单帧**还原局面，搜索自己 rollout 到终局；不逐帧回放整局。
 //! 种子与在线同口径（`(master, turn, Probe)`），所以同局面下在线决策与 eval 重算可比。
+//! `--swap` 以指定候选替换实际动作，输出「替代 − 实际」的终局差与配对区间。
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -21,9 +22,10 @@ use umasim::game::{Game, Trainer};
 
 use super::discover::GameFiles;
 use super::facts::open_session;
+use crate::stat::{Hit, hit, paired_diff};
 
 /// 缓存 schema（改动输出结构时递增）
-const SCHEMA: u32 = 1;
+const SCHEMA: u32 = 2;
 
 /// `review eval` 参数
 pub struct EvalArgs<'a> {
@@ -45,6 +47,8 @@ pub struct EvalArgs<'a> {
     pub force: bool,
     /// 批量：本局所有有决策面的回合都算（忽略 `turn`）
     pub all: bool,
+    /// 替代动作名（`--swap`）：按候选描述精确或唯一前缀匹配
+    pub swap: Option<&'a str>,
 }
 
 /// 一次 eval 的结果（同时是缓存文件格式）
@@ -84,10 +88,29 @@ pub struct EvalReport {
     pub candidates: Vec<CandidateRow>,
     /// rollout 健康度
     pub rollout: Option<HealthRow>,
+    /// 命中判定（以 `regret` 对 `ci95` 为准）
+    pub hit: Hit,
+    /// `--swap` 指定的替代候选结果
+    pub swap: Option<SwapReport>,
     /// 备注（chosen 不可判 / 走 fallback 等）
     pub note: Option<String>,
     /// 搜索耗时
     pub elapsed_ms: u64,
+}
+
+/// `--swap` 结果：替代候选与实际选择的差
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwapReport {
+    /// 替代候选
+    pub target: CandidateRef,
+    /// `替代 − 实际`（加权分口径；实际不可判时为 `None`）
+    pub delta: Option<f64>,
+    /// 配对差 95% 区间半宽（逐 rollout 序号对齐）
+    pub ci95: Option<f64>,
+    /// 配对样本数
+    pub paired_n: usize,
+    /// 命中判定（区间跨零 = 差异在噪声内）
+    pub hit: Hit,
 }
 
 /// 候选引用
@@ -136,29 +159,37 @@ pub struct HealthRow {
 /// 批量重算：本局每个有决策面的回合各算一点（同一缓存目录）
 pub fn eval_all(args: EvalArgs<'_>) -> Result<Vec<(PathBuf, EvalReport)>> {
     let files = GameFiles::scan(args.input, args.game)?;
-    let mut turns: Vec<i32> = files
+    // 逐决策面（回合 + 帧序号）各算一点：同回合的事件 / 训练 / 教诲是不同决策面
+    let mut points: Vec<(i32, u32)> = files
         .frames
         .iter()
-        .filter_map(|frame| parse_frame_name(&frame.name).map(|(turn, _)| turn))
+        .filter_map(|frame| parse_frame_name(&frame.name))
         .collect();
-    turns.sort_unstable();
-    turns.dedup();
+    points.sort_unstable();
+    points.dedup();
     let mut out = Vec::new();
-    for turn in turns {
+    for (turn, seq) in points {
         let point = EvalArgs {
             input: args.input,
             game: args.game,
             turn,
-            seq: None,
+            seq: Some(seq),
             n: args.n,
             out: args.out,
             data_root: args.data_root,
             force: args.force,
             all: false,
+            swap: args.swap,
         };
         match eval(point) {
             Ok(result) => out.push(result),
-            Err(error) => eprintln!("跳过 T{turn}：{error:#}"),
+            Err(error) => {
+                let message = format!("{error:#}");
+                // 无决策面的帧（结算中间态 / 事件残帧）静默跳过，其余照常提示
+                if !message.contains("没有可决策帧") {
+                    eprintln!("跳过 T{turn} seq{seq}：{message}");
+                }
+            }
         }
     }
     Ok(out)
@@ -189,7 +220,9 @@ pub fn eval(args: EvalArgs<'_>) -> Result<(PathBuf, EvalReport)> {
         Path::to_path_buf,
     );
 
+    // `--swap` 的输入（动作名）不进缓存键，命中旧缓存会掩盖结果，故 swap 模式一律重算
     if !args.force
+        && args.swap.is_none()
         && let Some((path, cached)) = read_cache(&out, &files, args.turn, args.seq)
         && cached.schema == SCHEMA
         && cached.turn == args.turn
@@ -201,7 +234,7 @@ pub fn eval(args: EvalArgs<'_>) -> Result<(PathBuf, EvalReport)> {
     }
 
     let mut session = open_session(&engine, Arc::clone(&data), base.clone())?;
-    let (contents, seq, frame) = pick_frame(&mut session, &files, args.turn, args.seq)?;
+    let (seq, frame, game) = pick_frame(&mut session, &files, args.turn, args.seq)?;
     let deck = session.deck_profile().cloned();
     let mut config = match &deck {
         Some(profile) => base.for_profile(&profile.name)?,
@@ -215,7 +248,6 @@ pub fn eval(args: EvalArgs<'_>) -> Result<(PathBuf, EvalReport)> {
     let mut rng = StdRng::seed_from_u64(seed);
     let started = Instant::now();
 
-    let game = session.replay_frame(&contents)?;
     let (kind, summary, actions, pre) = run_decision(&trainer, &game, &frame, &config, &mut rng)?;
     let elapsed_ms = started.elapsed().as_millis() as u64;
 
@@ -244,22 +276,32 @@ pub fn eval(args: EvalArgs<'_>) -> Result<(PathBuf, EvalReport)> {
         chosen_index,
         trainer: &trainer,
         elapsed_ms,
-    });
+        swap: args.swap,
+    })?;
 
-    let dir = out.join("recompute");
+    // swap 结果落 `recompute/swap/`，不进主目录（report 只读 `recompute/*.json`，避免混入）
+    let dir = if args.swap.is_some() {
+        out.join("recompute").join("swap")
+    } else {
+        out.join("recompute")
+    };
     std::fs::create_dir_all(&dir)?;
     let path = dir.join(format!("turn{:02}_{seq}.json", args.turn));
     std::fs::write(&path, serde_json::to_string_pretty(&report)?)?;
     Ok((path, report))
 }
 
-/// 选目标帧：指定 `seq` 精确取；否则取该回合第一个可决策帧
+/// 选目标帧
+///
+/// 指定 `seq` 时精确取该帧；未指定时要求该回合**只有一个可决策面**——
+/// 同回合常同时有事件 / 训练 / 教诲三个决策面，静默取第一个会评错面，
+/// 故多面时直接报错并列出 `seq`。
 fn pick_frame(
     session: &mut OnlineSession,
     files: &GameFiles,
     turn: i32,
     seq: Option<u32>,
-) -> Result<(String, u32, ParsedFrame)> {
+) -> Result<(u32, ParsedFrame, MatsuriGame)> {
     let mut rows: Vec<(u32, String)> = files
         .frames
         .iter()
@@ -279,6 +321,7 @@ fn pick_frame(
         }
     }
     let mut skipped = Vec::new();
+    let mut decisions: Vec<(u32, String, Route, ParsedFrame, MatsuriGame)> = Vec::new();
     for (frame_seq, name) in &rows {
         let Some(frame) = files.frames.iter().find(|frame| frame.name == *name) else {
             continue;
@@ -288,17 +331,42 @@ fn pick_frame(
                 let parsed = ParsedFrame::parse(&frame.contents)?;
                 match matsuri_ai::online::route(&game, &parsed) {
                     Route::Skip(reason) => skipped.push(format!("{name}：{reason}")),
-                    _ => return Ok((frame.contents.clone(), *frame_seq, parsed)),
+                    route => decisions.push((*frame_seq, name.clone(), route, parsed, game)),
                 }
             }
             Err(error) => skipped.push(format!("{name}：{error:#}")),
         }
     }
-    bail!(
-        "T{turn} 没有可决策帧（跳过 {} 帧）：{}",
-        skipped.len(),
-        skipped.join("；")
-    )
+    if decisions.is_empty() {
+        bail!(
+            "T{turn} 没有可决策帧（跳过 {} 帧）：{}",
+            skipped.len(),
+            skipped.join("；")
+        );
+    }
+    if seq.is_none() && decisions.len() > 1 {
+        let list = decisions
+            .iter()
+            .map(|(frame_seq, _, route, _, _)| format!("seq={frame_seq} {}", route_label(*route)))
+            .collect::<Vec<_>>()
+            .join(" / ");
+        bail!(
+            "T{turn} 有 {} 个可决策面：{list}；请用 --seq 指定",
+            decisions.len()
+        );
+    }
+    let (frame_seq, _, _, parsed, game) = decisions.remove(0);
+    Ok((frame_seq, parsed, game))
+}
+
+/// 路由的中文名（报错提示用）
+fn route_label(route: Route) -> &'static str {
+    match route {
+        Route::Train => "训练",
+        Route::Advice(_) => "教诲",
+        Route::Event => "事件",
+        Route::Skip(_) => "跳过",
+    }
 }
 
 /// 执行一次决策（与在线同口径），返回（类型，摘要，候选，上下文）
@@ -379,15 +447,15 @@ type DecisionRun = (
 );
 
 /// 教诲决策前的槽位上下文（实际方案匹配用）
-struct AdviceCtx {
+pub(crate) struct AdviceCtx {
     /// 分配前槽内容
-    slots: [i32; 5],
+    pub(crate) slots: [i32; 5],
     /// 分配前転成叠加
-    fused: [i32; 5],
+    pub(crate) fused: [i32; 5],
 }
 
 /// 终局帧里的玩家动作
-fn history_actions(files: &GameFiles) -> Result<Vec<FinalAction>> {
+pub(crate) fn history_actions(files: &GameFiles) -> Result<Vec<FinalAction>> {
     let Some(final_frame) = files.final_frame.as_ref() else {
         return Ok(Vec::new());
     };
@@ -397,7 +465,7 @@ fn history_actions(files: &GameFiles) -> Result<Vec<FinalAction>> {
 
 /// 实际选择在候选空间里的下标
 #[allow(clippy::too_many_arguments)]
-fn actual_choice(
+pub(crate) fn actual_choice(
     files: &GameFiles,
     game: &MatsuriGame,
     kind: &str,
@@ -558,10 +626,12 @@ struct ReportInput<'a> {
     chosen_index: Option<usize>,
     trainer: &'a MatsuriSearchTrainer,
     elapsed_ms: u64,
+    /// 替代动作名
+    swap: Option<&'a str>,
 }
 
 /// 组装落盘结果
-fn build_report(input: ReportInput<'_>) -> EvalReport {
+fn build_report(input: ReportInput<'_>) -> Result<EvalReport> {
     let ReportInput {
         game,
         turn,
@@ -575,9 +645,11 @@ fn build_report(input: ReportInput<'_>) -> EvalReport {
         chosen_index,
         trainer,
         elapsed_ms,
+        swap,
     } = input;
     let health = trainer.last_health();
     let mut note = None;
+    let mut chosen_position = None;
     let (candidates, best, chosen, regret, ci95, paired_n, t_n) = match summary {
         Some(summary) => {
             let candidates: Vec<CandidateRow> = summary
@@ -609,7 +681,7 @@ fn build_report(input: ReportInput<'_>) -> EvalReport {
                         score: candidate.score,
                     })
             });
-            let chosen_position = chosen_index.and_then(|index| {
+            chosen_position = chosen_index.and_then(|index| {
                 summary
                     .candidates
                     .iter()
@@ -626,16 +698,23 @@ fn build_report(input: ReportInput<'_>) -> EvalReport {
                     })
             });
             if chosen_index.is_some() && chosen.is_none() {
-                note = Some("实际动作不在候选空间（搜索剪枝 / 未映射）".to_string());
+                note = Some(
+                    "实际动作不在搜索候选（教诲 120 排列剪枝到 16 / 训练未映射）；regret 不可判，可用 review whatif 直接强制该动作对照"
+                        .to_string(),
+                );
             }
             let regret = best
                 .as_ref()
                 .zip(chosen.as_ref())
                 .map(|(best, chosen)| best.score - chosen.score);
-            let (ci95, paired_n) = match (trainer.last_ordered(), best_position, chosen_position) {
-                (Some(ordered), Some(best), Some(chosen)) => paired_ci(&ordered, best, chosen),
-                _ => (None, 0),
-            };
+            let paired = trainer.last_ordered().and_then(|ordered| {
+                paired_diff(
+                    ordered.per_candidate.get(chosen_position?)?,
+                    ordered.per_candidate.get(best_position?)?,
+                )
+            });
+            let ci95 = paired.as_ref().map(|paired| paired.ci95);
+            let paired_n = paired.map_or(0, |paired| paired.n as usize);
             (
                 candidates,
                 best,
@@ -654,7 +733,16 @@ fn build_report(input: ReportInput<'_>) -> EvalReport {
     if chosen_index.is_none() && note.is_none() && kind == "event" {
         note = Some("该回合有多条/没有 check_event，实际选择无法与当前事件对齐".to_string());
     };
-    EvalReport {
+    let swap_report = match swap {
+        Some(query) => Some(build_swap(
+            &candidates,
+            query,
+            chosen_position,
+            trainer.last_ordered().as_ref(),
+        )?),
+        None => None,
+    };
+    Ok(EvalReport {
         schema: SCHEMA,
         game,
         turn,
@@ -677,46 +765,100 @@ fn build_report(input: ReportInput<'_>) -> EvalReport {
             failed: health.failed,
             max_career_failed_rate: health.max_career_failed_rate(),
         }),
+        hit: hit(regret, ci95),
+        swap: swap_report,
         note,
         elapsed_ms,
-    }
+    })
 }
 
-/// 配对差 95% 区间：逐 rollout 序号求差（CRN 下方差远小于独立近似）
-fn paired_ci(
-    ordered: &umasim::search::OrderedRollouts,
-    best: usize,
-    chosen: usize,
-) -> (Option<f64>, usize) {
-    let (Some(best_row), Some(chosen_row)) = (
-        ordered.per_candidate.get(best),
-        ordered.per_candidate.get(chosen),
-    ) else {
-        return (None, 0);
+/// 组装 `--swap` 结果
+///
+/// `delta` 取加权分差（与 `regret` 同口径），区间取逐 rollout 配对差；实际选择不可判时
+/// 只给替代候选本身，差与区间留 `None`。
+fn build_swap(
+    candidates: &[CandidateRow],
+    query: &str,
+    chosen_position: Option<usize>,
+    ordered: Option<&umasim::search::OrderedRollouts>,
+) -> Result<SwapReport> {
+    let position = resolve_swap(candidates, query)?;
+    let target = CandidateRef {
+        index: candidates[position].index,
+        description: candidates[position].description.clone(),
+        score: candidates[position].score,
     };
-    let diffs: Vec<f64> = best_row
-        .iter()
-        .zip(chosen_row.iter())
-        .filter_map(|(best, chosen)| best.zip(*chosen).map(|(best, chosen)| best - chosen))
-        .collect();
-    let n = diffs.len();
-    if n < 2 {
-        return (None, n);
-    }
-    let mean = diffs.iter().sum::<f64>() / n as f64;
-    let variance = diffs.iter().map(|diff| (diff - mean).powi(2)).sum::<f64>() / (n - 1) as f64;
-    let se = (variance / n as f64).sqrt();
-    (Some(t95(n - 1) * se), n)
+    let delta = chosen_position.map(|chosen| target.score - candidates[chosen].score);
+    let paired = chosen_position.and_then(|chosen| {
+        paired_diff(
+            ordered?.per_candidate.get(position)?,
+            ordered?.per_candidate.get(chosen)?,
+        )
+    });
+    let ci95 = paired.as_ref().map(|paired| paired.ci95);
+    let paired_n = paired.map_or(0, |paired| paired.n as usize);
+    Ok(SwapReport {
+        target,
+        delta,
+        ci95,
+        paired_n,
+        hit: hit(delta, ci95),
+    })
 }
 
-/// 双侧 95% t 临界值（df ≤ 30 查表，更大用正态 1.96）
-fn t95(df: usize) -> f64 {
-    const TABLE: [f64; 30] = [
-        12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160,
-        2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064, 2.060, 2.056,
-        2.052, 2.048, 2.045, 2.042,
-    ];
-    TABLE.get(df.saturating_sub(1)).copied().unwrap_or(1.96)
+/// 把 `--swap` 的动作名解析成候选位置
+///
+/// 精确等值优先，其次唯一前缀；歧义或无匹配时报错并列出候选表，由调用方按表重选。
+fn resolve_swap(candidates: &[CandidateRow], query: &str) -> Result<usize> {
+    let exact: Vec<usize> = candidates
+        .iter()
+        .enumerate()
+        .filter(|(_, candidate)| candidate.description == query)
+        .map(|(position, _)| position)
+        .collect();
+    match exact.len() {
+        1 => return Ok(exact[0]),
+        0 => {}
+        _ => bail!(
+            "「{query}」命中多个候选：{}",
+            list_candidates(candidates, &exact)
+        ),
+    }
+    let prefix: Vec<usize> = candidates
+        .iter()
+        .enumerate()
+        .filter(|(_, candidate)| candidate.description.starts_with(query))
+        .map(|(position, _)| position)
+        .collect();
+    match prefix.len() {
+        1 => Ok(prefix[0]),
+        0 => {
+            let all: Vec<usize> = (0..candidates.len()).collect();
+            bail!(
+                "本回合候选里没有「{query}」；可选：{}",
+                list_candidates(candidates, &all)
+            )
+        }
+        _ => bail!(
+            "「{query}」前缀匹配到多个候选：{}",
+            list_candidates(candidates, &prefix)
+        ),
+    }
+}
+
+/// 候选列表文本（`#下标 描述(分数)`），供报错提示
+fn list_candidates(candidates: &[CandidateRow], positions: &[usize]) -> String {
+    positions
+        .iter()
+        .filter_map(|position| candidates.get(*position))
+        .map(|candidate| {
+            format!(
+                "#{} {}({:.0})",
+                candidate.index, candidate.description, candidate.score
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("；")
 }
 
 /// 帧文件名 → （回合，同回合序号）
