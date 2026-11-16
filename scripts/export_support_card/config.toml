@@ -151,9 +151,14 @@ races = [43]
 note = "事件不影响比赛回合"
 
 [[special_races]]
+chara_id = 1075 # 谋勇
+races = [57]
+note = "事件不影响比赛回合; 55-56回合不可比赛"
+
+[[special_races]]
 chara_id = 1079 # 狂怒乐章
 remove_races = [53]
-note = "回合 53 的比赛固定取消（该回合可做其他事）"
+note = "回合 53 的比赛取消"
 
 [[special_races]]
 chara_id = 1081 # 希望城

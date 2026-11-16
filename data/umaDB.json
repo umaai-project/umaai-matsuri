@@ -869,7 +869,7 @@
     ],
     "freeRaces": [],
     "gameId": 100903,
-    "name": "[陣風の花紺青]大和赤骥",
+    "name": "[疾风花绀青]大和赤骥",
     "preferRaces": [],
     "preferReds": [],
     "races": [
@@ -2755,7 +2755,7 @@
     ],
     "freeRaces": [],
     "gameId": 102903,
-    "name": "[熟れしめでたし実り姫]雪之美人",
+    "name": "[吉庆丰稔硕果姬]雪之美人",
     "preferRaces": [],
     "preferReds": [],
     "races": [
@@ -6574,6 +6574,43 @@
     ],
     "star": 5
   },
+  "107501": {
+    "bonusData": [],
+    "fiveStatusBonus": [
+      0,
+      0,
+      10,
+      10,
+      10
+    ],
+    "fiveStatusInitial": [
+      121,
+      99,
+      121,
+      95,
+      114
+    ],
+    "freeRaces": [],
+    "gameId": 107501,
+    "name": "[白光のレガリア]谋勇兼备",
+    "preferRaces": [],
+    "preferReds": [],
+    "races": [
+      11,
+      26,
+      30,
+      33,
+      43,
+      45,
+      52,
+      57,
+      59,
+      68,
+      69
+    ],
+    "raceNote": "事件不影响比赛回合; 55-56回合不可比赛",
+    "star": 5
+  },
   "107601": {
     "bonusData": [],
     "fiveStatusBonus": [
@@ -6894,7 +6931,7 @@
       59,
       68
     ],
-    "raceNote": "回合 53 的比赛固定取消（该回合可做其他事）",
+    "raceNote": "回合 53 的比赛取消",
     "star": 5
   },
   "108001": {
