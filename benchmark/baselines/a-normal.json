@@ -16,20 +16,20 @@
       "search_n": 0,
       "seed0": 73200,
       "games": 100,
-      "score_mean": 81802.8,
-      "score_sd": 2892.5,
-      "pt_mean": 11784.9,
-      "pt_sd": 324.4
+      "score_mean": 82503.3,
+      "score_sd": 2867.3,
+      "pt_mean": 11813.7,
+      "pt_sd": 353.9
     },
     {
       "trainer": "search",
       "search_n": 8192,
       "seed0": 73200,
       "games": 10,
-      "score_mean": 86212.7,
-      "score_sd": 1210.4,
-      "pt_mean": 12741.1,
-      "pt_sd": 238.7
+      "score_mean": 86658.0,
+      "score_sd": 1133.9,
+      "pt_mean": 12688.3,
+      "pt_sd": 214.2
     }
   ]
 }

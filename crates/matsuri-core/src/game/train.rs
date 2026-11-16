@@ -929,7 +929,12 @@ impl MatsuriGame {
                     .min(5)
                     .min(max_hint - self.base.deck[index].total_hints)
                     .max(0);
-                let count = 1 + self.base.deck[index].effect.hint_count_bonus;
+                // 灵感次数按**当前羁绊**现算（只依赖阈值固有，与闪彩无关）。
+                // 训练后羁绊已由 `after_train` 的 `add_friendship` 同步，所以本条灵感
+                // 能立即吃到本回合训练带来的门槛提升。
+                let count = 1 + self.base.deck[index]
+                    .calc_threshold_effect(&self.base.deck)
+                    .hint_count_bonus;
                 (level, count)
             }
             None => (1 + level_bonus, 1),
@@ -1589,5 +1594,34 @@ mod tests {
             game.uma().flags.ill.contains(Ill::BAD_TRAINER),
             "无盾应照常置病位"
         );
+    }
+
+    /// 回归：灵感次数按当前羁绊现算，不依赖 `deyilv` 或 `effect` 缓存
+    ///
+    /// 默认卡组首槽 303174（羁绊≥80 时 Hint数量提升(1)）。羁绊未达门槛发 1 条；
+    /// 经统一出口拉到门槛后，同一次调用应发 2 条。
+    #[test]
+    fn unique_hint_count_bonus_uses_current_friendship() {
+        const INDEX: usize = 0;
+        let mut game = crate::testing::sample_game();
+        assert_eq!(
+            game.base.deck[INDEX].card_id, 30317,
+            "默认卡组首槽应为 30317"
+        );
+        let mut rng = StdRng::seed_from_u64(11);
+        game.unresolved_events.clear();
+        game.do_hint_with_bonus(INDEX, 0, &mut rng)
+            .expect("发放灵感");
+        assert_eq!(game.unresolved_events.len(), 1, "羁绊未达门槛只发 1 条");
+
+        game.unresolved_events.clear();
+        game.base.add_friendship(&mut game.persons, INDEX, 80);
+        assert!(
+            game.base.deck[INDEX].friendship >= 80,
+            "羁绊已同步到卡面并跨过门槛"
+        );
+        game.do_hint_with_bonus(INDEX, 0, &mut rng)
+            .expect("发放灵感");
+        assert_eq!(game.unresolved_events.len(), 2, "羁绊达门槛后立即发 2 条");
     }
 }
