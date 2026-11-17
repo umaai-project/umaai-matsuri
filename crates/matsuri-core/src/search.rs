@@ -239,7 +239,11 @@ impl MatsuriSearchTrainer {
             bail!("叶子估值器接口已预留，截断搜索未接；max_depth 必须为 0");
         }
         search.search_n = config.search.search_n;
-        search.pt_favor_rate = config.deck.trainer.pt_favor_rate;
+        // 只改搜索排序口径：剧本 [search].pt_favor_rate 缺省时与手写档同值（手写逻辑不受此处影响）
+        search.pt_favor_rate = config
+            .search
+            .pt_favor_rate
+            .unwrap_or(config.deck.trainer.pt_favor_rate);
         let pt_favor_rate = search.pt_favor_rate;
         let scope = config.search.clone();
         let fallback = MatsuriTrainer::new(config.clone());

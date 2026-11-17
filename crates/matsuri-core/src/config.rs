@@ -11,7 +11,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
 use umaai::config::{OverlayConfig, parse_with_overlay};
 
@@ -59,6 +59,11 @@ pub struct SearchScopeConfig {
     pub advice: bool,
     /// 事件选项是否走搜索（应用当前选项后从同 stage 的下一事件继续）
     pub event: bool,
+    /// 搜索内核的 PT 偏好覆盖（None = 与手写档同口径）
+    ///
+    /// 只作用于搜索排序与搜索侧期望分换算；手写训练员（剪枝 / fallback / rollout 教师）
+    /// 仍读 [decks.<档>].trainer.pt_favor_rate。用于「评分档手写 + 刷 PT 档搜索」并行取参。
+    pub pt_favor_rate: Option<f64>,
 }
 
 impl Default for SearchScopeConfig {
@@ -70,6 +75,7 @@ impl Default for SearchScopeConfig {
             train: true,
             advice: true,
             event: true,
+            pt_favor_rate: None,
         }
     }
 }
@@ -202,7 +208,15 @@ impl MatsuriConfig {
     /// 这里再查一遍，保证 `Default` 兜底与覆盖层路径也不会带进非法参数。
     fn validate(&self) -> Result<()> {
         self.decks.validate()?;
-        self.deck.validate()
+        self.deck.validate()?;
+        if let Some(rate) = self.search.pt_favor_rate {
+            ensure!(
+                rate.is_finite() && rate > 0.0,
+                "search.pt_favor_rate 应为正数（当前 {}）",
+                rate
+            );
+        }
+        Ok(())
     }
 }
 
@@ -313,6 +327,26 @@ mod tests {
 
         let bad_key = repo_text().replace("[search]", "[search]\nunknown = 1");
         assert!(MatsuriConfig::parse(&bad_key, None).is_err());
+    }
+
+    /// 搜索内核 PT 偏好：缺省 None（= 手写档同口径）、覆盖层可单点设置、非正数拒绝
+    #[test]
+    fn search_pt_favor_rate_override() {
+        let cfg = MatsuriConfig::parse(&repo_text(), None).expect("默认层应可解析");
+        assert!(
+            cfg.search.pt_favor_rate.is_none(),
+            "默认层不写覆盖 = 跟手写档同值"
+        );
+
+        let overlay = "[search]\nsearch_n = 128\npt_favor_rate = 5.0\n";
+        let cfg = MatsuriConfig::parse(&repo_text(), Some(overlay)).expect("覆盖层应可合并");
+        assert_eq!(cfg.search.pt_favor_rate, Some(5.0));
+
+        let bad = repo_text().replace("[search]", "[search]\npt_favor_rate = 0.0");
+        assert!(
+            MatsuriConfig::parse(&bad, None).is_err(),
+            "非正 search.pt_favor_rate 应报错"
+        );
     }
 
     #[test]

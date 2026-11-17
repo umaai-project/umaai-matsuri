@@ -18,6 +18,7 @@ use umaai::BasePersonStatus;
 use umaai_core::Data;
 use umaai_core::gamedata::{ActionValue, EventData};
 use umasim::game::Game;
+use umasim::game::Person;
 
 /// 仓内默认测试马娘（与 `testing::sample_game` 同源）
 const UMA_ID: u32 = 105902;
@@ -261,6 +262,34 @@ fn restore_round_trip_at_decision_point() -> Result<()> {
         exported_again.train_level_total, festa.train_level_total,
         "训练等级导出可逆"
     );
+    Ok(())
+}
+
+/// 红点是**人头**字段：剧本侧按帧 `isHint` 还原（引擎底座不承载 person 级字段）
+#[test]
+fn restore_carries_hint_from_frame() -> Result<()> {
+    let mut game = sample_game_with_uma(UMA_ID);
+    drive_to_train(&mut game, TARGET_TURN)?;
+    let festa = game.export_festa();
+    let raw_dist = protocol_distribution(&game);
+    let mut persons = frame_persons(&game);
+    // 帧里第 1 / 3 位带红点（下标 = 卡组顺序，`check_roster` 已保证对齐）
+    persons[0].is_hint = true;
+    persons[2].is_hint = true;
+    let restored = restore_frame(&game, &festa, &persons, raw_dist)?;
+    let deck_len = restored.deck.len();
+    for index in 0..deck_len {
+        assert_eq!(
+            restored.persons[index].hint(),
+            persons[index].is_hint,
+            "第 {} 位红点应与帧一致",
+            index + 1
+        );
+    }
+    // 卡位之外的人头（友人 / 记者 / 神驹）不受帧红点影响
+    for person in restored.persons.iter().skip(deck_len) {
+        assert!(!person.hint(), "{:?} 不应带红点", person.origin);
+    }
     Ok(())
 }
 

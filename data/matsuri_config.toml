@@ -41,6 +41,9 @@ threads = 0
 train = true
 advice = true
 event = true
+# 搜索内核的 PT 偏好覆盖（省略 = 与手写档同口径，即取当前档的 [trainer].pt_favor_rate）
+# 只改搜索排序与搜索侧期望分换算；手写训练员（剪枝 / fallback / rollout 教师）不受影响。
+# 刷 PT 档示例：pt_favor_rate = 5.0（配合 --search-n 才有意义）
 
 # ---------- 卡组参数 ----------
 
@@ -218,7 +221,7 @@ normal_penalty = 448.645844
 
 [decks.wisdom_build]
 comp = [1, 1, 1, 0, 2]
-note = "智主；2026-11-09 定档 GA run3 g0339｜手写对旧档 +3598、对 g0269 +2092、影子 +2957；搜索 N=8192 对旧档 +553 ±194（t 2.85）"
+note = "智主（双智 11102）；2026-11-17 换为双智版 r1 冠军（原 GA g0339 参数见 changelog）｜本地手写 5000 局 × seed 87000/91000：对旧参 +491±69 / +509±69 分、PT +70、sd 2744→2484"
 
 [decks.wisdom_build.fusion]
 year2 = [
@@ -239,55 +242,59 @@ t35 = [501, 301, 101, 201, 401]
 t47 = [501, 101, 401, 201, 301]
 t59 = [501, 101, 401, 201, 301]
 
+# 2026-11-17：以下旋钮取「双智版」r1 冠军（lab CMA-ES 冠军的近似还原；来源文档只给 4–5 位有效数字，
+# 故实为 ~1% 量级近似，不要当逐位精确值复现）。
+# 大改动：pt_favor_rate 1.80→1.54（偏评分）、weights.hint 5.78→21.67 与 friendship 3.35→11.74（保 PT 产出）、
+# advice.route 709→407、overflow.tilt 1.85→0.06（近顶不再猛转资源）。
 [decks.wisdom_build.trainer]
-pt_favor_rate = 1.799203
-rest_vital = 75
-checkpoint_margin = 3
+pt_favor_rate = 1.536833
+rest_vital = 84
+checkpoint_margin = 4
 act_level_target = 3
 self_race = false
 friend_outing_early = true
-free_race_urgency = 1.373165
-# 智 ≈2400 封顶，GA 把智权重压到近 0
-status_weights = [0.614248, 0.573257, 0.542746, 0.077162, 0.024016]
+free_race_urgency = 2.719982
+# 智 ≈2400 封顶，权重仍压到近 0（冠军未动这两位的量级）
+status_weights = [0.793, 0.845, 0.694, 0.147, 0.025]
 
 [decks.wisdom_build.trainer.weights]
-vital = 4.488813
-motivation = 7.949619
-friendship = 3.34968
-hint = 5.782744
-gauge = 41.401886
-act_level = 65.335547
-checkpoint = 899.191667
-fat = 318.649848
+vital = 6.394
+motivation = 8.073
+friendship = 11.736
+hint = 21.666
+gauge = 58.381
+act_level = 67.01
+checkpoint = 959.3
+fat = 284.5
 
 [decks.wisdom_build.trainer.advice]
-card = 2.301723
-npc = 0.063491
-train = 0.181077
-keiko = 1.817824
-level = 0.774184
-milestone = 0.313946
+card = 1.699
+npc = 0.208
+train = 0.133
+keiko = 2.302
+level = 0.818
+milestone = 0.443
 status_limit = 0.0
 assist = 0.0
-route = 709.000535
+route = 407.2
 
 [decks.wisdom_build.trainer.dynamic]
-status_catchup = 1.926988
-act_catchup = 0.072309
-vital_decay = 0.011004
-vital_idle = 1.151637
-keiko_tempo = 1.078349
+status_catchup = 1.732
+act_catchup = 0.109
+vital_decay = 0.016
+vital_idle = 2.123
+keiko_tempo = 0.865
 
 [decks.wisdom_build.trainer.overflow]
-margin = 0.038995
-tilt = 1.845868
-keep = 0.057113
+margin = 0.067
+tilt = 0.06
+keep = 0.07
 
 [decks.wisdom_build.trainer.endgame]
-keiko = 394.9085
-scarcity = 0.715231
-level = 64.830756
-normal_penalty = 294.799509
+keiko = 396.0
+scarcity = 0.914
+level = 43.3
+normal_penalty = 260.8
 
 # ---------- 根主 20111（2026-11-15 手写档定档） ----------
 # 只写与 default 的差异：教诲六窗口重排 + 五维系数；fusion 与其余训练员旋钮继承 default。

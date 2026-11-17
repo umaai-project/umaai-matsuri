@@ -671,6 +671,12 @@ fn run_batch<T: Trainer<MatsuriGame>>(
 struct LuckRow {
     turn: i32,
     expected: f64,
+    /// 搜索口径的加权基线分（`SearchSummary::baseline`，未扣 PT 项）
+    baseline: f64,
+    /// 候选合并标准差（本次搜索的估分离散度，非均值误差）
+    stdev: f64,
+    /// 参与本次搜索的候选数
+    candidates: usize,
 }
 
 /// 采集 MCTS 自博弈估分轨迹的训练员包装（只记主行动决策，不含教诲 / 事件）
@@ -713,6 +719,9 @@ impl Trainer<MatsuriGame> for LuckTrainer {
             rows.push(LuckRow {
                 turn: game.turn(),
                 expected: summary.expected_score,
+                baseline: summary.baseline,
+                stdev: summary.baseline_stdev,
+                candidates: summary.candidates.len(),
             });
         }
         Ok(chosen)
@@ -755,11 +764,15 @@ fn ols_slope(rows: &[LuckRow]) -> Option<f64> {
     (sxx > 0.0).then_some(sxy / sxx)
 }
 
-/// 估分随回合漂移：`bench luck --games 20 --seed 73200 --search-n 2048`
+/// 估分随回合漂移：`bench luck --games 20 --seed 73200 --search-n 2048 [--per-turn]`
 ///
 /// 整局用搜索训练员推进，记录每次主行动决策的官方口径 `expected_score`；
 /// 每局取首 / 末搜索决策的差与跨度得到 `luck_turn_bonus` 补偿斜率
 /// `b = ΔE / Δturn`（显示分 = `expected + (MAX_TURN − turn) × b`）。
+///
+/// `--per-turn` 额外输出逐决策明细行
+/// `T,seed,turn,expected,stdev,candidates,baseline`，
+/// 供离线做逐回合趋势 / 形状拟合；`stdev` 为候选合并标准差。
 fn cmd_luck(env: &Env, args: &[String]) -> Result<()> {
     let games = parse_usize(args, "--games", 20)?;
     let seed0 = parse_usize(args, "--seed", 73200)? as u64;
@@ -775,7 +788,11 @@ fn cmd_luck(env: &Env, args: &[String]) -> Result<()> {
         matsuri_core::MAX_TURN,
         env.engine.sim.uma
     );
+    let per_turn = args.iter().any(|arg| arg == "--per-turn");
     println!("seed,first_turn,first_E,last_turn,last_E,delta,b,reg_slope,decisions,score,pt");
+    if per_turn {
+        println!("# per-turn T,seed,turn,expected,stdev,candidates,baseline");
+    }
     let mut firsts = Vec::with_capacity(games);
     let mut lasts = Vec::with_capacity(games);
     let mut deltas = Vec::with_capacity(games);
@@ -820,6 +837,14 @@ fn cmd_luck(env: &Env, args: &[String]) -> Result<()> {
             reg,
             rows.len()
         );
+        if per_turn {
+            for row in &rows {
+                println!(
+                    "T,{seed},{},{:.1},{:.1},{},{:.1}",
+                    row.turn, row.expected, row.stdev, row.candidates, row.baseline
+                );
+            }
+        }
         firsts.push(first.expected);
         lasts.push(last.expected);
         deltas.push(delta);
@@ -1382,7 +1407,10 @@ fn cmd_root(env: &Env, args: &[String]) -> Result<()> {
     let (game, actions) = capture_root(env, &config, seed, turn)?;
     // 与 MatsuriSearchTrainer::new 同口径：内核参数取引擎配置，预算与 PT 偏好取剧本配置
     let mut search_config = env.engine.search.clone().with_search_n(search_n);
-    search_config.pt_favor_rate = config.deck.trainer.pt_favor_rate;
+    search_config.pt_favor_rate = config
+        .search
+        .pt_favor_rate
+        .unwrap_or(config.deck.trainer.pt_favor_rate);
     println!(
         "# turn={turn} candidates={} search_n={search_n} ucb={} parallel={} threads={:?}",
         actions.len(),

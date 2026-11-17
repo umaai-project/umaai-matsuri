@@ -180,7 +180,10 @@ fn main() -> Result<()> {
     let trainer =
         MatsuriSearchTrainer::new(config.clone(), env.engine.search.clone().with_search_n(n))?;
     let mut cfg = env.engine.search.clone().with_search_n(n);
-    cfg.pt_favor_rate = config.deck.trainer.pt_favor_rate;
+    cfg.pt_favor_rate = config
+        .search
+        .pt_favor_rate
+        .unwrap_or(config.deck.trainer.pt_favor_rate);
     let search = FlatSearch::<MatsuriGame>::new(cfg)
         .with_rollout_trainer(matsuri_core::MatsuriTrainer::new(config.clone()))
         .with_parallel(false);

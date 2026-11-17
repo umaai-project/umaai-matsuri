@@ -31,6 +31,7 @@ use umaai::BasePersonStatus;
 use umaai_core::gamedata::EventData;
 use umaai_core::{Array5, Data, Ill};
 use umasim::game::Game;
+use umasim::game::Person;
 use umasim::game::base::BaseGame;
 
 use super::festa::{ACT_COUNT, FestaAct, FestaCheckPoint, FestaPerson, FestaState};
@@ -190,7 +191,7 @@ impl MatsuriGame {
 
         if turn >= SCENARIO_START_TURN {
             game.check_roster(frame_persons)?;
-            game.restore_persons(festa, noncard_friendship)?;
+            game.restore_persons(frame_persons, festa, noncard_friendship)?;
         }
         // 剧本机制未启动（T0 / T1）：名单保持建局结果，担当 / 演目 / 教诲都不从帧取。
         game.restore_acts(festa);
@@ -417,8 +418,11 @@ impl MatsuriGame {
     /// 中途加载局里友人不进 `evaluation_info_array`，卡从 1 起。两种排法差一位，所以
     /// **不能做 `targetId - 1` 的算术**，改为：按 `targetId` 升序走一遍帧人头，`origin == card`
     /// 依次落到卡组里**非友人**卡位上（卡组顺序）；`origin == friend` 只标记友人不参与担当。
+    /// 红点（灵感图标）是**人头**属性，由剧本侧从帧还原：`check_roster` 已保证帧人头顺序
+    /// 与卡组一致，这里按下标写回剧本人头对象（引擎底座不承载 person 级字段）。
     fn restore_persons(
         &mut self,
+        frame_persons: &[BasePersonStatus],
         festa: &FestaState,
         noncard_friendship: Option<(i32, i32)>,
     ) -> Result<()> {
@@ -426,6 +430,10 @@ impl MatsuriGame {
         // 帧没说担当 = 没有担当：先把卡位清空（离线五步流水线的结果不作数）
         for person in self.persons.iter_mut().take(deck_len) {
             person.act = None;
+        }
+        // 红点按帧写回（只对卡位人头有意义；友人 / 记者 / 神驹不产生灵感图标）
+        for (index, frame_person) in frame_persons.iter().enumerate().take(deck_len) {
+            self.persons[index].set_hint(frame_person.is_hint);
         }
         let card_slots: Vec<usize> = (0..deck_len)
             .filter(|index| self.persons[*index].origin == PersonOrigin::Card)
