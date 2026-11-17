@@ -13,6 +13,7 @@ pub mod eval;
 pub mod facts;
 pub mod infer;
 pub mod report;
+pub mod show;
 pub mod tuning;
 pub mod whatif;
 
@@ -27,6 +28,36 @@ use discover::GameFiles;
 use facts::{Facts, open_session};
 use tuning::Tuning;
 
+/// 缺省数据根（`--data` 未给时）：优先 exe 旁的 `data/`，再回退仓内数据。
+///
+/// 查找顺序（以目录内存在 `manifest.json` 为判据）：
+/// 1. `<exe 所在目录>/data`：exe 与 data 平铺；
+/// 2. `<exe 所在目录>/../data`：skill 布局（`bin/review.exe` + `data/`）；
+/// 3. 仓内 `data/`：仅在开发环境成立（`matsuri_core::testing::data_dir()`，编译期路径）。
+///
+/// exe 位于名为 `bin` 的目录且以上都不存在时，仍按第 2 条返回，
+/// 让缺失数据的报错指向 skill 自己的 `data/`，而不是构建机路径。
+pub(crate) fn default_data_root() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(bin) = exe.parent()
+    {
+        let beside = bin.join("data");
+        if beside.join("manifest.json").is_file() {
+            return beside;
+        }
+        if let Some(root) = bin.parent() {
+            let sibling = root.join("data");
+            if sibling.join("manifest.json").is_file() {
+                return sibling;
+            }
+            if bin.file_name().and_then(|name| name.to_str()) == Some("bin") {
+                return sibling;
+            }
+        }
+    }
+    matsuri_core::testing::data_dir()
+}
+
 /// `review open` 参数
 pub struct OpenArgs<'a> {
     /// 局目录或局包 zip（含 `game{id}_turn*.json` 与 `game{id}_finalScore.json`）
@@ -35,7 +66,7 @@ pub struct OpenArgs<'a> {
     pub game: Option<u64>,
     /// 输出目录；`None` = `<input>/review`
     pub out: Option<&'a Path>,
-    /// 数据根；`None` = 仓内 `data/`
+    /// 数据根；`None` = 按 exe 位置解析（见 `default_data_root`）
     pub data_root: Option<&'a Path>,
     /// 复盘口径（继承标准等）
     pub tuning: Tuning,
@@ -46,7 +77,7 @@ pub fn open(args: OpenArgs<'_>) -> Result<PathBuf> {
     let files = GameFiles::scan(args.input, args.game)?;
     let data_root = args
         .data_root
-        .map_or_else(matsuri_core::testing::data_dir, Path::to_path_buf);
+        .map_or_else(default_data_root, Path::to_path_buf);
     ensure_data(&data_root)?;
     let engine = umaai::Config::load_with_overlay_file(&data_root, ".")?;
     let data = Arc::new(MatsuriData::load(&data_root)?);

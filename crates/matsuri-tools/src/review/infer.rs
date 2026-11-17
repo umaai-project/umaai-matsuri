@@ -11,6 +11,7 @@ use matsuri_ai::session::ensure_data;
 use matsuri_core::{MatsuriConfig, MatsuriData};
 use serde_json::{Value, json};
 
+use super::default_data_root;
 use super::discover::GameFiles;
 use super::facts::{Facts, open_session};
 use super::tuning::Tuning;
@@ -36,7 +37,7 @@ pub fn infer(args: InferArgs<'_>) -> Result<(PathBuf, Value)> {
     let files = GameFiles::scan(args.input, args.game)?;
     let data_root = args
         .data_root
-        .map_or_else(matsuri_core::testing::data_dir, Path::to_path_buf);
+        .map_or_else(default_data_root, Path::to_path_buf);
     ensure_data(&data_root)?;
     let engine = umaai::Config::load_with_overlay_file(&data_root, ".")?;
     let data = Arc::new(MatsuriData::load(&data_root)?);

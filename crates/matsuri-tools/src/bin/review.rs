@@ -14,6 +14,7 @@ fn main() -> anyhow::Result<()> {
         "curve" => curve(&args),
         "whatif" => whatif(&args),
         "report" => report(&args),
+        "show" => show(&args),
         _ => {
             println!("用法：");
             println!(
@@ -33,6 +34,9 @@ fn main() -> anyhow::Result<()> {
             );
             println!(
                 "  review report <局目录|局包.zip> [--narrative <md>] [--game <id>] [--out <目录>] [--data <数据根>]"
+            );
+            println!(
+                "  review show <局目录|局包.zip> --turn <N> --seq <k> [--game <id>] [--data <数据根>]"
             );
             Ok(())
         }
@@ -173,6 +177,53 @@ fn curve(args: &[String]) -> anyhow::Result<()> {
             .map_or_else(|| "—".to_string(), |v| v.to_string()),
         report.summary.final_gap.map(|v| format!("{v:+.0}")),
     );
+    Ok(())
+}
+
+/// `review show`
+fn show(args: &[String]) -> anyhow::Result<()> {
+    let input = args
+        .get(2)
+        .ok_or_else(|| anyhow::anyhow!("缺少局目录：review show <局目录|局包.zip>"))?;
+    let mut turn = None;
+    let mut seq = None;
+    let mut game = None;
+    let mut data_root: Option<PathBuf> = None;
+    let mut index = 3;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--turn" => {
+                turn = args.get(index + 1).and_then(|value| value.parse().ok());
+                index += 2;
+            }
+            "--seq" => {
+                seq = args.get(index + 1).and_then(|value| value.parse().ok());
+                index += 2;
+            }
+            "--game" => {
+                game = args.get(index + 1).and_then(|value| value.parse().ok());
+                index += 2;
+            }
+            "--data" => {
+                data_root = args.get(index + 1).map(PathBuf::from);
+                index += 2;
+            }
+            "--json" => index += 1,
+            other => anyhow::bail!("未知参数：{other}"),
+        }
+    }
+    let turn = turn.ok_or_else(|| {
+        anyhow::anyhow!("缺少 --turn：review show <局目录|局包.zip> --turn <N> --seq <k>")
+    })?;
+    let seq = seq.ok_or_else(|| anyhow::anyhow!("缺少 --seq：同回合多帧必须指定帧序号"))?;
+    let value = matsuri_tools::review::show::show(matsuri_tools::review::show::ShowArgs {
+        input: std::path::Path::new(input),
+        game,
+        turn,
+        seq,
+        data_root: data_root.as_deref(),
+    })?;
+    println!("{}", serde_json::to_string_pretty(&value)?);
     Ok(())
 }
 

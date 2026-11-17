@@ -20,6 +20,7 @@ use umaai_core::rng::{StreamTag, derive_seed};
 use umasim::game::{Game, Trainer};
 use umasim::search::FlatSearchGame;
 
+use super::default_data_root;
 use super::discover::GameFiles;
 use super::eval::{AdviceCtx, actual_choice, history_actions, parse_frame_name};
 use super::facts::{display, open_session};
@@ -152,7 +153,7 @@ pub fn whatif(args: WhatifArgs<'_>) -> Result<(PathBuf, WhatifReport)> {
     let files = GameFiles::scan(args.input, args.game)?;
     let data_root = args
         .data_root
-        .map_or_else(matsuri_core::testing::data_dir, Path::to_path_buf);
+        .map_or_else(default_data_root, Path::to_path_buf);
     matsuri_ai::session::ensure_data(&data_root)?;
     let engine = umaai::Config::load_with_overlay_file(&data_root, ".")?;
     let data = Arc::new(MatsuriData::load(&data_root)?);
@@ -161,6 +162,7 @@ pub fn whatif(args: WhatifArgs<'_>) -> Result<(PathBuf, WhatifReport)> {
 
     // 同回合可能多帧（事件待选 / 教诲分配 / 训练）：取第一个可决策的 Action 帧
     let mut picked: Option<(ParsedFrame, MatsuriGame)> = None;
+    let mut picked_seq = None;
     let mut frames: Vec<_> = files
         .frames
         .iter()
@@ -171,6 +173,7 @@ pub fn whatif(args: WhatifArgs<'_>) -> Result<(PathBuf, WhatifReport)> {
         bail!("局包里没有 T{} 的回合帧", args.turn);
     }
     for frame in frames {
+        let seq = parse_frame_name(&frame.name).map(|(_, seq)| seq);
         let Ok(parsed) = ParsedFrame::parse(&frame.contents) else {
             continue;
         };
@@ -181,14 +184,17 @@ pub fn whatif(args: WhatifArgs<'_>) -> Result<(PathBuf, WhatifReport)> {
             // 教诲帧优先：同回合常同时有训练帧与教诲分配帧（special + ps=51）
             Route::Advice(_) => {
                 picked = Some((parsed, game));
+                picked_seq = seq;
                 break;
             }
             Route::Train if picked.is_none() => {
                 picked = Some((parsed, game));
+                picked_seq = seq;
             }
             _ => {}
         }
     }
+    let picked_seq = picked_seq.unwrap_or(0);
     let (parsed, mut base) = picked.ok_or_else(|| {
         anyhow::anyhow!(
             "T{} 没有可决策的 Action 帧（事件待选或结算中间态），current whatif 不支持",
@@ -245,6 +251,7 @@ pub fn whatif(args: WhatifArgs<'_>) -> Result<(PathBuf, WhatifReport)> {
         Some(&actions),
         advice_ctx.as_ref(),
         choices,
+        picked_seq,
     );
     let actual_source = if actual_position.is_some() {
         "history".to_string()

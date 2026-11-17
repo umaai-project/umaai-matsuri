@@ -20,6 +20,7 @@ use umaai::protocol::final_score::FinalAction;
 use umaai_core::rng::{StreamTag, derive_seed};
 use umasim::game::{Game, Trainer};
 
+use super::default_data_root;
 use super::discover::GameFiles;
 use super::facts::open_session;
 use crate::stat::{Hit, hit, paired_diff};
@@ -41,7 +42,7 @@ pub struct EvalArgs<'a> {
     pub n: u32,
     /// 输出目录；`None` = 与 `open` 同规则
     pub out: Option<&'a Path>,
-    /// 数据根；`None` = 仓内 `data/`
+    /// 数据根；`None` = 按 exe 位置解析（见 `default_data_root`）
     pub data_root: Option<&'a Path>,
     /// 忽略缓存强制重算
     pub force: bool,
@@ -201,7 +202,7 @@ pub fn eval(args: EvalArgs<'_>) -> Result<(PathBuf, EvalReport)> {
     let files = GameFiles::scan(args.input, args.game)?;
     let data_root = args
         .data_root
-        .map_or_else(matsuri_core::testing::data_dir, Path::to_path_buf);
+        .map_or_else(default_data_root, Path::to_path_buf);
     matsuri_ai::session::ensure_data(&data_root)?;
     let engine = umaai::Config::load_with_overlay_file(&data_root, ".")?;
     let data = Arc::new(MatsuriData::load(&data_root)?);
@@ -263,6 +264,7 @@ pub fn eval(args: EvalArgs<'_>) -> Result<(PathBuf, EvalReport)> {
         actions.as_deref(),
         pre.as_ref(),
         event_choices,
+        seq,
     );
     let report = build_report(ReportInput {
         game: files.game,
@@ -465,6 +467,7 @@ pub(crate) fn actual_choice(
     actions: Option<&[Action]>,
     advice: Option<&AdviceCtx>,
     event_choices: Option<usize>,
+    seq: u32,
 ) -> Option<usize> {
     match kind {
         "train" => {
@@ -475,8 +478,8 @@ pub(crate) fn actual_choice(
         "advice" => {
             let actions = actions?;
             let ctx = advice?;
-            // 实际方案取回合**末帧**（授权帧的槽位还没落位，末帧才是玩家最终分配）
-            let (actual_slots, actual_fused) = advice_actual(files, turn)?;
+            // 实际方案取决策帧**之后**第一帧槽位变化（授权帧的槽位还没落位）
+            let (actual_slots, actual_fused) = advice_actual(files, turn, seq, ctx)?;
             actions.iter().position(|candidate| {
                 let Action::AssignAdvice(assign) = candidate else {
                     return false;
@@ -510,12 +513,30 @@ pub(crate) fn actual_choice(
     }
 }
 
-/// 该回合的实际教诲方案（回合末帧的槽位，与还原层同口径）
-fn advice_actual(files: &GameFiles, turn: i32) -> Option<([i32; 5], [i32; 5])> {
-    let frame = files.frames.iter().rev().find(|frame| {
-        parse_frame_name(&frame.name).is_some_and(|(frame_turn, _)| frame_turn == turn)
-    })?;
-    let parsed = ParsedFrame::parse(&frame.contents).ok()?;
+/// 该回合的实际教诲方案：优先取决策帧**之后**第一帧槽位变化的布局，
+/// 没有变化（等同保持现状）时回退到分配前槽位。
+fn advice_actual(
+    files: &GameFiles,
+    turn: i32,
+    seq: u32,
+    ctx: &AdviceCtx,
+) -> Option<([i32; 5], [i32; 5])> {
+    let start = files
+        .frames
+        .iter()
+        .position(|frame| parse_frame_name(&frame.name) == Some((turn, seq)))?;
+    for frame in files.frames.iter().skip(start + 1) {
+        let parsed = ParsedFrame::parse(&frame.contents).ok()?;
+        let (slots, fused) = advice_state(&parsed);
+        if slots != ctx.slots {
+            return Some((slots, fused));
+        }
+    }
+    Some((ctx.slots, ctx.fused))
+}
+
+/// 从帧的 festa 段读分配后的「基础教诲 + 転成」两排
+fn advice_state(parsed: &ParsedFrame) -> ([i32; 5], [i32; 5]) {
     let mut slots = [0i32; 5];
     let mut fused = [0i32; 5];
     for act in 0..5 {
@@ -529,7 +550,7 @@ fn advice_actual(files: &GameFiles, turn: i32) -> Option<([i32; 5], [i32; 5])> {
             fused[act] = row.advice_id;
         }
     }
-    Some((slots, fused))
+    (slots, fused)
 }
 
 /// 该回合实际训练动作（命令 → Action）

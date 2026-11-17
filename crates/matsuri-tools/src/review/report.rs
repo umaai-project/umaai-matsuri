@@ -13,10 +13,12 @@ use matsuri_core::{MatsuriConfig, MatsuriData};
 use serde_json::json;
 
 use super::curve::CurveReport;
+use super::default_data_root;
 use super::discover::GameFiles;
 use super::eval::EvalReport;
 use super::facts::{Facts, display, open_session};
 use super::tuning::Tuning;
+use crate::stat::Hit;
 
 /// `review report` 参数
 pub struct ReportArgs<'a> {
@@ -37,7 +39,7 @@ pub fn report(args: ReportArgs<'_>) -> Result<(PathBuf, PathBuf)> {
     let files = GameFiles::scan(args.input, args.game)?;
     let data_root = args
         .data_root
-        .map_or_else(matsuri_core::testing::data_dir, Path::to_path_buf);
+        .map_or_else(default_data_root, Path::to_path_buf);
     ensure_data(&data_root)?;
     let engine = umaai::Config::load_with_overlay_file(&data_root, ".")?;
     let data = Arc::new(MatsuriData::load(&data_root)?);
@@ -219,6 +221,8 @@ fn render(
             curve.summary.final_gap
         );
     }
+    let _ = writeln!(out, "<h2>更优回合</h2>");
+    let _ = writeln!(out, "{}", table_better(evals));
     let _ = writeln!(out, "</body></html>");
     out
 }
@@ -396,6 +400,55 @@ fn svg_decisions(facts: &Facts) -> String {
         );
     }
     out.push_str("</svg>");
+    out
+}
+
+/// 更优回合表：显著（`regret ≥ 100`）的决策点，按 regret 降序
+fn table_better(evals: &[EvalReport]) -> String {
+    let mut rows: Vec<&EvalReport> = evals
+        .iter()
+        .filter(|report| {
+            report.hit == Hit::Beyond && report.regret.is_some_and(|regret| regret >= 100.0)
+        })
+        .collect();
+    rows.sort_by(|left, right| {
+        right
+            .regret
+            .unwrap_or(0.0)
+            .total_cmp(&left.regret.unwrap_or(0.0))
+    });
+    if rows.is_empty() {
+        return "<p class=\"muted\">无显著更优回合（regret ≥ 100）</p>".to_string();
+    }
+    let mut out = String::from(
+        "<table><tr><th>回合</th><th>seq</th><th>面</th><th>实际</th><th>最优</th><th>regret</th><th>±</th></tr>",
+    );
+    for report in rows {
+        let actual = report
+            .chosen
+            .as_ref()
+            .map_or_else(|| "—".to_string(), |chosen| chosen.description.clone());
+        let best = report
+            .best
+            .as_ref()
+            .map_or_else(|| "—".to_string(), |best| best.description.clone());
+        let regret = report
+            .regret
+            .map_or_else(|| "—".to_string(), |value| format!("{value:+.0}"));
+        let ci = report
+            .ci95
+            .map_or_else(|| "—".to_string(), |value| format!("{value:.0}"));
+        let _ = writeln!(
+            out,
+            "<tr><td>T{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{regret}</td><td>{ci}</td></tr>",
+            report.turn,
+            report.seq,
+            report.kind,
+            escape(&actual),
+            escape(&best)
+        );
+    }
+    out.push_str("</table>");
     out
 }
 

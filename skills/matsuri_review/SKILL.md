@@ -26,7 +26,9 @@ description: 骏大祭（matsuri）单局复盘。对真机局包 game{id}.zip �
 - **运行期**：`<skill>\bin\review.exe <子命令> ... --data <skill>\data`
   （预构建，**不依赖 cargo 与 Rust 工具链**）。`data/` 是 skill 自带的游戏数据副本；
   显式传 `--data` 后不读取本项目源码的任何路径，skill 可以整体复制到任意目录运行。
-- **重建二进制**（仅分发者需要，需要 cargo）：`powershell -NoProfile -File scripts/build_review_skill.ps1 -WithData`。
+- 不传 `--data` 时按 exe 位置找 `data/`（同级或上级）；发布副本建议始终显式传 `--data`。
+- 本目录若存在 `reference/dev.md`，说明是**开发态**，构建/分发等说明按该文档执行；
+  发布包不含此文件，缺失即按本 SKILL 与 reference 正文执行。
 
 ## 工作流
 
@@ -36,9 +38,9 @@ description: 骏大祭（matsuri）单局复盘。对真机局包 game{id}.zip �
    |---|---|
    | ① | 会话中拖入 / 上传的文件 |
    | ② | 用户明确给的路径 |
-   | ③ | `Matsuri_AI/.portable/PluginData/SendGameStatusPlugin/` 下最新 `game*.zip`（每次现取，不缓存文件名） |
+   | ③ | 插件数据目录下的最新 `game*.zip`（本机默认示例：`Matsuri_AI/.portable/PluginData/SendGameStatusPlugin/`；每次现取，不缓存文件名） |
 
-   ③ 的目录只按本机默认位置举例；局包可以从任意位置传入。
+   ③ 的目录名随安装位置而变，以实际插件输出目录为准；局包可以从任意位置传入。
 
 2. **出事实**（零重算）：
 
@@ -59,12 +61,19 @@ description: 骏大祭（matsuri）单局复盘。对真机局包 game{id}.zip �
 
    | 追问 | 命令 |
    |---|---|
-   | 哪回合最亏 | `eval --all`（逐决策面）→ 取 `regret > ci95` 且 `ci95` 最小的点 |
+   | 哪回合最亏 | `eval --all --n 2048`（逐决策面；决赛点 8192 复核）→ 取 `regret > ci95` 且 `ci95` 最小的点 |
    | 这一手值多少 | `eval --turn N [--seq S]`（多决策面必须 `--seq`） |
    | 换一手会差多少分 | `eval --turn N [--seq S] --swap <动作名>` |
    | 换一手之后会怎么走 | `whatif --turn N --swap <动作名> [--horizon 8\|0] [--k 100]` |
    | 教诲 / 転成 / 技能 / 追加稽古 | `infer --what advice,fusion,skill,kensan` |
    | T(n) 走势与形态 | `curve [--from A --to B]` |
+   | 某回合当时的状态（仅显著点） | `show --turn N --seq S`（JSON；`seq` 必带，按原始帧） |
+
+   选择偏差**日常 `--n 2048`**，最终 2–3 个显著点用 **`--n 8192`（在线同口径）复核**；UCB 下 `paired_n` 在 1024–8192 间，CI 按配对样本解释。
+
+   **叙事下限**：只展开 `regret ≥ 100`；100–200 用「选项 X 小优」，200 以上才明确表述；低于 100 不写。
+
+   深挖某回合时用 `show` 取该帧原始状态，再按「训练位 5 列表」整理；报告末尾已列出更优回合（`regret ≥ 100`）。
 
 5. **写叙事**，必要时 `report` 出网页版：
 
@@ -75,7 +84,7 @@ description: 骏大祭（matsuri）单局复盘。对真机局包 game{id}.zip �
 ## 归因框架（六问）
 
 1. **总体**：终局分与档位（口径：**好局 ≥ LG20（88,500）**、**非常优秀 ≥ LF（91,400）**，见 `metrics_glossary` §10）、门禁是否触发（`B1` 発表会 / `B6` 体力线 / `B7` 干劲 / `C3` 训练失败 / `C4` 资源）、演目 Lv 与目标差距。
-2. **走势**：`score` 逐回合的峰值与阴跌段（`§1` / `§5`），校准「哪几段在掉」。
+2. **走势**：`t_n`（期望终局分）逐点走势与区间高低（峰值 / 低点 / 最大单点回落）；`brief` 的 `score` 是当前属性分，**不作判据**、不写进走势结论。
 3. **选择偏差**：`eval --all` 显著点 → 逐点说明「第几选、损失多少、五维/PT 取舍」；跨零的点一律写「命中（噪声内）」。
 4. **教诲 / 転成**：`§2` 的落位与 `infer` 的反推；必要时 `eval --turn N --seq 3` 看该点 `regret`。
 5. **资源与节奏**：出行段数、合宿延长、体力低点、干劲掉落与恢复、自选赛区间。
@@ -86,8 +95,9 @@ description: 骏大祭（matsuri）单局复盘。对真机局包 game{id}.zip �
 - 正向先行，每条结论带**回合号 + 数值**，结尾落一个下一局可执行的动作；
 - 不评级、不跨玩家比较、不写「失误」——命中即命中，显著才展开；
 - `recomputed` 必须标 `N`，不同 `N` 不混比；
+- **展开下限 100**：`regret < 100` 不写；100–200 用「选项 X 小优」；200 以上才明确表述。
 - 三个评分量分开说（见 [reference/metrics_glossary.md](reference/metrics_glossary.md) §1）：
-  `brief` 的 `score` 是**局面评分**、`eval.t_n` 是**期望终局分**、`regret` 是**决策差**；
+  `eval.t_n` 是**期望终局分（「局面评分」一律指这个）**、`brief` 的 `score` 是**当前属性分（不作判据）**、`regret` 是**决策差**；
 - 教诲回合的帧分「训练前 / 训练后 / 教诲分配」三个时点，评分跳变先确认是不是训练收益（见 pitfalls）；
 - **内置标准不暴露**：好局线 / 非常优秀线 / 继承预期都是内部判据——过线时给一句正面表述，
   **未过线则完全不提**；`brief` 只给继承数字（如「T30 270」），**低于/高于预期由你判断后再说**，
