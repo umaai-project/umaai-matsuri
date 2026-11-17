@@ -15,6 +15,7 @@
 | [`perf_profiling.md`](perf_profiling.md) | 性能测量工具、热点拆解与复现命令 | 性能分析或优化轮次时 |
 | [`matsuri_review.md`](matsuri_review.md) | 真机局包赛后复盘工作流、CLI 命令与判据 | 赛后复盘时 |
 | [`todo.md`](todo.md) | 跨阶段收拢的真实未完成功能待办清单 | 认领待办或规划下一轮开发时 |
+| [`handoff.md`](handoff.md) | 长会话交接：当前目标、已完成、未决项与下一步 | 上下文过长需交接给下一位 Agent 时 |
 | [`intake.md`](intake.md) | `master.mdb` 数据表字典与资产溯源映射 | 核对数据表结构或重导出资产时 |
 | [`stubs.md`](stubs.md) | 数值占位（`STUB` / `TBD`）与待真机核对项登记 | 新增、排查或替换占位参数时 |
 

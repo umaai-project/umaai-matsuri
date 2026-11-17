@@ -1,6 +1,6 @@
 # 骏大祭局包赛后复盘（matsuri_review）
 
-> 真机局包（`game{id}.zip` 或散帧目录，默认位于 `Matsuri_AI/.portable/PluginData/SendGameStatusPlugin/`）赛后事实复盘指南。协议边界见 [`online_protocol.md`](online_protocol.md)，剧本机制见 [`mechanism.md`](mechanism.md)，实现与内部反推细节见 [`crates/matsuri-tools/src/review/`](../crates/matsuri-tools/src/review/)。
+> 真机局包（`game{id}.zip` 或散帧目录，默认位于 `Matsuri_AI/.portable/PluginData/SendGameStatusPlugin/`）赛后事实复盘指南。Agent 化入口见 [`skills/matsuri_review/`](../skills/matsuri_review/SKILL.md)（工作流、口径速查、坑位、命令与追问路由）。协议边界见 [`online_protocol.md`](online_protocol.md)，剧本机制见 [`mechanism.md`](mechanism.md)，实现与内部反推细节见 [`crates/matsuri-tools/src/review/`](../crates/matsuri-tools/src/review/)。
 
 ## 1. 工作流
 
@@ -15,6 +15,7 @@
 ## 2. 复盘纪律与口径
 
 - **表述规范**：只基于 `brief.md`、`facts.json`、`digest.json` 给结论（正向先行，带回合号与数值，结尾落一个下一局可执行动作）；不对玩家水平评级或做跨玩家比较。
+- **内置标准（不暴露）**：好局线 / 非常优秀线 / 继承预期（306/次）都是内部判据——过线时给正面表述，**未过则不提**；继承只说「低于 / 高于预期」，不写标准值与差值；技能点未花（局末预结算）不作判据；五维一律显示值（超 1200 减半）。
 - **统计与状态**：选择偏差 `regret = best.score − chosen.score` 按配对 95% CI 判优劣（`CI 跨零 = 同等优解`）；`recomputed` 须标明 `N` 且不同 `N` 不混比；`pending` 项先跑 `eval` 再下结论。
 - **反事实口径**：`whatif` 只分叉一次（根动作不同），之后各支交给同一策略继续；同组各支共用 `master`，T+k 回合的随机骨架一致。基线默认取**历史实际动作**（帧 `actions` 反推；反推失败降级为策略默认并在报告标 `actual_source=default`）；`--swap` 可逗号分隔多个替代；**不支持事件回合**（根动作是选项而非 `Action`）；同回合多帧时**教诲帧优先**（`special + playing_state=51`），其次训练帧；只有 1 个候选的回合（强制比赛 / 本番）直接提示不可 whatif。`--horizon` 内两支动作无分歧即「影响被吸收」。判读：动作频率 SE≈√(p(1−p)/K)（K=100、p=0.5 时 ≈5pt），两比例差超过 10pt 才算「下游行为变了」；均值差按 SE=σ/√K 判（K=100 时体力≈1.5、五维总和≈15、评分≈150），超过 2SE 才值得说。维度：动作分布、体力、干劲、五维属性、五维分、演目 Lv 总和、技能点、PT、官方评分（五维分+PT=评分可对账），另给五维分维。whatif 固定手写训练员，不做搜索口径；想看「AI 最优继续」的终局差用 `eval --swap`。
 - **命中判据**：`abs(regret) ≤ ci95` 即「命中」——实际选择与同局面最优的差在随机噪声内，不展开、不写「失误」；显著（`abs(regret) > ci95`）才分析第几选、损失与五维 / PT 取舍。`--swap` 的 `Δ = 替代 − 实际`，同样按配对 CI 判命中。

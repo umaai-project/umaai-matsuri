@@ -314,12 +314,7 @@ pub fn render(facts: &Facts) -> String {
         let rows: Vec<String> = script
             .inherit
             .iter()
-            .map(|step| {
-                format!(
-                    "T{} {}（标准 {:.0}，Δ{:+.0}）",
-                    step.turn, step.gain, step.expect, step.delta
-                )
-            })
+            .map(|step| format!("T{} {}", step.turn, step.gain))
             .collect();
         let _ = writeln!(out, "- 继承：{}", rows.join("，"));
     }

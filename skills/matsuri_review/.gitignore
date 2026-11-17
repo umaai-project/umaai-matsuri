@@ -1,0 +1,3 @@
+# 预构建二进制与数据副本不入库：由 scripts/build_review_skill.ps1 生成
+bin/*.exe
+data/

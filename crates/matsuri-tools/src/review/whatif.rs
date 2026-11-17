@@ -22,7 +22,7 @@ use umasim::search::FlatSearchGame;
 
 use super::discover::GameFiles;
 use super::eval::{AdviceCtx, actual_choice, history_actions, parse_frame_name};
-use super::facts::open_session;
+use super::facts::{display, open_session};
 
 /// `review whatif` 参数
 pub struct WhatifArgs<'a> {
@@ -482,7 +482,8 @@ fn snapshot(game: &MatsuriGame, action: &Action) -> StepRow {
         action: label_of(game, action),
         vital: view.uma.vital,
         motivation: view.uma.motivation,
-        five: view.uma.five_status,
+        // 帧 / view 传的是真实值，统一转显示值（超 1200 减半）后再展示
+        five: std::array::from_fn(|axis| display(view.uma.five_status[axis])),
         five_score: parts.map_or(0, |parts| parts.five_status.iter().sum()),
         act_level: view.resources.act_level,
         skill_pt: view.uma.skill_pt,

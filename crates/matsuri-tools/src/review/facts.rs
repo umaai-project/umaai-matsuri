@@ -371,6 +371,7 @@ impl Facts {
         let script = build_script(ScriptInput {
             turns: &turns,
             trace: &trace,
+            actions: &actions,
             derive: &derive,
             tuning,
             data,
@@ -903,6 +904,8 @@ pub struct ScriptInput<'a> {
     pub turns: &'a [TurnFact],
     /// 帧轨迹
     pub trace: &'a [TraceRow],
+    /// 终局帧的动作记录（与 eval 同口径的动作反推）
+    pub actions: &'a [FinalAction],
     /// 反推结果
     pub derive: &'a Derive,
     /// 复盘口径
@@ -923,7 +926,7 @@ pub struct ScriptInput<'a> {
 pub fn build_script(input: ScriptInput<'_>) -> ScriptFacts {
     ScriptFacts {
         acts: act_progress(input.turns, input.derive, input.data, input.cards),
-        outing: outing_facts(input.trace),
+        outing: outing_facts(input.actions, input.trace),
         swings: swing_windows(input.turns),
         inherit: inherit_judges(input.derive, input.tuning),
         status: status_facts(input.flags),
@@ -976,8 +979,35 @@ fn act_progress(
     out
 }
 
-/// 友人出行：每段完成回合 / 走满回合 / 截止线前状态
-fn outing_facts(trace: &[TraceRow]) -> OutingFacts {
+/// 友人出行：按终局帧命令（`command_group_id = 390`）取**命令回合**，与 `eval` / `whatif` 同口径
+///
+/// 命令缺失时回退到帧推断（`out_used` 首次增加的帧，即出行结果回合，比命令晚一回合）。
+fn outing_facts(actions: &[FinalAction], trace: &[TraceRow]) -> OutingFacts {
+    let mut stages: Vec<i32> = actions
+        .iter()
+        .filter(|action| action.endpoint == "exec_command")
+        .filter(|action| final_field(action, "command_group_id") == Some(390))
+        .map(|action| action.turn)
+        .collect();
+    stages.sort_unstable();
+    stages.dedup();
+    if stages.is_empty() {
+        return outing_facts_from_trace(trace);
+    }
+    let used = stages.len() as i32;
+    let full_turn = (used >= 5).then(|| stages[4]);
+    let before_t23 = i32::try_from(stages.iter().filter(|turn| **turn < 23).count()).unwrap_or(0);
+    OutingFacts {
+        used,
+        stages,
+        full_turn,
+        before_t23,
+        full_before_t36: full_turn.is_some_and(|turn| turn < 36),
+    }
+}
+
+/// 旧口径：出行结果帧（`out_used` 首次增加的回合），仅在命令缺失时使用
+fn outing_facts_from_trace(trace: &[TraceRow]) -> OutingFacts {
     let mut stages = Vec::new();
     let mut prev = 0i32;
     let mut full_turn = None;
@@ -1004,6 +1034,11 @@ fn outing_facts(trace: &[TraceRow]) -> OutingFacts {
         before_t23,
         full_before_t36: full_turn.is_some_and(|turn| turn < 36),
     }
+}
+
+/// 取端点私有字段的整数值
+fn final_field(action: &FinalAction, key: &str) -> Option<i64> {
+    action.fields.get(key).and_then(serde_json::Value::as_i64)
 }
 
 /// 5 回合窗口累计分差 < −300 的时段（只陈述，不归因）

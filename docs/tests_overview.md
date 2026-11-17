@@ -25,7 +25,7 @@
   - `core/src/{search,trainer,value,game/traits}.rs`：单决策流随机字、自选比赛期限只搜比赛、`pt_favor_rate` 搜索分、手写守门链、溢出与末段稽古估值。
   - `cli/src/{panel,manual,online}.rs`：CJK 宽度、五维 >1200 显示压缩、图例配色、运气行期望/σ/档次渲染与按帧卡组选档行。
   - `tools/src/stat.rs`：命中判定三态与边界（`abs(delta) <= ci95`）、配对差跳过缺样本并按 `变动臂 − 对照臂` 计、不足两对不下结论、分位线性插值。
-  - `tools/src/review/{eval,whatif}.rs`：**多决策面选帧**——同回合多帧 = 事件/训练/教诲三个面，`eval` 单点多面必须 `--seq`、`--all` 逐面各一点；`whatif` 教诲帧优先（special + ps=51）、事件面不支持、单候选回合直接拒绝。两者均无单测，靠真机局包手验。
+  - `tools/src/review/{eval,whatif}.rs`：**多决策面选帧**——同回合多帧 = 事件/训练/教诲三个面，`eval` 单点多面必须 `--seq`、`--all` 逐训练/教诲面各一点（**事件面 2026-11-17 起停用**）；`whatif` 教诲帧优先（special + ps=51）、事件面不支持、单候选回合直接拒绝。两者均无单测，靠真机局包手验；出行动作按 `group=390`、出行回合按命令回合与 `eval` 对齐。
   - `launcher/src/{update,startup,main,program}.rs`：频道白名单（`ai_data` 三表 / `ura_data` `.br` / `ura_plugins` `Plugins/*.zip`）、无状态自检汇总、Authenticode 白名单与失败逆序回滚。
 - **L2 数据层（`core/tests/data.rs`）**：直接加载仓内 `data/` 资产与配置，在 `mdb` 重导出或配置异常时于早期拦截。
 - **机制集成（`core/tests/mechanics.rs`）**：覆盖 78 回合全流程、赛程/合宿/URA 动作集分叉、比赛加成乘算与狄杜斯铁心、继承/小切/切者/心情盾、自选比赛义务区间与奖励、追加稽古端到端与手写确定性。

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, bail};
 use matsuri_ai::{OnlineSession, ParsedFrame, Route, parse_final_score};
 use matsuri_core::{
     Action, MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer, SearchSummary,
@@ -185,8 +185,9 @@ pub fn eval_all(args: EvalArgs<'_>) -> Result<Vec<(PathBuf, EvalReport)>> {
             Ok(result) => out.push(result),
             Err(error) => {
                 let message = format!("{error:#}");
-                // 无决策面的帧（结算中间态 / 事件残帧）静默跳过，其余照常提示
-                if !message.contains("没有可决策帧") {
+                // 无决策面的帧（结算中间态 / 事件残帧 / 暂不比对的事件选项）静默跳过
+                if !message.contains("没有可决策帧") && !message.contains("事件选项暂不比对")
+                {
                     eprintln!("跳过 T{turn} seq{seq}：{message}");
                 }
             }
@@ -423,18 +424,8 @@ fn run_decision(
                 Some(ctx),
             ))
         }
-        Route::Event => {
-            let event = matsuri_ai::online::pending_event(game)
-                .ok_or_else(|| anyhow!("事件帧取不到待选事件"))?
-                .clone();
-            let mut search = game.clone();
-            search.stage = matsuri_ai::online::event_stage(game, frame);
-            search.event_queue = vec![event.clone()];
-            search.event_cursor = 0;
-            let choices = event.choices.clone();
-            trainer.select_event_choice(&search, &event, &choices, rng)?;
-            Ok(("event".to_string(), trainer.last_search(), None, None))
-        }
+        // 事件选项暂不比对：不同选项的期望差波动大，等采集与口径稳定后再启用
+        Route::Event => bail!("事件选项暂不比对（波动大，已停用）"),
     }
 }
 
@@ -565,6 +556,10 @@ fn actual_train_action(
     }
     let ctype = field(action, "command_type").map(|value| value as i32);
     let group = field(action, "command_group_id").map(|value| value as i32);
+    // 真机样本：cmd=0 且 type=3 时，group 390 = 友人出行（给属性、不回体力），301 = 休息
+    if group == Some(390) {
+        return Some(Action::FriendOuting);
+    }
     if ctype == Some(3) || group == Some(301) || cmd == 0 {
         return Some(Action::Rest);
     }
