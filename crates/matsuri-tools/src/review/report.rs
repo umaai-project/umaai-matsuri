@@ -69,6 +69,7 @@ pub fn report(args: ReportArgs<'_>) -> Result<(PathBuf, PathBuf)> {
         None => None,
     };
 
+    let ai_luck = read_ai_luck(args.input, files.game);
     let digest = json!({
         "game": facts.game,
         "final": facts.final_score,
@@ -109,11 +110,19 @@ pub fn report(args: ReportArgs<'_>) -> Result<(PathBuf, PathBuf)> {
             "summary": curve.summary,
             "points": curve.points,
         })),
+        "aiLuck": ai_luck,
     });
     let digest_path = out.join("digest.json");
     std::fs::write(&digest_path, serde_json::to_string_pretty(&digest)?)?;
 
-    let html = render(&facts, &evals, &swaps, curve.as_ref(), narrative.as_deref());
+    let html = render(
+        &facts,
+        &evals,
+        &swaps,
+        curve.as_ref(),
+        narrative.as_deref(),
+        ai_luck.as_ref(),
+    );
     let html_path = out.join("report.html");
     std::fs::write(&html_path, html)?;
     Ok((html_path, digest_path))
@@ -144,6 +153,16 @@ fn read_reports(dir: &Path) -> Result<Vec<EvalReport>> {
     Ok(rows)
 }
 
+/// 读 AI 侧运气轨迹（局包目录下 `game{id}_ai-decision.json` 的 luck 段）
+fn read_ai_luck(input: &Path, game: u64) -> Option<serde_json::Value> {
+    if !input.is_dir() {
+        return None;
+    }
+    let text = std::fs::read_to_string(input.join(format!("game{game}_ai-decision.json"))).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    value.get("luck").cloned()
+}
+
 /// 读曲线缓存（没有就是 `None`）
 fn read_curve(out: &Path) -> Option<CurveReport> {
     let text = std::fs::read_to_string(out.join("curve.json")).ok()?;
@@ -157,6 +176,7 @@ fn render(
     swaps: &[EvalReport],
     curve: Option<&CurveReport>,
     narrative: Option<&str>,
+    ai_luck: Option<&serde_json::Value>,
 ) -> String {
     let mut out = String::new();
     let _ = writeln!(
@@ -187,6 +207,34 @@ fn render(
         );
     } else {
         let _ = writeln!(out, "<p class=\"muted\">无终局帧</p>");
+    }
+    let _ = writeln!(out, "<h2>运气（selected 口径）</h2>");
+    match ai_luck.and_then(|luck| luck.as_array()) {
+        Some(points) if !points.is_empty() => {
+            let total = points
+                .last()
+                .and_then(|point| point.get("total"))
+                .and_then(serde_json::Value::as_f64);
+            match total {
+                Some(total) => {
+                    let _ = writeln!(
+                        out,
+                        "<p class=\"muted\">总运气 {:.0}（{} 个决策点；基准 = 当前卡组档两斜率）</p>",
+                        total,
+                        points.len()
+                    );
+                }
+                None => {
+                    let _ = writeln!(out, "<p class=\"muted\">记录存在但无总运气</p>");
+                }
+            }
+        }
+        _ => {
+            let _ = writeln!(
+                out,
+                "<p class=\"muted\">无 AI 记录（旧局包或未开 AI）：不可用</p>"
+            );
+        }
     }
     if let Some(text) = narrative {
         let _ = writeln!(

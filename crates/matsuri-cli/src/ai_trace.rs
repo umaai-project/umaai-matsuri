@@ -18,6 +18,8 @@ pub struct AiTrace {
     last_turn: Option<i32>,
     expected: Option<f64>,
     rank: Option<String>,
+    /// 逐回合运气（selected 口径）：(turn, 总运气, 本回合运气)
+    luck: Vec<(i32, f64, Option<f64>)>,
     written: bool,
 }
 
@@ -30,6 +32,7 @@ impl AiTrace {
             self.last_turn = None;
             self.expected = None;
             self.rank = None;
+            self.luck.clear();
             self.written = false;
         }
         if output.kind != TurnKind::Decision {
@@ -39,6 +42,17 @@ impl AiTrace {
             self.first_turn = Some(output.view.turn.turn);
         }
         self.last_turn = Some(output.view.turn.turn);
+        if let Some(luck) = output
+            .record
+            .as_ref()
+            .and_then(|record| record.luck.as_ref())
+        {
+            self.luck.push((
+                output.view.turn.turn,
+                luck.snapshot.total_luck_score,
+                luck.snapshot.last_turn_delta,
+            ));
+        }
         if let Some(summary) = &output.summary {
             self.expected = Some(summary.expected_score);
             self.rank = Some(summary.expected_rank.clone());
@@ -62,6 +76,17 @@ impl AiTrace {
             "expected": self.expected,
             "rank": self.rank,
             "mode": mode,
+            "luck": self
+                .luck
+                .iter()
+                .map(|(turn, total, delta)| {
+                    serde_json::json!({
+                        "turn": turn,
+                        "total": total,
+                        "delta": delta,
+                    })
+                })
+                .collect::<Vec<_>>(),
             "writtenAt": now_ms(),
         });
         std::fs::create_dir_all(dir)?;

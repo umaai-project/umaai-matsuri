@@ -37,6 +37,8 @@ pub struct DeckParams {
     pub advice: AdvicePreset,
     /// 手写训练员策略旋钮
     pub trainer: TrainerConfig,
+    /// 运气基准（三段式；评价口径为官方评分）
+    pub luck: LuckTrend,
 }
 
 impl DeckParams {
@@ -44,7 +46,8 @@ impl DeckParams {
     pub fn validate(&self) -> Result<()> {
         validate_fusion(&self.fusion)?;
         validate_advice(&self.advice)?;
-        validate_trainer(&self.trainer)
+        validate_trainer(&self.trainer)?;
+        validate_luck(&self.luck)
     }
 }
 
@@ -80,8 +83,95 @@ impl Default for DeckParams {
             },
             advice: AdvicePreset::default(),
             trainer: TrainerConfig::default(),
+            luck: LuckTrend::default(),
         }
     }
+}
+
+/// 运气基准：分段线性（相对 T0 的增量），按每次决策的最优选择（selected）计
+///
+/// 每段 `[start, end, slope, offset]`（offset = 段起点相对 T0 的增量，含段间台阶）；
+/// 段内 `delta(turn) = offset + slope × (turn − start)`。
+/// T0 由首回合 selected 提供，不存；评价口径为官方评分（PT favor = 1.0）。
+/// 卡组档可整段覆盖自己的分段（default 两段；wisdom 等可写三段）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LuckTrend {
+    /// 分段：每段 `[起回合, 止回合, 斜率(分/回合), 段起点增量]`
+    pub segments: Vec<[f64; 4]>,
+}
+
+impl LuckTrend {
+    /// 相对 T0 的基准增量（找所在段；不在任何段视为 0）
+    #[must_use]
+    pub fn delta(&self, turn: i32) -> f64 {
+        let turn_full = f64::from(turn.max(0));
+        for segment in &self.segments {
+            let [start, end, slope, offset] = *segment;
+            if turn_full >= start && turn_full <= end {
+                return offset + slope * (turn_full - start);
+            }
+        }
+        0.0
+    }
+
+    /// 单步运气增量：最优选择期望的变化相对基准增量变化
+    #[must_use]
+    pub fn step(&self, from: (i32, f64), to: (i32, f64)) -> f64 {
+        (to.1 - from.1) - (self.delta(to.0) - self.delta(from.0))
+    }
+
+    /// 整段运气：按每次决策的最优选择（selected）累计
+    ///
+    /// track 为按回合升序的 (回合, 该回合最优选择的期望分)（官方评分口径）；
+    /// 返回首末差相对基准增量差；与逐点 step 求和等价。
+    #[must_use]
+    pub fn luckscore(&self, track: &[(i32, f64)]) -> Option<f64> {
+        let first = *track.first()?;
+        let last = *track.last()?;
+        Some((last.1 - first.1) - (self.delta(last.0) - self.delta(first.0)))
+    }
+}
+
+/// 引擎运气基准注入：delta 相对 T0
+impl umaai::LuckBaseline for LuckTrend {
+    fn baseline_delta(&self, turn: i32) -> f64 {
+        self.delta(turn)
+    }
+}
+
+impl Default for LuckTrend {
+    /// 内置默认档 = speed_build selected 60 局拟合（2026-11-18，两段：主 47.94 / 终盘 22.82）
+    fn default() -> Self {
+        Self {
+            segments: vec![[0.0, 69.0, 47.94, 0.0], [70.0, 76.0, 22.82, 3355.86]],
+        }
+    }
+}
+
+/// 校验运气基准：分段非空、升序不重叠、数值有限
+fn validate_luck(luck: &LuckTrend) -> Result<()> {
+    ensure!(!luck.segments.is_empty(), "luck.segments 不能为空");
+    let mut previous_end: Option<f64> = None;
+    for segment in &luck.segments {
+        let [start, end, slope, offset] = *segment;
+        ensure!(
+            start <= end,
+            "luck 段区间非法: {start}..{end}"
+        );
+        ensure!(
+            slope.is_finite() && offset.is_finite(),
+            "luck 段的 slope / offset 必须是有限值"
+        );
+        if let Some(previous) = previous_end {
+            ensure!(
+                start > previous,
+                "luck 段必须按 start 升序且互不重叠"
+            );
+        }
+        previous_end = Some(end);
+    }
+    Ok(())
 }
 
 /// 六窗口教诲落位预设：每窗口按「速 / 耐 / 力 / 根 / 智」写基础教诲 id
@@ -574,6 +664,9 @@ struct DeckEntry {
     /// 训练员覆盖（逐字段深合并；先转 toml::Value）
     #[serde(default)]
     trainer: Option<toml::Value>,
+    /// 运气基准覆盖（整段替换）
+    #[serde(default)]
+    luck: Option<LuckTrend>,
 }
 
 /// `[decks.x.fusion]`：两段分别整段替换
@@ -629,6 +722,7 @@ impl DeckEntry {
                 .clone()
                 .try_into::<TrainerConfig>()
                 .map_err(|err| anyhow::anyhow!("trainer 解析失败: {err}"))?,
+            luck: self.luck.clone().unwrap_or_default(),
         })
     }
 
@@ -645,6 +739,9 @@ impl DeckEntry {
         }
         if let Some(advice) = &self.advice {
             advice.apply_to(&mut params.advice);
+        }
+        if let Some(luck) = &self.luck {
+            params.luck = luck.clone();
         }
         if let Some(patch) = &self.trainer {
             let mut value = toml::Value::try_from(&params.trainer)
@@ -941,6 +1038,50 @@ pub fn deck_comp(deck: &[u32]) -> Result<[usize; 5]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn luck_trend_is_piecewise_linear() {
+        let luck = LuckTrend::default();
+        assert!(luck.delta(0).abs() < 1e-9);
+        assert!((luck.delta(69) - 69.0 * 47.94).abs() < 1e-9);
+        // 段间台阶：T70 = 段起点增量
+        assert!((luck.delta(70) - 3355.86).abs() < 1e-9);
+        assert!((luck.delta(76) - (3355.86 + 6.0 * 22.82)).abs() < 1e-9);
+        let base76 = luck.delta(76);
+        // 最优选择轨迹与基准一致时运气分为 0
+        assert!(
+            luck.luckscore(&[(0, 0.0), (76, base76)])
+                .unwrap()
+                .abs()
+                < 1e-9
+        );
+        // 低于基准 100 分时运气分为 −100
+        assert!(
+            (luck.luckscore(&[(0, 0.0), (76, base76 - 100.0)]).unwrap() + 100.0).abs() < 1e-6
+        );
+        // 逐点 step 求和 == 整段 luckscore
+        let track = [
+            (0, 0.0),
+            (23, luck.delta(23)),
+            (70, luck.delta(70)),
+            (76, base76),
+        ];
+        let sum: f64 = track
+            .windows(2)
+            .map(|pair| luck.step(pair[0], pair[1]))
+            .sum();
+        assert!((sum - luck.luckscore(&track).unwrap()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn luck_segments_must_be_finite_and_ordered() {
+        let mut luck = LuckTrend::default();
+        luck.segments[0][2] = f64::NAN;
+        assert!(validate_luck(&luck).is_err());
+        let mut luck = LuckTrend::default();
+        luck.segments[1][0] = 69.0;
+        assert!(validate_luck(&luck).is_err());
+    }
 
     fn comp_value(comp: [usize; 5]) -> toml::Value {
         toml::Value::Array(

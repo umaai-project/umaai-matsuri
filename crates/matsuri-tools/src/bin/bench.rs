@@ -33,7 +33,7 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 use umaai_core::Data;
 use umaai_core::gamedata::{EventChoice, EventData};
-use umasim::game::{Game, Trainer};
+use umasim::game::{Game, Trainer, UmaFlagsExt};
 use umasim::search::{FlatSearch, FlatSearchGame, NoTerminal};
 
 /// 仓内数据根（相对仓根）
@@ -671,6 +671,12 @@ fn run_batch<T: Trainer<MatsuriGame>>(
 struct LuckRow {
     turn: i32,
     expected: f64,
+    /// 实际选中动作的估值（`SearchSummary::candidates[chosen].score`）
+    selected: f64,
+    /// 手写基策会选的动作的估值（同局面参考）
+    hand: f64,
+    /// 本点最优候选的估值（`max candidates.score`）
+    best: f64,
     /// 搜索口径的加权基线分（`SearchSummary::baseline`，未扣 PT 项）
     baseline: f64,
     /// 候选合并标准差（本次搜索的估分离散度，非均值误差）
@@ -682,19 +688,33 @@ struct LuckRow {
 /// 采集 MCTS 自博弈估分轨迹的训练员包装（只记主行动决策，不含教诲 / 事件）
 struct LuckTrainer {
     inner: MatsuriSearchTrainer,
+    /// 手写基策（同局面参考：搜索红利与操作损失都相对它度量）
+    hand: MatsuriTrainer,
     rows: Mutex<Vec<LuckRow>>,
+    /// 教诲决策（回合, 搜索选中的排列标签）
+    advice: Mutex<Vec<(i32, String)>>,
 }
 
 impl LuckTrainer {
-    fn new(inner: MatsuriSearchTrainer) -> Self {
+    fn new(inner: MatsuriSearchTrainer, hand: MatsuriTrainer) -> Self {
         Self {
             inner,
+            hand,
             rows: Mutex::new(Vec::new()),
+            advice: Mutex::new(Vec::new()),
         }
     }
 
     fn rows(&self) -> Vec<LuckRow> {
         self.rows
+            .lock()
+            .map(|rows| rows.clone())
+            .unwrap_or_default()
+    }
+
+    /// 教诲决策记录（回合, 搜索选中的排列标签）
+    fn advice_rows(&self) -> Vec<(i32, String)> {
+        self.advice
             .lock()
             .map(|rows| rows.clone())
             .unwrap_or_default()
@@ -711,15 +731,67 @@ impl Trainer<MatsuriGame> for LuckTrainer {
         let advice = actions
             .iter()
             .all(|action| matches!(action, Action::AssignAdvice(_)));
+        let mut hand_rng = rng.clone();
+        let hand_index = self.hand.select_action(game, actions, &mut hand_rng)?;
         let chosen = self.inner.select_action(game, actions, rng)?;
+        if advice
+            && let Ok(mut list) = self.advice.lock()
+        {
+            let label = actions
+                .get(chosen)
+                .map_or_else(String::new, |action| action.decision_label());
+            // 应用后的槽内容（基础 id），可直接写进 [decks.*.advice] 的对应窗口
+            let ids = match actions.get(chosen) {
+                Some(Action::AssignAdvice(assign)) => {
+                    assign.0.map(|src| game.advice.slots[usize::from(src)])
+                }
+                _ => [0; 5],
+            };
+            list.push((
+                game.turn(),
+                format!(
+                    "{label}|{}-{}-{}-{}-{}",
+                    ids[0], ids[1], ids[2], ids[3], ids[4]
+                ),
+            ));
+        }
         if !advice
             && let Some(summary) = self.inner.last_search()
             && let Ok(mut rows) = self.rows.lock()
         {
+            // 评价口径统一到官方评分（favor = 1.0）：把每个候选的搜索分扣掉 PT 放大额，
+            // 这样 selected / hand / best / baseline 与 expected 同量纲，分解里不再出现 PT 项。
+            let pt_rate = Data::get().ok().map_or(2.0, |data| f64::from(data.consts.pt_score_rate));
+            let pt_factor = f64::from(game.uma().flags.pt_score_rate_factor());
+            let favor = game
+                .config
+                .search
+                .pt_favor_rate
+                .unwrap_or(game.config.deck.trainer.pt_favor_rate);
+            let official =
+                |score: f64, pt: f64| score - pt * pt_rate * pt_factor * (favor - 1.0);
+            let find = |index: usize| {
+                summary
+                    .candidates
+                    .iter()
+                    .find(|candidate| candidate.index == index)
+            };
+            let selected = find(summary.chosen)
+                .map_or(summary.expected_score, |candidate| official(candidate.score, candidate.pt));
+            let hand = find(hand_index)
+                .map_or(summary.expected_score, |candidate| official(candidate.score, candidate.pt));
+            let best = summary
+                .candidates
+                .iter()
+                .map(|candidate| official(candidate.score, candidate.pt))
+                .fold(f64::NEG_INFINITY, f64::max);
             rows.push(LuckRow {
                 turn: game.turn(),
                 expected: summary.expected_score,
-                baseline: summary.baseline,
+                selected,
+                hand,
+                best,
+                baseline: summary.expected_score,
                 stdev: summary.baseline_stdev,
                 candidates: summary.candidates.len(),
             });
@@ -771,7 +843,7 @@ fn ols_slope(rows: &[LuckRow]) -> Option<f64> {
 /// `b = ΔE / Δturn`（显示分 = `expected + (MAX_TURN − turn) × b`）。
 ///
 /// `--per-turn` 额外输出逐决策明细行
-/// `T,seed,turn,expected,stdev,candidates,baseline`，
+/// `T,seed,turn,expected,stdev,candidates,baseline,selected,hand,best`，
 /// 供离线做逐回合趋势 / 形状拟合；`stdev` 为候选合并标准差。
 fn cmd_luck(env: &Env, args: &[String]) -> Result<()> {
     let games = parse_usize(args, "--games", 20)?;
@@ -800,10 +872,13 @@ fn cmd_luck(env: &Env, args: &[String]) -> Result<()> {
     let mut regs = Vec::with_capacity(games);
     for index in 0..games {
         let seed = seed0 + index as u64;
-        let trainer = LuckTrainer::new(MatsuriSearchTrainer::new(
-            config.clone(),
-            env.engine.search.clone().with_search_n(search_n),
-        )?);
+        let trainer = LuckTrainer::new(
+            MatsuriSearchTrainer::new(
+                config.clone(),
+                env.engine.search.clone().with_search_n(search_n),
+            )?,
+            MatsuriTrainer::new(config.clone()),
+        );
         let mut game = env.build(&config)?;
         game.set_rule_master(seed);
         let mut rng = StdRng::seed_from_u64(seed);
@@ -837,11 +912,21 @@ fn cmd_luck(env: &Env, args: &[String]) -> Result<()> {
             reg,
             rows.len()
         );
+        for (turn, label) in trainer.advice_rows() {
+            println!("A,{seed},{turn},{label}");
+        }
         if per_turn {
             for row in &rows {
                 println!(
-                    "T,{seed},{},{:.1},{:.1},{},{:.1}",
-                    row.turn, row.expected, row.stdev, row.candidates, row.baseline
+                    "T,{seed},{},{:.1},{:.1},{},{:.1},{:.1},{:.1},{:.1}",
+                    row.turn,
+                    row.expected,
+                    row.stdev,
+                    row.candidates,
+                    row.baseline,
+                    row.selected,
+                    row.hand,
+                    row.best
                 );
             }
         }
@@ -1396,6 +1481,40 @@ fn cmd_trace(env: &Env, args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// 打印固定根局面的状态摘要（T2 下陷排查用）
+fn dump_root_state(game: &MatsuriGame) {
+    let view = game.view();
+    println!(
+        "state turn={} stage={:?} vital={}/{} motivation={} advice_acquired={} slots={:?} fused={:?} kensan={:?}",
+        view.turn.turn,
+        view.turn.stage,
+        view.uma.vital,
+        view.uma.max_vital,
+        view.uma.motivation,
+        view.resources.advice_acquired,
+        view.resources.advice_slots,
+        view.resources.advice_fused,
+        view.resources.kensan_act
+    );
+    for (train, members) in view.board.distribution.iter().enumerate() {
+        let names: Vec<String> = members
+            .iter()
+            .map(|member| {
+                let person = &view.board.persons[member.person];
+                let name = person
+                    .card_id
+                    .map_or_else(|| format!("h{}", person.chara_id), |card| card.to_string());
+                if member.shining {
+                    format!("{name}*")
+                } else {
+                    name
+                }
+            })
+            .collect();
+        println!("  train{train} n={} [{}]", members.len(), names.join(" "));
+    }
+}
+
 /// 固定根搜索：bench root --turn 32 --search-n 512 --repeat 3
 fn cmd_root(env: &Env, args: &[String]) -> Result<()> {
     let turn = parse_i32(args, "--turn", 32)?;
@@ -1403,6 +1522,8 @@ fn cmd_root(env: &Env, args: &[String]) -> Result<()> {
     let repeat = parse_usize(args, "--repeat", 3)?;
     let seed = parse_usize(args, "--seed", 61444)? as u64;
     let search_seed = parse_usize(args, "--search-seed", 61444)? as u64;
+    let dump_actions = args.iter().any(|arg| arg == "--dump-actions");
+    let dump_state = args.iter().any(|arg| arg == "--dump-state");
     let config = env.config.clone();
     let (game, actions) = capture_root(env, &config, seed, turn)?;
     // 与 MatsuriSearchTrainer::new 同口径：内核参数取引擎配置，预算与 PT 偏好取剧本配置
@@ -1412,12 +1533,16 @@ fn cmd_root(env: &Env, args: &[String]) -> Result<()> {
         .pt_favor_rate
         .unwrap_or(config.deck.trainer.pt_favor_rate);
     println!(
-        "# turn={turn} candidates={} search_n={search_n} ucb={} parallel={} threads={:?}",
+        "# seed={seed} turn={turn} candidates={} search_n={search_n} ucb={} parallel={} threads={:?}",
         actions.len(),
         search_config.use_ucb,
         umasim::search::parallel_supported(),
         std::env::var("RAYON_NUM_THREADS").ok()
     );
+
+    if dump_state {
+        dump_root_state(&game);
+    }
 
     let mut best = Vec::new();
     let mut times = Vec::new();
@@ -1443,8 +1568,15 @@ fn cmd_root(env: &Env, args: &[String]) -> Result<()> {
             elapsed.as_nanos() as f64 / total.max(1) as f64
         );
         for (i, result) in out.action_results.iter().enumerate() {
+            let label = if dump_actions {
+                actions.get(i).map_or_else(String::new, |action| {
+                    format!(" label={}", action.decision_label())
+                })
+            } else {
+                String::new()
+            };
             println!(
-                "  cand {i} n={} mean={:.1} wmean={:.1}",
+                "  cand {i} n={} mean={:.1} wmean={:.1}{label}",
                 result.count(),
                 result.mean(),
                 result.weighted_mean(out.radical_factor)

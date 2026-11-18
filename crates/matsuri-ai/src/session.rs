@@ -26,7 +26,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use matsuri_core::game::advice::advice_display_name;
 use matsuri_core::game::restore::RestoreInput;
 use matsuri_core::{
-    Action, DEFAULT_DECK, MAX_TURN, MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer,
+    Action, DEFAULT_DECK, MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer,
     MatsuriTrainer, RolloutHealth, SearchSummary, Stage, deck_comp,
 };
 use rand::SeedableRng;
@@ -34,7 +34,7 @@ use rand::rngs::StdRng;
 use umaai::{BaseParams, FrameOutcome, LuckAttach, LuckScorer};
 use umaai_core::rng::{StreamTag, derive_seed};
 use umaai_core::{Array5, Array6, Data};
-use umasim::game::{Game, SupportCard, Trainer};
+use umasim::game::{Game, SupportCard, Trainer, UmaFlagsExt};
 use umasim::search::SearchConfig;
 
 use crate::final_score::parse_final_score;
@@ -44,6 +44,24 @@ use crate::output::{FinalTurnOutput, OnlineTurnOutput, TurnKind, projected_summa
 
 /// 剧本友人（吾妻）首次点击事件 id（`BaseParams.friend_first_event`；0 = 未知则跳过判定）
 pub const FRIEND_FIRST_EVENT: i32 = 809052001;
+
+/// 本回合最优选择（selected）的官方口径期望分：chosen 候选分扣掉 PT 放大项
+fn selected_official(
+    summary: &SearchSummary,
+    game: &MatsuriGame,
+    pt_favor_rate: f64,
+) -> Option<f64> {
+    let chosen = summary
+        .candidates
+        .iter()
+        .find(|candidate| candidate.index == summary.chosen)?;
+    let data = Data::get().ok();
+    let pt_rate = data
+        .as_ref()
+        .map_or(2.0, |data| f64::from(data.consts.pt_score_rate));
+    let pt_factor = f64::from(game.uma().flags.pt_score_rate_factor());
+    Some(chosen.score - chosen.pt * pt_rate * pt_factor * (pt_favor_rate - 1.0))
+}
 
 /// 搜索摘要投到显示分口径：E 与档次都按投影值（终端 / JSON 共用同一份）
 fn display_summary(summary: Option<SearchSummary>, turn: i32, bonus: i32) -> Option<SearchSummary> {
@@ -339,7 +357,7 @@ impl OnlineSession {
                     TrainerChoice::Search(trainer) => trainer.last_search(),
                     TrainerChoice::Hand(_) => None,
                 };
-                let summary = display_summary(summary, turn, self.luck.bonus());
+                let summary = display_summary(summary, turn, self.luck.display_bonus());
                 let scores: Option<Vec<(usize, f64, u32)>> = summary.as_ref().map(|summary| {
                     summary
                         .candidates
@@ -448,7 +466,7 @@ impl OnlineSession {
                     TrainerChoice::Search(trainer) => trainer.last_search(),
                     TrainerChoice::Hand(_) => None,
                 };
-                let summary = display_summary(summary, turn, self.luck.bonus());
+                let summary = display_summary(summary, turn, self.luck.display_bonus());
                 let search_backed = summary.is_some();
                 let candidate_scores = summary.as_ref().map_or_else(Vec::new, |summary| {
                     summary
@@ -569,15 +587,29 @@ impl OnlineSession {
                         ),
                     },
                 };
-                let summary = display_summary(summary, turn, self.luck.bonus());
+                let summary = display_summary(summary, turn, self.luck.display_bonus());
                 // 运气分只统计搜索终局分，且只在主行动（训练 / 比赛）上推进；
                 // 同回合重复决策复用本回合快照，免得把基线抖动记进「本轮」
                 if search_backed {
                     if self.luck_turn == Some(turn) {
                         record.luck = self.luck_attach.clone();
                     } else {
-                        self.luck
-                            .attach(&mut record, frame.epoch_key(), turn, MAX_TURN);
+                        let favor = self
+                            .config
+                            .search
+                            .pt_favor_rate
+                            .unwrap_or(self.config.deck.trainer.pt_favor_rate);
+                        let value = summary
+                            .as_ref()
+                            .and_then(|summary| selected_official(summary, &game, favor))
+                            .unwrap_or_else(|| record.baseline_score());
+                        self.luck.attach(
+                            &mut record,
+                            frame.epoch_key(),
+                            turn,
+                            value,
+                            &self.config.deck.luck,
+                        );
                         self.luck_attach = record.luck.clone();
                         self.luck_turn = Some(turn);
                     }
