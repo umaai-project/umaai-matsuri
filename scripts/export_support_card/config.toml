@@ -152,8 +152,8 @@ note = "事件不影响比赛回合"
 
 [[special_races]]
 chara_id = 1075 # 谋勇
-races = [57]
-note = "事件不影响比赛回合; 55-56回合不可比赛"
+races = [56]
+note = "事件不影响比赛回合; 54-55回合不可比赛"
 
 [[special_races]]
 chara_id = 1079 # 狂怒乐章
@@ -164,11 +164,6 @@ note = "回合 53 的比赛取消"
 chara_id = 1081 # 希望城
 races = [69]
 note = "第三年参加JBC"
-
-[[special_races]]
-chara_id = 1092 # 快驹
-races = [59]
-note = "事件不影响比赛回合"
 
 [[special_races]]
 chara_id = 1093 # 凯斯奇迹
@@ -202,8 +197,8 @@ note = "第三年参加京都纪念、天春"
 
 [[special_races]]
 chara_id = 1135 # 黄金
-races = [44, 71]
-note = "选择菊花赏，有马纪念"
+races = [43, 71]
+note = "第二年不打每日王冠，第三年选择有马纪念"
 
 [[special_races]]
 chara_id = 1144 # 玫瑰帝国

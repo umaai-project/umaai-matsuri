@@ -44,6 +44,7 @@ event = true
 # 搜索内核的 PT 偏好覆盖（省略 = 与手写档同口径，即取当前档的 [trainer].pt_favor_rate）
 # 只改搜索排序与搜索侧期望分换算；手写训练员（剪枝 / fallback / rollout 教师）不受影响。
 # 刷 PT 档示例：pt_favor_rate = 5.0（配合 --search-n 才有意义）
+# pt_favor_rate = 5.0
 
 # ---------- 卡组参数 ----------
 

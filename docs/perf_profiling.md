@@ -10,7 +10,7 @@
 | 子命令 | 用途 | 输出 |
 |---|---|---|
 | `bench game --games N --seed S [--search-n M]` | 整局耗时 + 终局 CSV（缺省读配置，当前默认 8192） | `seed,score,pt,turn,elapsed_us` + 均值行 |
-| `bench luck --games N --seed S [--search-n M]` | 估分随回合漂移与 `luck_turn_bonus` 斜率（`search_n > 0`） | 逐局首/末回合估分、`b`、`reg_slope`、终局 |
+| `bench luck --games N --seed S [--search-n M] [--per-turn]` | 估分随回合漂移与 `luck_turn_bonus` 斜率（`search_n > 0`）；`--per-turn` 追加逐回合明细行 | 逐局首/末回合估分、`b`、`reg_slope`、终局；`--per-turn` 另出 `T,seed,turn,expected,stdev,candidates` |
 | `bench micro --turn T --iters N` | 固定回合决策链热循环分段 | 各段 ns/op（克隆 / 训练预览 / 资源预览 / 整决策 / 搜索分） |
 | `bench trace --turn T` | rollout 内逐决策点耗时 | `turn,actions,us,advice` |
 | `bench root --turn T --search-n M --repeat R` | 固定根搜索（含 `rollout_noop` 空训练员拆解） | 每轮耗时、planned / failed、ns/rollout、best |
