@@ -227,6 +227,22 @@ impl std::fmt::Display for AdviceAssignment {
     }
 }
 
+/// 一次融合窗口的落地结果（在线以帧内 fused 为准时的对账信息）
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FusionOutcome {
+    /// 本窗口预设目标当前的实际配对（含帧内已经融合、本次未再写入的部分）
+    pub effective: Vec<FusionPair>,
+    /// 本次实际写入的配对（帧内已融合的目标不在其中）
+    pub applied: Vec<FusionPair>,
+    /// 预设 base 已被实机抢先融合、改由别的 base 承接：`(预设 base, 实际 base, target)`
+    pub substituted: Vec<(i32, i32, i32)>,
+}
+
+/// 基础教诲 `base` 当前所在的**未融合**槽位
+fn unfused_act_of(game: &MatsuriGame, base: i32) -> Option<usize> {
+    (0..5).find(|act| game.advice.slots[*act] == base && game.advice.fused[*act] == 0)
+}
+
 impl MatsuriGame {
     /// 某演目槽位的聚合效果（已按绑定演目 Lv 取级；未融合时 = 基础教诲效果）
     pub(crate) fn advice_slot_effect(&self, act: usize) -> AdviceSlotEffect {
@@ -339,6 +355,109 @@ impl MatsuriGame {
         }
         self.enforce_advice_constraints();
         Ok(())
+    }
+
+    /// 融合窗口落地：以帧内 fused 为准，只补当前档预设里尚未生效的目标
+    ///
+    /// 在线实机由玩家自选配对：帧内已经融合的槽位既不回滚也不改写；本窗口剩下的目标
+    /// 仍按当前档预设的目标顺序落位（实机与预设一致时与 apply_fusion_pairs 等价，
+    /// 离线路径零差异）。预设 base 若已被实机抢先融合掉，则由配置里下一个仍未融合的
+    /// 基础教诲承接，保证 801 等目标仍然出现（401+801 硬约束与槽效果都依赖它）。
+    pub fn apply_window_fusion(&mut self, window: usize) -> Result<FusionOutcome> {
+        // 预设与其 base 优先顺序（year2 → year3 即 5 个基础教诲的完整次序）
+        let (preset, order) = {
+            let fusion = &self.config.deck.fusion;
+            let preset = if window == 2 {
+                fusion.year2.clone()
+            } else if window == 4 {
+                fusion.year3.clone()
+            } else {
+                return Ok(FusionOutcome::default());
+            };
+            let order: Vec<i32> = fusion
+                .year2
+                .iter()
+                .chain(fusion.year3.iter())
+                .map(|pair| pair.base)
+                .collect();
+            (preset, order)
+        };
+        let pending: Vec<FusionPair> = preset
+            .iter()
+            .copied()
+            .filter(|pair| !self.advice.fused.contains(&pair.target))
+            .collect();
+        if pending.is_empty() {
+            return Ok(FusionOutcome {
+                effective: self.window_fusion_pairs(&preset),
+                ..FusionOutcome::default()
+            });
+        }
+        // 第一轮：预设 base 仍未被实机融合时原样保留
+        let mut used: Vec<i32> = Vec::new();
+        let mut chosen: Vec<Option<i32>> = vec![None; pending.len()];
+        for (index, pair) in pending.iter().enumerate() {
+            if unfused_act_of(self, pair.base).is_some() && !used.contains(&pair.base) {
+                chosen[index] = Some(pair.base);
+                used.push(pair.base);
+            }
+        }
+        // 第二轮：被抢先融合的 base 由配置顺序里下一个未融合槽位顶替
+        let mut substituted = Vec::new();
+        for (index, pair) in pending.iter().enumerate() {
+            if chosen[index].is_some() {
+                continue;
+            }
+            let Some(base) = order
+                .iter()
+                .copied()
+                .find(|base| unfused_act_of(self, *base).is_some() && !used.contains(base))
+            else {
+                bail!(
+                    "融合窗口 {window} 落地失败：预设剩 {} 个目标，但未融合槽位只有 {} 个（fused={:?}）",
+                    pending.len(),
+                    self.advice
+                        .fused
+                        .iter()
+                        .filter(|fused| **fused == 0)
+                        .count(),
+                    self.advice.fused
+                );
+            };
+            chosen[index] = Some(base);
+            used.push(base);
+            substituted.push((pair.base, base, pair.target));
+        }
+        let mut applied = Vec::with_capacity(pending.len());
+        for (pair, base) in pending.iter().zip(chosen) {
+            if let Some(base) = base {
+                applied.push(FusionPair {
+                    base,
+                    target: pair.target,
+                });
+            }
+        }
+        self.apply_fusion_pairs(&applied)?;
+        Ok(FusionOutcome {
+            effective: self.window_fusion_pairs(&preset),
+            applied,
+            substituted,
+        })
+    }
+
+    /// 本窗口预设目标当前绑定的基础教诲（含帧内已融合的部分；供展示）
+    fn window_fusion_pairs(&self, preset: &[FusionPair]) -> Vec<FusionPair> {
+        preset
+            .iter()
+            .filter_map(|pair| {
+                (0..5)
+                    .find(|act| self.advice.fused[*act] == pair.target)
+                    .map(|act| FusionPair {
+                        base: self.advice.slots[act],
+                        target: pair.target,
+                    })
+            })
+            .collect()
     }
 
     /// 本教诲窗口是否融合窗口（`[fusion]` 预设：第 2 年窗口 2 / 第 3 年窗口 4）
@@ -826,6 +945,101 @@ mod tests {
         ];
         assert!(game.apply_fusion_pairs(&pairs).is_err());
         assert_eq!(game.advice.fused, [0; 5], "融合失败不应留下半态");
+    }
+
+    /// 实机按预设融合时，窗口落地与预设逐位一致且没有对账提示
+    #[test]
+    fn window_fusion_matches_preset() {
+        let mut game = crate::testing::sample_game();
+        game.advice.acquired = true;
+        game.advice.slots = [101, 201, 501, 301, 401];
+        game.advice.fused = [0; 5];
+        let outcome = game.apply_window_fusion(2).expect("融合");
+        assert_eq!(
+            outcome.applied,
+            vec![
+                FusionPair {
+                    base: 101,
+                    target: 601
+                },
+                FusionPair {
+                    base: 201,
+                    target: 701
+                },
+            ]
+        );
+        assert!(
+            outcome.substituted.is_empty(),
+            "预设与实机一致时不应有对账提示"
+        );
+        assert_eq!(outcome.effective.len(), 2, "实际配对应覆盖本窗口两个目标");
+    }
+
+    /// 同一窗口重复落地不再写入（帧内已融合的目标直接跳过）
+    #[test]
+    fn window_fusion_is_idempotent() {
+        let mut game = crate::testing::sample_game();
+        game.advice.acquired = true;
+        game.advice.slots = [101, 201, 501, 301, 401];
+        game.advice.fused = [0; 5];
+        game.apply_window_fusion(2).expect("首次融合");
+        let second = game.apply_window_fusion(2).expect("重复融合不应报错");
+        assert!(second.applied.is_empty(), "已融合的目标不应再写一次");
+        assert_eq!(second.effective.len(), 2, "已融合目标仍应出现在实际配对里");
+    }
+
+    /// 实机抢先融合了预设留给第 3 年的基础教诲：剩余目标由未融合槽位顶替，不报错
+    #[test]
+    fn window_fusion_substitutes_base_taken_by_frame() {
+        let mut game = crate::testing::sample_game();
+        game.advice.acquired = true;
+        // 实机 T23 自选了 101→601 / 201→701，而档预设第 3 年要 201→801
+        game.advice.slots = [101, 201, 501, 301, 401];
+        game.advice.fused = [601, 701, 0, 0, 0];
+        let mut params = (*game.config.deck).clone();
+        params.fusion.year2 = vec![
+            FusionPair {
+                base: 501,
+                target: 601,
+            },
+            FusionPair {
+                base: 101,
+                target: 701,
+            },
+        ];
+        params.fusion.year3 = vec![
+            FusionPair {
+                base: 201,
+                target: 801,
+            },
+            FusionPair {
+                base: 301,
+                target: 901,
+            },
+            FusionPair {
+                base: 401,
+                target: 1001,
+            },
+        ];
+        game.config.deck = std::sync::Arc::new(params);
+        let outcome = game.apply_window_fusion(4).expect("应容忍实机配对");
+        assert_eq!(
+            outcome.substituted,
+            vec![(201, 501, 801)],
+            "被实机抢先融合的 base 应由下一个未融合槽位顶替"
+        );
+        assert_eq!(
+            outcome
+                .applied
+                .iter()
+                .map(|pair| pair.target)
+                .collect::<Vec<_>>(),
+            vec![801, 901, 1001]
+        );
+        assert!(
+            game.advice.fused.contains(&801),
+            "801 必须仍在场：401+801 硬约束依赖它"
+        );
     }
 }
 

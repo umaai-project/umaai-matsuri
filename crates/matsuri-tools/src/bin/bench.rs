@@ -734,9 +734,7 @@ impl Trainer<MatsuriGame> for LuckTrainer {
         let mut hand_rng = rng.clone();
         let hand_index = self.hand.select_action(game, actions, &mut hand_rng)?;
         let chosen = self.inner.select_action(game, actions, rng)?;
-        if advice
-            && let Ok(mut list) = self.advice.lock()
-        {
+        if advice && let Ok(mut list) = self.advice.lock() {
             let label = actions
                 .get(chosen)
                 .map_or_else(String::new, |action| action.decision_label());
@@ -761,25 +759,28 @@ impl Trainer<MatsuriGame> for LuckTrainer {
         {
             // 评价口径统一到官方评分（favor = 1.0）：把每个候选的搜索分扣掉 PT 放大额，
             // 这样 selected / hand / best / baseline 与 expected 同量纲，分解里不再出现 PT 项。
-            let pt_rate = Data::get().ok().map_or(2.0, |data| f64::from(data.consts.pt_score_rate));
+            let pt_rate = Data::get()
+                .ok()
+                .map_or(2.0, |data| f64::from(data.consts.pt_score_rate));
             let pt_factor = f64::from(game.uma().flags.pt_score_rate_factor());
             let favor = game
                 .config
                 .search
                 .pt_favor_rate
                 .unwrap_or(game.config.deck.trainer.pt_favor_rate);
-            let official =
-                |score: f64, pt: f64| score - pt * pt_rate * pt_factor * (favor - 1.0);
+            let official = |score: f64, pt: f64| score - pt * pt_rate * pt_factor * (favor - 1.0);
             let find = |index: usize| {
                 summary
                     .candidates
                     .iter()
                     .find(|candidate| candidate.index == index)
             };
-            let selected = find(summary.chosen)
-                .map_or(summary.expected_score, |candidate| official(candidate.score, candidate.pt));
-            let hand = find(hand_index)
-                .map_or(summary.expected_score, |candidate| official(candidate.score, candidate.pt));
+            let selected = find(summary.chosen).map_or(summary.expected_score, |candidate| {
+                official(candidate.score, candidate.pt)
+            });
+            let hand = find(hand_index).map_or(summary.expected_score, |candidate| {
+                official(candidate.score, candidate.pt)
+            });
             let best = summary
                 .candidates
                 .iter()

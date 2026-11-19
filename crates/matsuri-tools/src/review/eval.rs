@@ -250,7 +250,7 @@ pub fn eval(args: EvalArgs<'_>) -> Result<(PathBuf, EvalReport)> {
     let mut rng = StdRng::seed_from_u64(seed);
     let started = Instant::now();
 
-    let (kind, summary, actions, pre) = run_decision(&trainer, &game, &frame, &config, &mut rng)?;
+    let (kind, summary, actions, pre) = run_decision(&trainer, &game, &frame, &mut rng)?;
     let elapsed_ms = started.elapsed().as_millis() as u64;
 
     let history = history_actions(&files)?;
@@ -377,7 +377,6 @@ fn run_decision(
     trainer: &MatsuriSearchTrainer,
     game: &MatsuriGame,
     frame: &ParsedFrame,
-    config: &MatsuriConfig,
     rng: &mut StdRng,
 ) -> Result<DecisionRun> {
     match matsuri_ai::online::route(game, frame) {
@@ -399,18 +398,9 @@ fn run_decision(
                 search.advice.slots = [101, 201, 301, 401, 501];
                 search.advice.fused = [0; 5];
             }
+            // 实机融合由玩家自选：帧内已融合的以帧为准，只补本窗口预设尚未生效的目标
             if search.is_fusion_window(window) {
-                let pairs = if window == 2 {
-                    &config.deck.fusion.year2
-                } else {
-                    &config.deck.fusion.year3
-                };
-                let already = pairs
-                    .iter()
-                    .all(|pair| search.advice.fused.contains(&pair.target));
-                if !already {
-                    search.apply_fusion_pairs(pairs)?;
-                }
+                search.apply_window_fusion(window)?;
             }
             search.stage = matsuri_ai::online::advice_stage(&search);
             let ctx = AdviceCtx {

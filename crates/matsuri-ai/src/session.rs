@@ -415,21 +415,22 @@ impl OnlineSession {
                     game.advice.slots = [101, 201, 301, 401, 501];
                     game.advice.fused = [0; 5];
                 }
-                // T23 / T47 先按引擎配置融合，再从融合后的槽位枚举 120 候选；
-                // T47 时 year2 的融合已存在，不能只看 fused 是否全 0
-                if game.is_fusion_window(window) {
-                    let pairs = if window == 2 {
-                        &self.config.deck.fusion.year2
-                    } else {
-                        &self.config.deck.fusion.year3
-                    };
-                    let already_fused = pairs
-                        .iter()
-                        .all(|pair| game.advice.fused.contains(&pair.target));
-                    if !already_fused {
-                        game.apply_fusion_pairs(pairs)?;
+                // T23 / T47：实机融合由玩家自选配对，帧内已融合的部分以帧为准；
+                // 只补当前档预设里尚未生效的目标（被抢先融合的 base 自动顶替）
+                let fusion_outcome = if game.is_fusion_window(window) {
+                    let outcome = game.apply_window_fusion(window)?;
+                    for (preset, actual, target) in &outcome.substituted {
+                        notes.push(format!(
+                            "融合对账：实机已抢先融合 {}，预设 →{} 改由 {} 承接",
+                            advice_display_name(*preset),
+                            advice_display_name(*target),
+                            advice_display_name(*actual)
+                        ));
                     }
-                }
+                    Some(outcome)
+                } else {
+                    None
+                };
                 let actions = game.advice_actions();
                 if actions.is_empty() {
                     return Ok(OnlineTurnOutput {
@@ -475,28 +476,21 @@ impl OnlineSession {
                         .map(|candidate| (candidate.index, candidate.score))
                         .collect()
                 });
-                let fusion = if game.is_fusion_window(window) {
-                    let pairs = if window == 2 {
-                        &self.config.deck.fusion.year2
-                    } else {
-                        &self.config.deck.fusion.year3
-                    };
-                    Some(
-                        pairs
-                            .iter()
-                            .map(|pair| {
-                                format!(
-                                    "{}→{}",
-                                    advice_display_name(pair.base),
-                                    advice_display_name(pair.target)
-                                )
-                            })
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                    )
-                } else {
-                    None
-                };
+                // 展示口径 = 本窗口目标的实际配对（含帧内已融合、本次未再写入的部分）
+                let fusion = fusion_outcome.as_ref().and_then(|outcome| {
+                    let described: Vec<String> = outcome
+                        .effective
+                        .iter()
+                        .map(|pair| {
+                            format!(
+                                "{}→{}",
+                                advice_display_name(pair.base),
+                                advice_display_name(pair.target)
+                            )
+                        })
+                        .collect();
+                    (!described.is_empty()).then(|| described.join(" "))
+                });
                 let record = online::advice_record(
                     &game,
                     &actions,

@@ -12,7 +12,6 @@ use umasim::game::{Game, PersonType, Trainer};
 
 use super::MatsuriGame;
 use crate::data::{CheckPointResult, Reward, RewardResult};
-use crate::deck_config::FusionPair;
 use crate::diag;
 
 impl MatsuriGame {
@@ -187,23 +186,18 @@ impl MatsuriGame {
             return Ok(());
         }
         // 先融合（turn 23 / 47），再让 Trainer 选 5 槽分配；其他窗口只做分配
-        let pairs = self.fusion_plan(window);
-        if !pairs.is_empty() {
-            self.apply_fusion_pairs(&pairs)?;
+        // 在线帧内已融合的部分以帧为准，这里只补当前档预设尚未生效的目标
+        let outcome = self.apply_window_fusion(window)?;
+        for (preset, actual, target) in &outcome.substituted {
+            diag!(
+                "【教诲】T{} 融合对账：预设 {}→{} 已被实机抢先融合，改由 {} 承接",
+                self.turn(),
+                preset,
+                target,
+                actual
+            );
         }
         self.decide_advice_assignment(trainer, decision)
-    }
-
-    /// 本窗口的融合配对来源（**当前 = 配置预设**；将来若交给 Trainer，只改这一个函数）
-    fn fusion_plan(&self, window: usize) -> Vec<FusionPair> {
-        if !self.is_fusion_window(window) {
-            return Vec::new();
-        }
-        if window == 2 {
-            self.config.deck.fusion.year2.clone()
-        } else {
-            self.config.deck.fusion.year3.clone()
-        }
     }
 
     /// 育成终了奖励（`on_simulation_end`）：三场全大成功 → 大成功档，否则成功档

@@ -4,6 +4,7 @@
 //! 加可注入的 `narrative.md`。叙事由 skill 写，本模块不生成结论。
 
 use std::fmt::Write as _;
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -153,14 +154,33 @@ fn read_reports(dir: &Path) -> Result<Vec<EvalReport>> {
     Ok(rows)
 }
 
-/// 读 AI 侧运气轨迹（局包目录下 `game{id}_ai-decision.json` 的 luck 段）
+/// 读 AI 侧运气轨迹（`game{id}_ai-decision.json` 的 luck 段）
+///
+/// zip 输入优先读**包内条目**（打包时的权威快照），字节级回退到包同级目录；
+/// 目录输入读该目录。包外同名文件可能被 T77 单帧运行覆盖，不能当原始记录。
 fn read_ai_luck(input: &Path, game: u64) -> Option<serde_json::Value> {
-    if !input.is_dir() {
-        return None;
-    }
-    let text = std::fs::read_to_string(input.join(format!("game{game}_ai-decision.json"))).ok()?;
+    let name = format!("game{game}_ai-decision.json");
+    let text = if input.is_dir() {
+        std::fs::read_to_string(input.join(&name)).ok()?
+    } else {
+        read_zip_entry(input, &name).or_else(|| {
+            input
+                .parent()
+                .and_then(|dir| std::fs::read_to_string(dir.join(&name)).ok())
+        })?
+    };
     let value: serde_json::Value = serde_json::from_str(&text).ok()?;
     value.get("luck").cloned()
+}
+
+/// 从 zip 里只读一个条目（不扫描全部帧）
+fn read_zip_entry(path: &Path, name: &str) -> Option<String> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut archive = zip::ZipArchive::new(file).ok()?;
+    let mut entry = archive.by_name(name).ok()?;
+    let mut text = String::new();
+    entry.read_to_string(&mut text).ok()?;
+    Some(text)
 }
 
 /// 读曲线缓存（没有就是 `None`）
@@ -209,8 +229,8 @@ fn render(
         let _ = writeln!(out, "<p class=\"muted\">无终局帧</p>");
     }
     let _ = writeln!(out, "<h2>运气（selected 口径）</h2>");
-    match ai_luck.and_then(|luck| luck.as_array()) {
-        Some(points) if !points.is_empty() => {
+    match ai_luck {
+        Some(serde_json::Value::Array(points)) if !points.is_empty() => {
             let total = points
                 .last()
                 .and_then(|point| point.get("total"))
@@ -219,7 +239,7 @@ fn render(
                 Some(total) => {
                     let _ = writeln!(
                         out,
-                        "<p class=\"muted\">总运气 {:.0}（{} 个决策点；基准 = 当前卡组档两斜率）</p>",
+                        "<p class=\"muted\">总运气 {:.0}（{} 个决策点；基准 = 当前卡组档分段）</p>",
                         total,
                         points.len()
                     );
@@ -229,7 +249,16 @@ fn render(
                 }
             }
         }
-        _ => {
+        Some(serde_json::Value::Array(_)) => {
+            let _ = writeln!(
+                out,
+                "<p class=\"muted\">有 AI 记录，但未采到运气点（在线主行动未走搜索，如降级手写；旧版本也不记录）</p>"
+            );
+        }
+        Some(_) => {
+            let _ = writeln!(out, "<p class=\"muted\">AI 记录的 luck 字段格式异常</p>");
+        }
+        None => {
             let _ = writeln!(
                 out,
                 "<p class=\"muted\">无 AI 记录（旧局包或未开 AI）：不可用</p>"

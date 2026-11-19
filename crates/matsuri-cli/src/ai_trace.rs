@@ -6,6 +6,9 @@
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// 判定「单帧空壳」的 firstTurn 下限：在线从 T77 帧启动时 firstTurn = 77
+const SHELL_FIRST_TURN: i32 = 70;
+
 use anyhow::Result;
 use matsuri_ai::{OnlineTurnOutput, TurnKind};
 use umasim::search::FlatSearchGame;
@@ -47,11 +50,16 @@ impl AiTrace {
             .as_ref()
             .and_then(|record| record.luck.as_ref())
         {
-            self.luck.push((
+            let entry = (
                 output.view.turn.turn,
                 luck.snapshot.total_luck_score,
                 luck.snapshot.last_turn_delta,
-            ));
+            );
+            // 同回合重复决策复用同一运气快照，只保留一条，避免数组里出现重复回合
+            match self.luck.last_mut() {
+                Some(last) if last.0 == entry.0 => *last = entry,
+                _ => self.luck.push(entry),
+            }
         }
         if let Some(summary) = &output.summary {
             self.expected = Some(summary.expected_score);
@@ -91,6 +99,16 @@ impl AiTrace {
         });
         std::fs::create_dir_all(dir)?;
         let path = dir.join(format!("game{}_ai-decision.json", output.epoch));
+        // 门禁：本次若只是 T77 单帧运行（firstTurn 晚于开局），且已有记录，
+        // 不覆盖，避免把全程在线写出的逐回合 luck 覆盖成空壳。
+        if path.exists()
+            && self
+                .first_turn
+                .is_some_and(|first| first >= SHELL_FIRST_TURN)
+        {
+            self.written = true;
+            return Ok(());
+        }
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, serde_json::to_vec_pretty(&payload)?)?;
         std::fs::rename(&tmp, &path)?;

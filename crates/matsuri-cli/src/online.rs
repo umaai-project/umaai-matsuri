@@ -348,7 +348,16 @@ fn render_decision(stdout: &mut impl Write, output: &OnlineTurnOutput, color: bo
         .and_then(|extra| extra.get("fusion"))
         .and_then(|fusion| fusion.as_str())
     {
-        writeln!(stdout, "[回合 {} 融合]{}", output.turn, fusion)?;
+        // 预设固定融合决策：蓝底亮黄，便于和普通提示区分
+        writeln!(
+            stdout,
+            "{}",
+            paint(
+                &format!("[回合 {} 融合]{}", output.turn, fusion),
+                Some("44;93"),
+                color
+            )
+        )?;
     }
     // 事件决策前先回显「还原出来的事件」与各选项实际效果（帧可能没带 `story`，属性以本地数据为准）
     if record.kind == "event" {

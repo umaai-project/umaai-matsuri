@@ -22,7 +22,7 @@
 | `infer` | `<局包> [--what advice,fusion,skill,kensan,all] [--turn N] [--json] [--game] [--out] [--data]` | `infer.json` |
 | `curve` | `<局包> [--from A] [--to B] [--n 1024] [--force] [--game] [--out] [--data]` | `curve.json` |
 | `whatif` | `<局包> --turn N --swap 动作名[,动作名…] [--horizon 8\|0] [--k 100] [--game] [--out] [--data]` | `whatif.json` |
-| `report` | `<局包> [--narrative md] [--game] [--out] [--data]` | `digest.json`、`report.html`（末尾含更优回合表） |
+| `report` | `<局包> [--narrative md] [--game] [--out] [--data]` | `digest.json`、`report.html`（末尾含更优回合表）；运气段读局包同目录 `game{id}_ai-decision.json`（zip 输入读包同级），`luck` 空 = 在线降级手写，标不可用 |
 | `show` | `<局包> --turn N --seq S [--game] [--data]` | 标准输出 JSON（原始帧玩家可见状态） |
 
 约定：

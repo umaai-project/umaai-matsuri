@@ -155,19 +155,13 @@ fn validate_luck(luck: &LuckTrend) -> Result<()> {
     let mut previous_end: Option<f64> = None;
     for segment in &luck.segments {
         let [start, end, slope, offset] = *segment;
-        ensure!(
-            start <= end,
-            "luck 段区间非法: {start}..{end}"
-        );
+        ensure!(start <= end, "luck 段区间非法: {start}..{end}");
         ensure!(
             slope.is_finite() && offset.is_finite(),
             "luck 段的 slope / offset 必须是有限值"
         );
         if let Some(previous) = previous_end {
-            ensure!(
-                start > previous,
-                "luck 段必须按 start 升序且互不重叠"
-            );
+            ensure!(start > previous, "luck 段必须按 start 升序且互不重叠");
         }
         previous_end = Some(end);
     }
@@ -1049,16 +1043,9 @@ mod tests {
         assert!((luck.delta(76) - (3355.86 + 6.0 * 22.82)).abs() < 1e-9);
         let base76 = luck.delta(76);
         // 最优选择轨迹与基准一致时运气分为 0
-        assert!(
-            luck.luckscore(&[(0, 0.0), (76, base76)])
-                .unwrap()
-                .abs()
-                < 1e-9
-        );
+        assert!(luck.luckscore(&[(0, 0.0), (76, base76)]).unwrap().abs() < 1e-9);
         // 低于基准 100 分时运气分为 −100
-        assert!(
-            (luck.luckscore(&[(0, 0.0), (76, base76 - 100.0)]).unwrap() + 100.0).abs() < 1e-6
-        );
+        assert!((luck.luckscore(&[(0, 0.0), (76, base76 - 100.0)]).unwrap() + 100.0).abs() < 1e-6);
         // 逐点 step 求和 == 整段 luckscore
         let track = [
             (0, 0.0),

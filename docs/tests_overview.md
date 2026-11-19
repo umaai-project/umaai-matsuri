@@ -21,7 +21,7 @@
 
 - **单元测试（内联）**：
   - `core/src/{data,config,deck_config}.rs`：18 个顶层资产键校验、覆盖层边界（只认 `[pre]` / `[search]`）、`[decks.*]` 深合并与 `variant` 显式约束。
-  - `core/src/game/{roster,stage,advice,distribute,train,event,settle,mod,view,diag}.rs`：担当五步分配、5 阶段链、合宿顺延、空窗期（68–71）/ URA（72–77）、教诲 120 排列与 801 约束、社交人头唯一性与吾妻补稽古位、双层训练公式、S6 事件链与变胖、発表会/本番/育成终了、`MatsuriView` 只读幂等、预览零克隆不串味。
+  - `core/src/game/{roster,stage,advice,distribute,train,event,settle,mod,view,diag}.rs`：担当五步分配、5 阶段链、合宿顺延、空窗期（68–71）/ URA（72–77）、教诲 120 排列与 801 约束、融合窗口落地（预设逐位一致 / 重复落地幂等 / 实机抢先融合时顶替 base）、社交人头唯一性与吾妻补稽古位、双层训练公式、S6 事件链与变胖、発表会/本番/育成终了、`MatsuriView` 只读幂等、预览零克隆不串味。
   - `core/src/{search,trainer,value,game/traits}.rs`：单决策流随机字、自选比赛期限只搜比赛、`pt_favor_rate` 搜索分、手写守门链、溢出与末段稽古估值。
   - `cli/src/{panel,manual,online}.rs`：CJK 宽度、五维 >1200 显示压缩、图例配色、运气行期望/σ/档次渲染与按帧卡组选档行。
   - `tools/src/stat.rs`：命中判定三态与边界（`abs(delta) <= ci95`）、配对差跳过缺样本并按 `变动臂 − 对照臂` 计、不足两对不下结论、分位线性插值。

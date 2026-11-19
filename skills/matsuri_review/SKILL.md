@@ -81,6 +81,8 @@ description: 骏大祭（matsuri）单局复盘。对真机局包 game{id}.zip �
    <skill>\bin\review.exe report <局包.zip> --data <skill>\data --out <工作区>/game{id} [--narrative <叙述.md>]
    ```
 
+   运气分只看 `report` 的「运气（selected 口径）」段：有运气点报总运气；`luck` 为空表示在线主行动未走搜索（降级手写）或旧版本未采集，标不可用，不要写成「没开 AI」。口径见 `metrics_glossary` §11。
+
 ## 归因框架（六问）
 
 1. **总体**：终局分与档位（口径：**好局 ≥ LG20（88,500）**、**非常优秀 ≥ LF（91,400）**，见 `metrics_glossary` §10）、门禁是否触发（`B1` 発表会 / `B6` 体力线 / `B7` 干劲 / `C3` 训练失败 / `C4` 资源）、演目 Lv 与目标差距。

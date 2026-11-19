@@ -212,18 +212,9 @@ pub fn whatif(args: WhatifArgs<'_>) -> Result<(PathBuf, WhatifReport)> {
                 base.advice.slots = [101, 201, 301, 401, 501];
                 base.advice.fused = [0; 5];
             }
+            // 实机融合由玩家自选：帧内已融合的以帧为准，只补本窗口预设尚未生效的目标
             if base.is_fusion_window(window) {
-                let pairs = if window == 2 {
-                    &config.deck.fusion.year2
-                } else {
-                    &config.deck.fusion.year3
-                };
-                if !pairs
-                    .iter()
-                    .all(|pair| base.advice.fused.contains(&pair.target))
-                {
-                    base.apply_fusion_pairs(pairs)?;
-                }
+                base.apply_window_fusion(window)?;
             }
             base.stage = matsuri_ai::online::advice_stage(&base);
             advice_ctx = Some(AdviceCtx {
