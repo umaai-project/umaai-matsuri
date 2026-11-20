@@ -35,9 +35,9 @@ def main() -> int:
         "WHERE hint_gain_type = 0 ORDER BY support_card_id, id"
     ).fetchall()
     conn.close()
-    cards: dict[str, list[int]] = {}
-    for card, skill in rows:
-        cards.setdefault(str(card), []).append(int(skill))
+    cards: dict[str, int] = {}
+    for card, _skill in rows:
+        cards[str(card)] = cards.get(str(card), 0) + 1
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(cards, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     counts = sorted(len(v) for v in cards.values())

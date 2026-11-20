@@ -117,8 +117,6 @@ pub struct InheritConfig {
     pub cover: f64,
     /// 分配模式
     pub mode: InheritHintMode,
-    /// 继承缩放：给定值 = 预设（结果确定，仍消费一次事件流保持随机轴）；`None` = 真机随机 [0,2)
-    pub scale: Option<f64>,
 }
 
 impl Default for InheritConfig {
@@ -127,7 +125,6 @@ impl Default for InheritConfig {
             extra_count: [0, 0, 90, 90, 0, 10, 70],
             cover: 0.5,
             mode: InheritHintMode::Bucket,
-            scale: Some(1.0),
         }
     }
 }
@@ -278,12 +275,6 @@ impl MatsuriConfig {
             "pre.hint_efficiency 应在 (0, 1]（当前 {}）",
             self.pre.hint_efficiency
         );
-        if let Some(scale) = inherit.scale {
-            ensure!(
-                scale.is_finite() && (0.0..=2.0).contains(&scale),
-                "pre.inherit.scale 应在 [0, 2]（当前 {scale}）"
-            );
-        }
         Ok(())
     }
 }

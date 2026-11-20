@@ -163,7 +163,7 @@
   1. 固定事件（含 `400015104` 固定 `[11, 35, 59]`）回合不抽随机事件；
   2. 合宿抑制（`random_events_suppressed`）：第 2/3 年常规合宿抑制随机事件；第 1 年合宿与合宿延长段不经合宿抑制，回落引擎 `no_event_turns`；
   3. 通用随机分布（支援卡 31% / 马娘 25% / 掉心情 10% / 无事 34%；`no_event_turns` 已按 49 局标定补 0-based 1/2/12/68）、友人解锁抽取（`809052004` → `AfterUnlock` + 疲劳回复 flag：体力 ≤49 一次性 `+15`）与正月/抽签/结局事件。
-- **结算补充（`traits.rs::apply_event` / `event.rs::apply_event_extra`）**：补齐 `add_flags/remove_flags`、事件牵绊归属、`event_extras`（最低演目槽 / 解 debuff）、追加训练 `102` 定点治变胖，以及第二/三年继承事件（`4012 / 4013`：按 `blue_count` / `[pre.inherit].extra_count` 与每场随机 `scale ∈ [0, 2)` 结算五维、PT 与上限；**折扣等级** = `extra_count[6]` × `scale`，其中 `cover` 比例按每卡剩余容量轮转吸收进已有技能桶、其余与溢出部分视作新技能直进总等级，`mode = bucket|flat`；`scale` 默认预设 `1.0`（配置 `[pre.inherit].scale`，省略则真机随机 [0,2)），预设时仍消费一次事件流以保持随机轴）。
+- **结算补充（`traits.rs::apply_event` / `event.rs::apply_event_extra`）**：补齐 `add_flags/remove_flags`、事件牵绊归属、`event_extras`（最低演目槽 / 解 debuff）、追加训练 `102` 定点治变胖，以及第二/三年继承事件（`4012 / 4013`：按 `blue_count` / `[pre.inherit].extra_count` 与每场随机 `scale ∈ [0, 2)` 结算五维、PT 与上限；**折扣等级** = `extra_count[6]` × `scale`，其中 `cover` 比例按每卡剩余容量轮转吸收进已有技能桶、其余与溢出部分视作新技能直进总等级，`mode = bucket|flat`；缩放固定 `1.0`（`[pre.inherit].scale` 参数已移除，事件流仍消费一次以保持随机轴）。
 - **友人链（吾妻 `809052xxx`）**：首次点击 `001`、训练后 `032`（40%）、出行解锁 `004`、出行 1–5 段 `011–015`、正月 `021`（T24）、结局 `023`（T77，取 5 次档）。
 - **变胖（`Ill::FAT`）**：使训练/排练速度分量归零；回合开始按 `rules.fat_recovery_prob`（暂定 15%，见 [`stubs.md`](stubs.md)）自解，也可通过治病、合宿版休息、追加训练 `102` 选项 1、追加排练 `400015106` 上档（按 `不擅长 → 变胖 → 其余` 顺序）解除。
 - **线上协议细节**：帧 `charaEffects` 病种映射、`storyId` 事件路由覆盖与在线卡组选档，见 [`online_protocol.md`](online_protocol.md)。

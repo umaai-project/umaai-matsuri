@@ -102,9 +102,9 @@ fn parse_events(lines: &[String]) -> Vec<HintEvent> {
     out
 }
 
-/// 分桶重放一次：返回（有效总级数，按回合末累计）
-fn replay(events: &[HintEvent], pools: &[Vec<u32>], seed: u64) -> (i32, BTreeMap<i32, i32>) {
-    let mut levels: Vec<Vec<u8>> = pools.iter().map(|pool| vec![0u8; pool.len()]).collect();
+/// 分桶重放一次：返回（有效总级数，按回合末累计）；`pools` = 每卡技能数
+fn replay(events: &[HintEvent], pools: &[usize], seed: u64) -> (i32, BTreeMap<i32, i32>) {
+    let mut levels: Vec<Vec<u8>> = pools.iter().map(|count| vec![0u8; *count]).collect();
     let mut rng = StdRng::seed_from_u64(seed);
     let mut total = 0;
     let mut by_turn = BTreeMap::new();
@@ -156,7 +156,7 @@ fn probe_hint_bucket() -> Result<()> {
         .context("载入剧本配置失败")?
         .for_deck(deck_comp(&engine.sim.cards).context("卡组构成解析失败")?);
     base.search.search_n = 0;
-    let skill_pools: BTreeMap<String, Vec<u32>> = serde_json::from_str(
+    let skill_counts: BTreeMap<String, u32> = serde_json::from_str(
         &fs::read_to_string(root.join("card_skills.json")).context("读 card_skills.json 失败")?,
     )
     .context("解析 card_skills.json 失败")?;
@@ -190,14 +190,14 @@ fn probe_hint_bucket() -> Result<()> {
         game.on_simulation_end(&trainer, &mut rng)?;
         let events = parse_events(&take_lines());
 
-        let pools: Vec<Vec<u32>> = game
+        let pools: Vec<usize> = game
             .deck()
             .iter()
             .map(|card| {
-                skill_pools
+                skill_counts
                     .get(&card.card_id.to_string())
-                    .cloned()
-                    .unwrap_or_default()
+                    .copied()
+                    .unwrap_or(0) as usize
             })
             .collect();
         let raw_insp: i32 = events.iter().map(|e| e.level * e.count as i32).sum();

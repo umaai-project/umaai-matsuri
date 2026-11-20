@@ -91,11 +91,11 @@ pub struct MatsuriData {
     pub camp: CampData,
     /// 规则常量（gauge 上限 / 入账 / 训练 Lv / 羁绊基础值）
     pub rules: Rules,
-    /// 支援卡灵感技能池（`card_skills.json`，卡 ID → 技能 ID 列表）
+    /// 支援卡灵感技能数量（`card_skills.json`，卡 ID → 技能数）
     ///
     /// 决定每卡 hint 上限（5 × 技能数）；文件缺失时为空表（回退引擎 `max_hint_per_card`）。
     #[serde(skip)]
-    pub card_skills: BTreeMap<u32, Vec<u32>>,
+    pub card_skills: BTreeMap<u32, i32>,
 }
 
 /// 属性上限与编成位数
@@ -599,8 +599,8 @@ pub struct FriendshipGain {
 // 载入与校验
 // ---------------------------------------------------------------------------
 
-/// 读取 `card_skills.json`（可选）：卡 ID → 技能 ID 列表
-fn load_card_skills(root: &Path) -> Result<BTreeMap<u32, Vec<u32>>> {
+/// 读取 `card_skills.json`（可选）：卡 ID → 技能数
+fn load_card_skills(root: &Path) -> Result<BTreeMap<u32, i32>> {
     let path = root.join(CARD_SKILLS_FILE);
     if !path.exists() {
         return Ok(BTreeMap::new());

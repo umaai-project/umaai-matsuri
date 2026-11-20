@@ -930,9 +930,7 @@ impl MatsuriGame {
         // 每卡上限 = 5 × 技能池（`card_skills.json`，`single_mode_hint_gain`）；查不到回退引擎常量
         let max_hint = card_id
             .and_then(|id| self.data.card_skills.get(&id))
-            .map_or(data.consts.max_hint_per_card, |skills| {
-                5 * skills.len() as i32
-            });
+            .map_or(data.consts.max_hint_per_card, |count| 5 * count);
         let card = card_id.and_then(|card_id| {
             self.base
                 .deck

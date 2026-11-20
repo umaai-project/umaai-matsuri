@@ -262,11 +262,11 @@ impl Game for MatsuriGame {
         //    上限由公式结算（蓝因子 × 6 + 剧本因子 × scale；上限 = floor(蓝因子 × 5.33)）。
         //    引擎把这段写在样例局 BasicGame 的 apply_event 里，剧本侧（BaseGame 底座）需自持。
         if matches!(event.id, 4012 | 4013) {
-            // 继承因子：属性 = 蓝因子×6 + 剧本因子×scale；PT 折半起。事件流生一次 scale
-            // （即使 `[pre.inherit].scale` 预设为固定值也消费，保持随机轴与随机模式一致）；
+            // 继承因子：属性 = 蓝因子×6 + 剧本因子×scale；PT 折半起。事件流仍生一次 scale
+            // （保持随机轴与历史局一致），继承缩放固定 1.0（`[pre.inherit].scale` 参数已移除）；
             // 折扣等级（`extra_count` 第 7 项）复用同一 scale。
-            let engine_scale: f64 = rng.random_range(0.0..2.0);
-            let scale = self.config.pre.inherit.scale.unwrap_or(engine_scale);
+            let _engine_scale: f64 = rng.random_range(0.0..2.0);
+            let scale = 1.0;
             let mut status = [0i32; 6];
             for axis in 0..5 {
                 status[axis] = self.base.inherit.blue_count[axis] * 6
@@ -739,7 +739,7 @@ impl MatsuriGame {
                     .data
                     .card_skills
                     .get(&card_id)
-                    .map_or(0, |skills| 5 * skills.len() as i32);
+                    .map_or(0, |count| 5 * count);
                 if self.base.deck[slot].total_hints < cap {
                     self.base.deck[slot].total_hints += 1;
                     covered += 1;
@@ -778,7 +778,7 @@ mod tests {
                 game.data
                     .card_skills
                     .get(&card.card_id)
-                    .map_or(0, |skills| 5 * skills.len() as i32)
+                    .map_or(0, |count| 5 * count)
             })
             .collect();
         assert!(caps.iter().any(|cap| *cap > 0), "默认卡组应能查到技能池");
@@ -833,7 +833,7 @@ mod tests {
             })
             .expect("应有人头带技能池");
         let card_id = game.persons[index].card_id().expect("卡片人头");
-        let cap = 5 * game.data.card_skills[&card_id].len() as i32;
+        let cap = 5 * game.data.card_skills[&card_id];
         let slot = game
             .base
             .deck
