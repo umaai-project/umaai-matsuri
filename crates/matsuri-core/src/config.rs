@@ -145,6 +145,8 @@ pub struct PreConfig {
     pub positive_thinking: i32,
     /// 继承扩展（局外种马因子 + 折扣等级）
     pub inherit: InheritConfig,
+    /// 灵感效率：把「单技能封顶」的期望损耗折算成确定性折扣（0–1，默认 0.92）
+    pub hint_efficiency: f64,
 }
 
 impl Default for PreConfig {
@@ -153,6 +155,7 @@ impl Default for PreConfig {
             qie: Qie::None,
             positive_thinking: 0,
             inherit: InheritConfig::default(),
+            hint_efficiency: 0.92,
         }
     }
 }
@@ -267,6 +270,13 @@ impl MatsuriConfig {
         ensure!(
             inherit.extra_count.iter().all(|v| *v >= 0),
             "pre.inherit.extra_count 不得为负"
+        );
+        ensure!(
+            self.pre.hint_efficiency.is_finite()
+                && self.pre.hint_efficiency > 0.0
+                && self.pre.hint_efficiency <= 1.0,
+            "pre.hint_efficiency 应在 (0, 1]（当前 {}）",
+            self.pre.hint_efficiency
         );
         if let Some(scale) = inherit.scale {
             ensure!(

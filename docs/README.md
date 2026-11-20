@@ -17,6 +17,7 @@
 | [`todo.md`](todo.md) | 跨阶段收拢的真实未完成功能待办清单 | 认领待办或规划下一轮开发时 |
 | [`handoff.md`](handoff.md) | 长会话交接：当前目标、已完成、未决项与下一步 | 上下文过长需交接给下一位 Agent 时 |
 | [`intake.md`](intake.md) | `master.mdb` 数据表字典与资产溯源映射 | 核对数据表结构或重导出资产时 |
+| [`hint_formula.md`](hint_formula.md) | hint → 技能分折算的两类候选公式与 2026-11-20 验证结论（未落地） | 评估或修改 hint 折算 / 技能分口径时 |
 | [`stubs.md`](stubs.md) | 数值占位（`STUB` / `TBD`）与待真机核对项登记 | 新增、排查或替换占位参数时 |
 
 ## 2. 引擎通用文档（`umaai_next/`）

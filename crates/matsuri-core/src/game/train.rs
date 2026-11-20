@@ -957,17 +957,30 @@ impl MatsuriGame {
         };
         let mut skill_levels = 0;
         for _ in 0..hint_count {
-            let mut event = if rng.random_bool(attr_prob) || hint_level == 0 {
+            // 全局灵感效率：把「单技能封顶」的期望损耗折算成确定性小数进位（不新增随机点）；
+            // 每个事件独立折算，保证 cnt > 1 时不重复计账。
+            let effective_level = if hint_level > 0 {
+                let scaled = f64::from(hint_level) * self.config.pre.hint_efficiency
+                    + f64::from(self.hint_carry);
+                let level = scaled.floor().max(0.0) as i32;
+                self.hint_carry = (scaled - f64::from(level)) as f32;
+                level
+            } else {
+                0
+            };
+            let mut event = if rng.random_bool(attr_prob) || hint_level == 0 || effective_level == 0
+            {
                 umasim::game::hint_attr_event(
                     self.persons[person_index].train_type() as usize,
                     person_index,
                 )?
             } else {
                 if let Some(index) = card {
+                    // 容量按名义等级累计（分桶容量 = 5 × 技能数），有效等级另记入总账
                     self.base.deck[index].total_hints += hint_level;
                 }
-                skill_levels += hint_level;
-                umasim::game::hint_skill_event(hint_level, person_index)
+                skill_levels += effective_level;
+                umasim::game::hint_skill_event(effective_level, person_index)
             };
             if let Some(index) = card {
                 event.name = format!("{} - {}", event.name, self.base.deck[index].short_name());

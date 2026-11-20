@@ -246,6 +246,8 @@ pub struct MatsuriGame {
     pub career_failed: bool,
     /// 友人出行解锁时获得的「疲劳回复」flag（剧本自持；体力 ≤49 时一次 +15）
     pub fatigue_recovery: bool,
+    /// 灵感效率折算的小数进位余量（`[pre].hint_efficiency`；不消耗随机流）
+    pub hint_carry: f32,
     /// 進捗発表会 / 本番结果（3 场；`End` 阶段结算）
     pub check_points: [CheckPointResult; 3],
     /// 発表会 / 本番累计行（`schedule 0` 基线；建局时预解析）
@@ -350,6 +352,7 @@ impl MatsuriGame {
             forced_rest: false,
             career_failed: false,
             fatigue_recovery: false,
+            hint_carry: 0.0,
             check_points: [CheckPointResult::NotReached; 3],
             presentation_base,
             presentation_rows,
