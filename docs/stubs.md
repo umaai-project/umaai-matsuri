@@ -38,7 +38,7 @@
 | 变胖状态解除率 | 每回合 15% 解除（暂定） | user / 上游 | `scenario_matsuri.json` `rules.fat_recovery_prob` | 15% 档待真机复核（25% 档配对噪声内） | 近零 | STUB |
 | 友人卡事件槽位与数值口径 | `001/032/004/021/011–015/023`；基础值叠卡面加成 | user / `memo` | `data/events.json` `friend_events` | 真机帧复核槽位语义与是否为终值 | 会位移 | STUB / TBD |
 | 事件⑤（SSR 技能事件） | 不接（`022/031` 均非事件⑤） | user 2026-11-01 | — | 真机给出事件 ID 后入资产 | 会位移（少算） | TBD |
-| 引擎 `no_event_turns` 基线层 | 沿用引擎基线（合宿规则层优先） | user 2026-11-01 | `game/event.rs` | 真机剧本专属不可连续事件表出来后替换 | 会位移 | STUB |
+| 引擎 `no_event_turns` 基线层 | 沿用引擎基线 + 49 局标定补 0-based 1/2/12/68（合宿规则层优先） | user 2026-11-01 / 2026-11-20 | `game/event.rs` | 真机剧本专属不可连续事件表（按卡独立段）出来后替换 | 会位移 | STUB |
 | 通用事件数值（引擎基础局） | 直接沿用 `events.json` / `constants.json` | 引擎近似值 | `data/events.json` / `constants.json` | 真机复核非剧本 15 口径事件 | 会位移 | STUB |
 | `400015104` 合宿の申し出数值 | 体力 +15 / 干劲 +1（T11/35/59） | `memo` / user | `scenario_matsuri.json` | 真机实测确认第 1 年是否 +10 及事件归属 | 会位移 | STUB |
 | 在线 `resultType` 0 / 1 取值（G3） | `2` 为大成功；失败/普通档未采样 | `online_protocol.md` | `game/restore.rs` | 真机采样失败/普通档発表会帧核对 | 仅在线还原 | TBD（真机采样） |

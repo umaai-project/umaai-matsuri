@@ -397,6 +397,15 @@ impl MatsuriGame {
         if self.config.pre.positive_thinking > 0 {
             self.base.uma.flags.positive_thinking_count = self.config.pre.positive_thinking;
         }
+        // 继承因子前 6 项（五维 + PT）按剧本配置覆盖引擎 `[sim].extra_count`；第 7 项是折扣等级
+        let mut extra = self.base.inherit.extra_count;
+        for (dst, src) in extra
+            .iter_mut()
+            .zip(self.config.pre.inherit.extra_count.iter().take(6))
+        {
+            *dst = *src;
+        }
+        self.base.inherit.extra_count = extra;
         self
     }
 

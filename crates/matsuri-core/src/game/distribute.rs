@@ -370,6 +370,22 @@ impl MatsuriGame {
         let base_hint_rate = data.consts.base_hint_rate / 100.0;
         // 剧本灵感率加成：发布会 + 该卡担当演目的教え（逐人现算，避免每回合临时 Vec）
         let presentation = self.presentation_bonus();
+        let practice = self.practice_acts();
+        let five_types = self.deck_has_five_types();
+        // 该人头当前是否落在某个排练位上（分身同 person_index 可能重复占位，只记一次）
+        let mut on_practice = vec![false; self.persons.len()];
+        for train in 0..practice.len() {
+            if !practice[train] {
+                continue;
+            }
+            for &index in &self.base.distribution[train] {
+                if index >= 0
+                    && let Some(slot) = on_practice.get_mut(index as usize)
+                {
+                    *slot = true;
+                }
+            }
+        }
         for person_index in 0..self.persons.len() {
             if self.persons[person_index].person_type() != PersonType::Card {
                 continue;
@@ -390,18 +406,13 @@ impl MatsuriGame {
                     .and_then(|person| person.act)
                     .map_or(0, |act| self.advice_slot_effect(act).hint_rate);
             let hint_prob = (base_hint_rate * ((100 + bonus + scenario) as f64 / 100.0)).min(1.0);
-            let hit = rng.random_bool(hint_prob);
+            // 全亮：该人头在排练位 + 编成 5 种卡（不含友人）；不要求该演目 Lv≥4。
+            // 「该演目 all_hint(Lv≥4) → 该位红点依次结算」在 after_train 判定。
+            let full = five_types
+                && on_practice.get(person_index).copied().unwrap_or(false)
+                && self.persons[person_index].origin != PersonOrigin::Friend;
+            let hit = full || rng.random_bool(hint_prob);
             self.persons[person_index].set_hint(hit);
-        }
-        // 排练 + 编成支援卡类型 ≥5：编成卡（除友人 / 团队）全部亮灵感图标
-        let practice = self.practice_acts();
-        if practice.iter().any(|lit| *lit) && self.deck_has_five_types() {
-            for person in &mut self.persons {
-                if person.person_type() == PersonType::Card && person.origin != PersonOrigin::Friend
-                {
-                    person.set_hint(true);
-                }
-            }
         }
         Ok(())
     }
@@ -668,9 +679,19 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(3);
         game.distribute_round(&mut rng).expect("分布失败");
         game.distribute_hints(&mut rng).expect("灵感分配失败");
-        for person in game.persons() {
-            if person.person_type() == PersonType::Card {
-                assert!(person.hint(), "排练 + 5 种卡：编成卡应带灵感图标");
+        // 全亮只作用于「排练位上的编成卡」，不再给其他训练位的卡点亮
+        let practice = game.practice_acts();
+        let distribution = game.distribution().to_vec();
+        for (index, person) in game.persons().iter().enumerate() {
+            if person.person_type() != PersonType::Card {
+                continue;
+            }
+            let on_practice = distribution
+                .iter()
+                .enumerate()
+                .any(|(train, list)| practice[train] && list.contains(&(index as i32)));
+            if on_practice {
+                assert!(person.hint(), "排练位上的编成卡应带灵感图标");
             }
         }
         let friend = person_of_type(&game, PersonType::ScenarioCard);

@@ -11,6 +11,7 @@
 //!
 //! [`docs/intake.md`]: ../../../docs/intake.md
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
@@ -20,6 +21,9 @@ use umaai_core::gamedata::{EventData, TriggerType};
 
 /// 剧本数据文件名（放在宿主注入的剧本数据根下）
 pub const MATSURI_DATA_FILE: &str = "scenario_matsuri.json";
+
+/// 支援卡灵感技能池文件名（可选；`{卡ID: [技能ID...]}`）
+pub const CARD_SKILLS_FILE: &str = "card_skills.json";
 
 /// 剧本 ID（骏大祭为 15）
 const SCENARIO_ID: i32 = 15;
@@ -87,6 +91,11 @@ pub struct MatsuriData {
     pub camp: CampData,
     /// 规则常量（gauge 上限 / 入账 / 训练 Lv / 羁绊基础值）
     pub rules: Rules,
+    /// 支援卡灵感技能池（`card_skills.json`，卡 ID → 技能 ID 列表）
+    ///
+    /// 决定每卡 hint 上限（5 × 技能数）；文件缺失时为空表（回退引擎 `max_hint_per_card`）。
+    #[serde(skip)]
+    pub card_skills: BTreeMap<u32, Vec<u32>>,
 }
 
 /// 属性上限与编成位数
@@ -590,13 +599,28 @@ pub struct FriendshipGain {
 // 载入与校验
 // ---------------------------------------------------------------------------
 
+/// 读取 `card_skills.json`（可选）：卡 ID → 技能 ID 列表
+fn load_card_skills(root: &Path) -> Result<BTreeMap<u32, Vec<u32>>> {
+    let path = root.join(CARD_SKILLS_FILE);
+    if !path.exists() {
+        return Ok(BTreeMap::new());
+    }
+    let text = std::fs::read_to_string(&path)
+        .with_context(|| format!("读取技能池失败: {}", path.display()))?;
+    serde_json::from_str(&text).with_context(|| format!("解析技能池失败: {}", path.display()))
+}
+
 impl MatsuriData {
-    /// 从宿主注入的数据根载入 `scenario_matsuri.json`
+    /// 从宿主注入的数据根载入 `scenario_matsuri.json` + 可选 `card_skills.json`
     pub fn load(root: impl AsRef<Path>) -> Result<Self> {
-        let path = root.as_ref().join(MATSURI_DATA_FILE);
+        let root = root.as_ref();
+        let path = root.join(MATSURI_DATA_FILE);
         let text = std::fs::read_to_string(&path)
             .with_context(|| format!("读取剧本数据失败: {}", path.display()))?;
-        Self::parse(&text).with_context(|| format!("剧本数据来源: {}", path.display()))
+        let mut data =
+            Self::parse(&text).with_context(|| format!("剧本数据来源: {}", path.display()))?;
+        data.card_skills = load_card_skills(root)?;
+        Ok(data)
     }
 
     /// 解析并校验剧本数据（测试 / 内嵌场景复用）

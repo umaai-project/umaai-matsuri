@@ -262,20 +262,36 @@ impl Game for MatsuriGame {
         //    上限由公式结算（蓝因子 × 6 + 剧本因子 × scale；上限 = floor(蓝因子 × 5.33)）。
         //    引擎把这段写在样例局 BasicGame 的 apply_event 里，剧本侧（BaseGame 底座）需自持。
         if matches!(event.id, 4012 | 4013) {
+            // 继承因子：属性 = 蓝因子×6 + 剧本因子×scale；PT 折半起。事件流生一次 scale
+            // （即使 `[pre.inherit].scale` 预设为固定值也消费，保持随机轴与随机模式一致）；
+            // 折扣等级（`extra_count` 第 7 项）复用同一 scale。
+            let engine_scale: f64 = rng.random_range(0.0..2.0);
+            let scale = self.config.pre.inherit.scale.unwrap_or(engine_scale);
+            let mut status = [0i32; 6];
+            for axis in 0..5 {
+                status[axis] = self.base.inherit.blue_count[axis] * 6
+                    + (scale * f64::from(self.base.inherit.extra_count[axis])).round() as i32;
+            }
+            status[5] =
+                (f64::from(self.base.inherit.extra_count[5]) * (0.5 + 0.5 * scale)).round() as i32;
             let value = ActionValue {
-                status_pt: self.base.inherit.inherit(rng),
+                status_pt: status,
                 ..Default::default()
             };
             let limit = self.base.inherit.inherit_limit(rng);
             self.uma_mut().add_value(&value);
             self.uma_mut().five_status_limit.add_eq(&limit);
+            let discount_total =
+                (f64::from(self.config.pre.inherit.extra_count[6]) * scale).round() as i32;
+            self.apply_inherit_hint(discount_total);
             diag!(
-                "【继承】T{} #{} {}｜属性 {:?} 上限 {:?}",
+                "【继承】T{} #{} {}｜属性 {:?} 上限 {:?} 折扣{}",
                 self.turn(),
                 event.id,
                 event.name,
                 value.status_pt,
-                limit
+                limit,
+                discount_total
             );
         }
         // ⑤ 剧本特例：友人出行解锁 + 疲劳回复 flag
@@ -697,11 +713,149 @@ impl FlatSearchGame for MatsuriGame {
     }
 }
 
+impl MatsuriGame {
+    /// 继承折扣等级分配（`[pre.inherit]`）：bucket = 覆盖系数部分按每卡剩余容量（5 × 技能数）
+    /// 轮转吸收、溢出丢弃；其余视作新技能直接进总等级。flat = 全部直接进总等级。
+    pub(crate) fn apply_inherit_hint(&mut self, total: i32) {
+        if total <= 0 {
+            return;
+        }
+        let cfg = self.config.pre.inherit.clone();
+        let covered_target = match cfg.mode {
+            crate::config::InheritHintMode::Flat => 0,
+            crate::config::InheritHintMode::Bucket => {
+                (f64::from(total) * cfg.cover).round().max(0.0) as i32
+            }
+        };
+        let mut covered = 0;
+        while covered < covered_target {
+            let mut progressed = false;
+            for slot in 0..self.base.deck.len() {
+                if covered >= covered_target {
+                    break;
+                }
+                let card_id = self.base.deck[slot].card_id;
+                let cap = self
+                    .data
+                    .card_skills
+                    .get(&card_id)
+                    .map_or(0, |skills| 5 * skills.len() as i32);
+                if self.base.deck[slot].total_hints < cap {
+                    self.base.deck[slot].total_hints += 1;
+                    covered += 1;
+                    progressed = true;
+                }
+            }
+            if !progressed {
+                break;
+            }
+        }
+        let new_skills = total - covered;
+        self.uma_mut().total_hints += covered + new_skills;
+        diag!(
+            "【继承折扣】T{} total={} 覆盖={covered} 新技能={new_skills} mode={:?}",
+            self.turn(),
+            total,
+            cfg.mode
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::testing::sample_game;
     use rand::{RngCore, SeedableRng};
+
+    /// 继承折扣（bucket）：覆盖系数部分按每卡剩余容量吸收，溢出丢弃；其余视作新技能直进总等级
+    #[test]
+    fn inherit_hint_respects_card_capacity() {
+        let mut game = sample_game();
+        let caps: Vec<i32> = game
+            .deck()
+            .iter()
+            .map(|card| {
+                game.data
+                    .card_skills
+                    .get(&card.card_id)
+                    .map_or(0, |skills| 5 * skills.len() as i32)
+            })
+            .collect();
+        assert!(caps.iter().any(|cap| *cap > 0), "默认卡组应能查到技能池");
+        for slot in 0..game.base.deck.len() {
+            game.base.deck[slot].total_hints = 0;
+        }
+        let before = game.uma().total_hints;
+        // 1000 名义 → cover 0.5 → 500 尝试覆盖（容量只吸收一部分），其余全部视作新技能，总量不浪费
+        game.apply_inherit_hint(1000);
+        let capacity: i32 = caps.iter().sum();
+        assert_eq!(
+            game.uma().total_hints - before,
+            1000,
+            "继承折扣总量应全额到账（覆盖容量 {capacity}）"
+        );
+        for (slot, cap) in caps.iter().enumerate() {
+            assert_eq!(
+                game.base.deck[slot].total_hints, *cap,
+                "每卡应吸收到技能池容量上限"
+            );
+        }
+    }
+
+    /// 继承折扣（flat）：全部直接进总等级，不占每卡桶
+    #[test]
+    fn inherit_hint_flat_skips_capacity() {
+        let mut game = sample_game();
+        let mut config = game.config.clone();
+        config.pre.inherit.mode = crate::config::InheritHintMode::Flat;
+        game = game.with_config(config);
+        for slot in 0..game.base.deck.len() {
+            game.base.deck[slot].total_hints = 0;
+        }
+        let before = game.uma().total_hints;
+        game.apply_inherit_hint(120);
+        assert_eq!(game.uma().total_hints - before, 120);
+        assert!(
+            game.base.deck.iter().all(|card| card.total_hints == 0),
+            "flat 不写每卡桶"
+        );
+    }
+
+    /// 每卡 hint 上限 = 5 × 技能池：满卡不再产生技能灵感（退化为属性事件）
+    #[test]
+    fn full_card_hint_falls_back_to_attr_event() {
+        let mut game = sample_game();
+        let index = (0..game.persons.len())
+            .find(|&i| {
+                game.persons[i]
+                    .card_id()
+                    .is_some_and(|id| game.data.card_skills.contains_key(&id))
+            })
+            .expect("应有人头带技能池");
+        let card_id = game.persons[index].card_id().expect("卡片人头");
+        let cap = 5 * game.data.card_skills[&card_id].len() as i32;
+        let slot = game
+            .base
+            .deck
+            .iter()
+            .position(|card| card.card_id == card_id)
+            .expect("卡组应含该卡");
+        game.base.deck[slot].total_hints = cap;
+        let before = game.unresolved_events.len();
+        let mut rng = StdRng::seed_from_u64(1);
+        game.do_hint_with_bonus(index, 0, &mut rng)
+            .expect("灵感发放");
+        let new_events = &game.unresolved_events[before..];
+        assert!(!new_events.is_empty(), "满卡仍会发事件");
+        assert!(
+            new_events.iter().all(|event| event.name.contains("属性")),
+            "满卡不应再发技能灵感（实际 {:?}）",
+            new_events
+                .iter()
+                .map(|event| &event.name)
+                .collect::<Vec<_>>()
+        );
+    }
 
     #[test]
     fn apply_root_action_uses_strategy_stream() {

@@ -334,7 +334,8 @@ mod tests {
         game.plan.camp_zone = true;
         game.plan.camp_regular = true;
         game.plan.camp_year = Some(0);
-        game.base.turn = 12;
+        // turn 13：第 1 年合宿窗口 12–15 内、且不在 no_event_turns（12 已按 49 局标定补入）
+        game.base.turn = 13;
         assert!(
             !game.random_events_suppressed(),
             "第 1 年合宿应允许随机事件"

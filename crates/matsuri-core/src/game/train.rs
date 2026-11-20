@@ -836,6 +836,7 @@ impl MatsuriGame {
         } else {
             0
         };
+        let hints_before = self.uma().total_hints;
         if all_hint {
             for person_index in &hint_persons {
                 self.do_hint_with_bonus(*person_index, hint_level_bonus, rng)?;
@@ -843,6 +844,15 @@ impl MatsuriGame {
         } else if let Some(&person_index) = hint_persons.choose(rng) {
             self.do_hint_with_bonus(person_index, hint_level_bonus, rng)?;
         }
+        // 临时诊断（H3 产生率对账用）：普通/排练、全结算与否、红点数
+        let _ = hints_before;
+        diag!(
+            "【灵感回合】T{} {} 红点{} 全结算={}",
+            self.turn(),
+            if keiko { "排练" } else { "训练" },
+            hint_persons.len(),
+            all_hint
+        );
         // 加练（非夏合宿；引擎基础局口径）
         let extra_train_prob = Data::get()?.event_prob("extra_train")?;
         if !self.is_xiahesu() && rng.random_bool(extra_train_prob) {
@@ -916,8 +926,14 @@ impl MatsuriGame {
     ) -> Result<()> {
         let data = Data::get()?;
         let attr_prob = data.event_prob("hint_attr")?;
-        let max_hint = data.consts.max_hint_per_card;
-        let card = self.persons[person_index].card_id().and_then(|card_id| {
+        let card_id = self.persons[person_index].card_id();
+        // 每卡上限 = 5 × 技能池（`card_skills.json`，`single_mode_hint_gain`）；查不到回退引擎常量
+        let max_hint = card_id
+            .and_then(|id| self.data.card_skills.get(&id))
+            .map_or(data.consts.max_hint_per_card, |skills| {
+                5 * skills.len() as i32
+            });
+        let card = card_id.and_then(|card_id| {
             self.base
                 .deck
                 .iter()
@@ -939,6 +955,7 @@ impl MatsuriGame {
             }
             None => (1 + level_bonus, 1),
         };
+        let mut skill_levels = 0;
         for _ in 0..hint_count {
             let mut event = if rng.random_bool(attr_prob) || hint_level == 0 {
                 umasim::game::hint_attr_event(
@@ -949,6 +966,7 @@ impl MatsuriGame {
                 if let Some(index) = card {
                     self.base.deck[index].total_hints += hint_level;
                 }
+                skill_levels += hint_level;
                 umasim::game::hint_skill_event(hint_level, person_index)
             };
             if let Some(index) = card {
@@ -956,6 +974,14 @@ impl MatsuriGame {
             }
             self.unresolved_events.push(event);
         }
+        diag!(
+            "【灵感发放】T{} person={} lv={} cnt={} skill={}",
+            self.turn(),
+            person_index,
+            hint_level,
+            hint_count,
+            skill_levels
+        );
         Ok(())
     }
 
