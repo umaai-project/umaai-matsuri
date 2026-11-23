@@ -297,14 +297,7 @@ pub fn whatif(args: WhatifArgs<'_>) -> Result<(PathBuf, WhatifReport)> {
     let mut actual_root = String::new();
     let mut alternate_roots: Vec<String> = vec![String::new(); swaps.len()];
     for group in 0..args.k.max(1) {
-        let seed = derive_seed(
-            master,
-            &[
-                args.turn as u64,
-                0xA1 + u64::from(group),
-                StreamTag::Probe.tag(),
-            ],
-        );
+        let seed = whatif_seed(master, args.turn, group);
         let (rows, root, final_score) =
             run_branch(&base, &actions, actual_position, &trainer, stop_turn, seed)?;
         if group == 0 {
@@ -386,6 +379,16 @@ pub fn whatif(args: WhatifArgs<'_>) -> Result<(PathBuf, WhatifReport)> {
 }
 
 /// 跑一条分支，返回（逐回合快照，根动作描述，终局分）
+/// 反事实组骨架种子：`derive_seed(master, [回合, 0xA1 + 组号, PROBE_TAG])`
+///
+/// 每组一条独立的 probe 骨架：组号只影响本组，不污染其他组。
+fn whatif_seed(master: u64, turn: i32, group: u32) -> u64 {
+    derive_seed(
+        master,
+        &[turn as u64, 0xA1 + u64::from(group), StreamTag::Probe.tag()],
+    )
+}
+
 fn run_branch(
     base: &MatsuriGame,
     actions: &[Action],

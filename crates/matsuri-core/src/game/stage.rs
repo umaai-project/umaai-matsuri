@@ -9,7 +9,7 @@
 use anyhow::{Result, anyhow};
 use rand::rngs::StdRng;
 use umaai_core::gamedata::EventData;
-use umaai_core::rng::{EventRng, StrategyRng, StreamTag, derive_seed};
+use umaai_core::rng::{EventRng, StrategyRng, StreamTag};
 use umasim::game::base::RuleStreams;
 use umasim::game::{Game, StageId, Trainer};
 
@@ -225,9 +225,10 @@ impl MatsuriGame {
     /// 派生本局面自持的策略流（注入点与回合边界调用）
     pub(crate) fn reset_strategy_stream(&mut self) {
         let turn = self.base.turn as u64;
-        self.strategy = self.base.master().map(|master| {
-            StrategyRng::new(derive_seed(master, &[turn, StreamTag::Strategy.tag()]))
-        });
+        self.strategy = self
+            .base
+            .master()
+            .map(|master| StrategyRng::new(StreamTag::Strategy.derive(master, turn)));
     }
 
     /// 派生本回合结构（回合开始调用一次；合宿窗口 / 延长段在此推进）
