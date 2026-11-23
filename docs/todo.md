@@ -14,17 +14,17 @@
 
 ## 2. 剧本估值、随机流与引擎接缝
 
-- [ ] **#8 教诲估值窗口级 horizon**（原 `round_2026-11-09.md` §3）：`value.rs` 改用 9–12 回合窗口级 horizon 与合宿感知 `slot_value`（改动需重录基线）。
-- [ ] **#9 下调 `advice.route` 先验**（原 `round_2026-11-09.md` §3）：下调当前偏强的 `advice.route` 先验并重扫。
-- [ ] **#10 终局期望落点边际 + `pt_favor_rate` 退火**（原 `round_2026-11-09.md` §3）。
-- [ ] **#11 在线 `decision_rng` 加盐**（原 `round_2026-11-09.md` §3）：`crates/matsuri-ai/src/session.rs` `decision_rng(turn)` 按决策类型 / 窗口 / 事件 id 加盐，避免同回合多决策点复用同一组 `RolloutSeeds`。
-- [ ] **#12 `max_depth` 叶估与去假令牌**（原 `round_2026-11-09.md` §3）：需要截断叶估时再在引擎侧接线。
-- [ ] **#30 凯斯奇迹 T65 迁移**（原 `scenario_dev_plan.md` §4）：引擎「马娘特殊事件记录」改造后，移除 `game/stage.rs` T65 临时表。
-- [ ] **#47 自选比赛 `race_grades` 对齐**（原 `scenario_dev_plan.md` §4）：核对 `race_grades` 标准表与真机自选格子。
+- [ ] **教诲估值窗口级 horizon**：`value.rs` 改用 9–12 回合窗口级 horizon 与合宿感知 `slot_value`，先做全 120 vs Top-16 召回率/遗漏收益对照。
+- [ ] **`advice.route` 先验与终局边际重扫**：下调过强先验并评估 `pt_favor_rate` 退火，重录基线。
+- [ ] **锁位 CRN 余项**：落位已改「同一字定意向槽 + 可行槽回退」（恒定 1 字），同结构对照的入口 / 不在 / 终游标差异全部归零；仍分叉的只剩「有稽古 vs 无稽古」的结构差异——友人补位与访客落位走不同规则。要继续闭合需改规则本身。
+- [ ] **搜索失败与新鲜度门禁**：失败帧可重试；搜索结果绑定 generation/state_hash；rollout 失败结果标记 invalid/degraded，不直接正常排名。
+- [ ] **训练/协议验算守门**：训练帧 lower/upper 必须为 7 项；验算同时比较收益和 failure_rate；`campRemain` / `assistSupportLeft` 区分 None 与 0。
+- [ ] **`max_depth` 叶估与去假令牌**：需要截断叶估时在引擎侧接线；PendingDecision/step+choose 是否重构另行拍板。
+- [ ] **凯斯奇迹 T65 迁移**：引擎具备马娘特殊事件记录后，移除 `game/stage.rs` 临时表。
+- [ ] **自选比赛与引擎数据契约**：核对 `race_grades`、RaceMask、free-race 校验和通用事件状态位/RNG 轴。
 
 ## 3. 在线、插件与启动器
 
-- [ ] **#13 插件侧修 `isAfterTraining` 粘连**（原 `round_2026-11-09.md` §3 / `review_tool_plan` §3.2）：由插件端改为响应确认或新增 `actionPhase`，并按需补 `festa.events[]`。
 - [ ] **启动器边缘扩展（待议）**（原 `release_launcher.md`）：离线模拟菜单与进阶参数透传（`--explain` / `--deck-profile`）、图标与快捷方式、`matsuri-tools` 是否进 `bin/`。
 
 ## 4. 复盘工具链（原 `review_tool_plan_2026-11-13.md`）

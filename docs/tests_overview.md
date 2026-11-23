@@ -35,6 +35,8 @@
   - `core/tests/search.rs`：小预算（`search_n=1`）全流程可复现、全关搜索退化手写档、`fork_for_rollout` 跳过 `event_log`。
   - `cli/tests/{manual,explain,search}_smoke.rs`：验证非 TTY 面板关键块、候选打分表（≥80 处）与 `[搜索]` 摘要输出；`cardtest` 同参数两次 diff 为空。
 
+随机流专项的配对场景、实测反例和仓根复跑命令见[评审复核 §8](review_status_2026-11-23.md#8-随机流第一步离线-release-配对实验)。其中锁位 seed sweep 和局包 7084 在线回放需显式运行，不由默认测试覆盖。
+
 ### 手动 / 专项测试（`#[ignore]`，不进 CI）
 
 - **教诲微基准**：`cargo test --release -p matsuri-core microbench_participant_advice -- --ignored`

@@ -15,6 +15,7 @@
 | [`perf_profiling.md`](perf_profiling.md) | 性能测量工具、热点拆解与复现命令 | 性能分析或优化轮次时 |
 | [`matsuri_review.md`](matsuri_review.md) | 真机局包赛后复盘工作流、CLI 命令与判据 | 赛后复盘时 |
 | [`todo.md`](todo.md) | 跨阶段收拢的真实未完成功能待办清单 | 认领待办或规划下一轮开发时 |
+| [`review_status_2026-11-23.md`](review_status_2026-11-23.md) | 基于当前 HEAD 的旧评审逐条复核：已修复、仍存在、待验证与优先级 | 复核 review 目录旧结论或决定修复优先级时 |
 | [`handoff.md`](handoff.md) | 长会话交接：当前目标、已完成、未决项与下一步 | 上下文过长需交接给下一位 Agent 时 |
 | [`intake.md`](intake.md) | `master.mdb` 数据表字典与资产溯源映射 | 核对数据表结构或重导出资产时 |
 | [`hint_formula.md`](hint_formula.md) | hint → 技能分折算的两类候选公式与 2026-11-20 验证结论（未落地） | 评估或修改 hint 折算 / 技能分口径时 |

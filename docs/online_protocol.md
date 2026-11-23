@@ -39,6 +39,7 @@
   - `source == "special"` 仅当 `playing_state == 51` 且命中 `plan.advice_window` 时走 `Route::Advice(window)`，其余跳过；`source == "event"` 若本地事件表查不到 `storyId` 则直接跳过、**绝不回落训练**。
   - 入口阶段：有决策面（人头落位或预览非零）或 `!isAfterTraining` 落 `Train`，否则落 `AfterTrain`。
 - **在线选档**：按帧内 `baseGame.cardId` 构成自动匹配 `data/matsuri_config.toml` 的 `[decks.*]`，构成变化时重建训练员。
+- **决策流**：按 `(master, 回合, 决策面[, 事件 id / 教诲窗口])` 派生（`matsuri_ai::online::decision_seed`），同回合的事件 / 训练 / 教诲各用各的流；同帧重放逐位一致，`review eval` 复用同一入口。
 
 ---
 
