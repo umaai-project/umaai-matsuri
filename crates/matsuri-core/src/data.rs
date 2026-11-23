@@ -22,9 +22,6 @@ use umaai_core::gamedata::{EventData, TriggerType};
 /// 剧本数据文件名（放在宿主注入的剧本数据根下）
 pub const MATSURI_DATA_FILE: &str = "scenario_matsuri.json";
 
-/// 支援卡灵感技能池文件名（可选；`{卡ID: [技能ID...]}`）
-pub const CARD_SKILLS_FILE: &str = "card_skills.json";
-
 /// 剧本 ID（骏大祭为 15）
 const SCENARIO_ID: i32 = 15;
 
@@ -91,9 +88,10 @@ pub struct MatsuriData {
     pub camp: CampData,
     /// 规则常量（gauge 上限 / 入账 / 训练 Lv / 羁绊基础值）
     pub rules: Rules,
-    /// 支援卡灵感技能数量（`card_skills.json`，卡 ID → 技能数）
+    /// 支援卡灵感技能数量（`cardDB.json` 的 `skillCount`，卡 ID → 技能数）
     ///
-    /// 决定每卡 hint 上限（5 × 技能数）；文件缺失时为空表（回退引擎 `max_hint_per_card`）。
+    /// 决定每卡 hint 上限（5 × 技能数）；字段缺失或为 0 的卡不进表
+    /// （回退引擎 `max_hint_per_card`）。
     #[serde(skip)]
     pub card_skills: BTreeMap<u32, i32>,
 }
@@ -599,19 +597,35 @@ pub struct FriendshipGain {
 // 载入与校验
 // ---------------------------------------------------------------------------
 
-/// 读取 `card_skills.json`（可选）：卡 ID → 技能数
+/// cardDB 单条里只取 `skillCount`（其它字段忽略）
+#[derive(Deserialize)]
+struct CardSkillCount {
+    #[serde(default, rename = "skillCount")]
+    skill_count: Option<u32>,
+}
+
+/// 读取同目录 `cardDB.json` 的每卡 `skillCount`：卡 ID → 技能数（仅 >0）
 fn load_card_skills(root: &Path) -> Result<BTreeMap<u32, i32>> {
-    let path = root.join(CARD_SKILLS_FILE);
+    let path = root.join("cardDB.json");
     if !path.exists() {
         return Ok(BTreeMap::new());
     }
     let text = std::fs::read_to_string(&path)
-        .with_context(|| format!("读取技能池失败: {}", path.display()))?;
-    serde_json::from_str(&text).with_context(|| format!("解析技能池失败: {}", path.display()))
+        .with_context(|| format!("读取 cardDB 失败: {}", path.display()))?;
+    let cards: BTreeMap<String, CardSkillCount> = serde_json::from_str(&text)
+        .with_context(|| format!("解析 cardDB 失败: {}", path.display()))?;
+    Ok(cards
+        .into_iter()
+        .filter_map(|(id, row)| {
+            let card_id = id.parse::<u32>().ok()?;
+            let count = row.skill_count?;
+            (count > 0).then_some((card_id, count as i32))
+        })
+        .collect())
 }
 
 impl MatsuriData {
-    /// 从宿主注入的数据根载入 `scenario_matsuri.json` + 可选 `card_skills.json`
+    /// 从宿主注入的数据根载入 `scenario_matsuri.json` + 可选 `cardDB.json`（`skillCount`）
     pub fn load(root: impl AsRef<Path>) -> Result<Self> {
         let root = root.as_ref();
         let path = root.join(MATSURI_DATA_FILE);

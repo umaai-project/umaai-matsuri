@@ -39,7 +39,7 @@ python main.py --config 别的配置.toml
 
 ## 生成文件
 
-- `data/cardDB.json`：支援卡数据（默认输出目录，见 `[output]`）
+- `data/cardDB.json`：支援卡数据（默认输出目录，见 `[output]`；每卡含 `skillCount` = 该卡灵感技能池数量，0 表示无池）
 - `data/umaDB.json`：马娘数据
 - `data/text_data_dict.json`：翻译数据副本（由 `[output] copy_translate` 控制，直接复制实际使用的那份）
 - `text_data_dict.json`：翻译数据的联网下载缓存（仅当本地翻译文件缺失时才会写入）

@@ -8,7 +8,7 @@
 //! 口径：
 //! - 事件流：diag「【灵感发放】T{turn} person={i} lv={lv} cnt={n} skill={s}」；`s` 只累计技能级数
 //!   （属性事件不计），按 `n_events = s / lv` 次、每次 +lv 进入分桶。
-//! - 分桶：每卡技能池 = `data/card_skills.json`（master.mdb single_mode_hint_gain type=0）的技能数；
+//! - 分桶：每卡技能池 = `data/cardDB.json` 的 `skillCount`（master.mdb single_mode_hint_gain type=0）；
 //!   每次事件只随机选「未满 5 级」的技能 +lv（截断 5）；池为 0 的卡全部视为溢出。
 //! - 重放随机：每局固定 PROBE_REPEAT 次不同种子取均值；非灵感来源（初始 21 / 事件 hint / 进化）不变。
 
@@ -156,10 +156,18 @@ fn probe_hint_bucket() -> Result<()> {
         .context("载入剧本配置失败")?
         .for_deck(deck_comp(&engine.sim.cards).context("卡组构成解析失败")?);
     base.search.search_n = 0;
-    let skill_counts: BTreeMap<String, u32> = serde_json::from_str(
-        &fs::read_to_string(root.join("card_skills.json")).context("读 card_skills.json 失败")?,
+    // 每卡技能池：cardDB 的 skillCount（0/缺省表示无池）
+    let cards: BTreeMap<String, serde_json::Value> = serde_json::from_str(
+        &fs::read_to_string(root.join("cardDB.json")).context("读 cardDB 失败")?,
     )
-    .context("解析 card_skills.json 失败")?;
+    .context("解析 cardDB 失败")?;
+    let skill_counts: BTreeMap<String, u32> = cards
+        .into_iter()
+        .filter_map(|(id, card)| {
+            let count = card.get("skillCount")?.as_u64()?;
+            (count > 0).then_some((id, count as u32))
+        })
+        .collect();
 
     let games: u64 = env_num("PROBE_GAMES", 20);
     let seed0: u64 = env_num("PROBE_SEED0", 73_200);

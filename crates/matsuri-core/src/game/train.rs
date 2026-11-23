@@ -927,7 +927,7 @@ impl MatsuriGame {
         let data = Data::get()?;
         let attr_prob = data.event_prob("hint_attr")?;
         let card_id = self.persons[person_index].card_id();
-        // 每卡上限 = 5 × 技能池（`card_skills.json`，`single_mode_hint_gain`）；查不到回退引擎常量
+        // 每卡上限 = 5 × 技能池（`cardDB.json` 的 `skillCount`）；查不到回退引擎常量
         let max_hint = card_id
             .and_then(|id| self.data.card_skills.get(&id))
             .map_or(data.consts.max_hint_per_card, |count| 5 * count);

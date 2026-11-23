@@ -159,6 +159,8 @@ def parseSupportCard(cfg: Config, card_list, trans):
             rarity = trans_card.rarity.value,
         # cardSkill = list(map(lambda x: int(x), trans_card.train_skill_list)),
             cardType = trans_card.type.value - 1, # 从0开始
+            # 灵感技能池数量（single_mode_hint_gain type=0；0 = 无池）
+            skillCount = len(trans_card.train_skill_list or []),
             cardValue = []
             #uniqueEffect = trans_card.unique_effect
         )

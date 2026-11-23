@@ -172,7 +172,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10002": {
     "cardId": 10002,
@@ -347,7 +348,8 @@
         "saiHou": 5,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10003": {
     "cardId": 10003,
@@ -522,7 +524,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10004": {
     "cardId": 10004,
@@ -692,7 +695,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10005": {
     "cardId": 10005,
@@ -867,7 +871,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 10
   },
   "10006": {
     "cardId": 10006,
@@ -1042,7 +1047,8 @@
         "initialJiBan": 20,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 14
   },
   "10007": {
     "cardId": 10007,
@@ -1217,7 +1223,8 @@
         "saiHou": 5,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10008": {
     "cardId": 10008,
@@ -1392,7 +1399,8 @@
         "initialJiBan": 20,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10009": {
     "cardId": 10009,
@@ -1567,7 +1575,8 @@
         "saiHou": 5,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10010": {
     "cardId": 10010,
@@ -1742,7 +1751,8 @@
         "saiHou": 5,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10011": {
     "cardId": 10011,
@@ -1917,7 +1927,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10012": {
     "cardId": 10012,
@@ -2092,7 +2103,8 @@
         "initialJiBan": 20,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10013": {
     "cardId": 10013,
@@ -2272,7 +2284,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10014": {
     "cardId": 10014,
@@ -2447,7 +2460,8 @@
         "saiHou": 5,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10015": {
     "cardId": 10015,
@@ -2622,7 +2636,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10016": {
     "cardId": 10016,
@@ -2797,7 +2812,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10017": {
     "cardId": 10017,
@@ -2972,7 +2988,8 @@
         "initialJiBan": 20,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 3
   },
   "10018": {
     "cardId": 10018,
@@ -3147,7 +3164,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10019": {
     "cardId": 10019,
@@ -3317,7 +3335,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10020": {
     "cardId": 10020,
@@ -3487,7 +3506,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 0
   },
   "10021": {
     "cardId": 10021,
@@ -3667,7 +3687,8 @@
         "failRateDrop": 20,
         "vitalCostDrop": 15
       }
-    ]
+    ],
+    "skillCount": 0
   },
   "10022": {
     "cardId": 10022,
@@ -3847,7 +3868,8 @@
         "failRateDrop": 20,
         "vitalCostDrop": 15
       }
-    ]
+    ],
+    "skillCount": 0
   },
   "10023": {
     "cardId": 10023,
@@ -4027,7 +4049,8 @@
         "deYiLv": 50,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10024": {
     "cardId": 10024,
@@ -4202,7 +4225,8 @@
         "saiHou": 5,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10025": {
     "cardId": 10025,
@@ -4382,7 +4406,8 @@
         "saiHou": 5,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10026": {
     "cardId": 10026,
@@ -4562,7 +4587,8 @@
         "saiHou": 5,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10027": {
     "cardId": 10027,
@@ -4742,7 +4768,8 @@
         "saiHou": 5,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10028": {
     "cardId": 10028,
@@ -4917,7 +4944,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10029": {
     "cardId": 10029,
@@ -5097,7 +5125,8 @@
         "saiHou": 5,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10030": {
     "cardId": 10030,
@@ -5267,7 +5296,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10031": {
     "cardId": 10031,
@@ -5442,7 +5472,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10032": {
     "cardId": 10032,
@@ -5617,7 +5648,8 @@
         "saiHou": 5,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 4
   },
   "10033": {
     "cardId": 10033,
@@ -5792,7 +5824,8 @@
         "initialJiBan": 20,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 4
   },
   "10034": {
     "cardId": 10034,
@@ -5967,7 +6000,8 @@
         "initialJiBan": 20,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 4
   },
   "10035": {
     "cardId": 10035,
@@ -6147,7 +6181,8 @@
         "saiHou": 5,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10036": {
     "cardId": 10036,
@@ -6327,7 +6362,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 4
   },
   "10037": {
     "cardId": 10037,
@@ -6507,7 +6543,8 @@
         "hintProbIncrease": 40,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 3
   },
   "10038": {
     "cardId": 10038,
@@ -6682,7 +6719,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10039": {
     "cardId": 10039,
@@ -6857,7 +6895,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10040": {
     "cardId": 10040,
@@ -7037,7 +7076,8 @@
         "saiHou": 5,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10041": {
     "cardId": 10041,
@@ -7217,7 +7257,8 @@
         "saiHou": 5,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10042": {
     "cardId": 10042,
@@ -7387,7 +7428,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10043": {
     "cardId": 10043,
@@ -7567,7 +7609,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10044": {
     "cardId": 10044,
@@ -7747,7 +7790,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10045": {
     "cardId": 10045,
@@ -7917,7 +7961,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10046": {
     "cardId": 10046,
@@ -8102,7 +8147,8 @@
         "hintProbIncrease": 40,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10047": {
     "cardId": 10047,
@@ -8277,7 +8323,8 @@
         "initialJiBan": 20,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10048": {
     "cardId": 10048,
@@ -8452,7 +8499,8 @@
         "initialJiBan": 20,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10049": {
     "cardId": 10049,
@@ -8632,7 +8680,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10050": {
     "cardId": 10050,
@@ -8807,7 +8856,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10051": {
     "cardId": 10051,
@@ -8982,7 +9032,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10052": {
     "cardId": 10052,
@@ -9157,7 +9208,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10053": {
     "cardId": 10053,
@@ -9327,7 +9379,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10054": {
     "cardId": 10054,
@@ -9502,7 +9555,8 @@
         "saiHou": 5,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10055": {
     "cardId": 10055,
@@ -9682,7 +9736,8 @@
         "saiHou": 5,
         "hintProbIncrease": 30
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10056": {
     "cardId": 10056,
@@ -9857,7 +9912,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10057": {
     "cardId": 10057,
@@ -10027,7 +10083,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10058": {
     "cardId": 10058,
@@ -10202,7 +10259,8 @@
         "initialJiBan": 20,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10059": {
     "cardId": 10059,
@@ -10377,7 +10435,8 @@
         "initialJiBan": 20,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10060": {
     "cardId": 10060,
@@ -10562,7 +10621,8 @@
         "failRateDrop": 15,
         "vitalCostDrop": 10
       }
-    ]
+    ],
+    "skillCount": 0
   },
   "10061": {
     "cardId": 10061,
@@ -10737,7 +10797,8 @@
         "saiHou": 5,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10062": {
     "cardId": 10062,
@@ -10912,7 +10973,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 4
   },
   "10063": {
     "cardId": 10063,
@@ -11082,7 +11144,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 4
   },
   "10064": {
     "cardId": 10064,
@@ -11257,7 +11320,8 @@
         "hintProbIncrease": 40,
         "deYiLv": 10
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10065": {
     "cardId": 10065,
@@ -11427,7 +11491,8 @@
         "initialJiBan": 25,
         "saiHou": 5
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10066": {
     "cardId": 10066,
@@ -11597,7 +11662,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 4
   },
   "10067": {
     "cardId": 10067,
@@ -11772,7 +11838,8 @@
         "hintProbIncrease": 40,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10068": {
     "cardId": 10068,
@@ -11942,7 +12009,8 @@
         "initialJiBan": 20,
         "hintProbIncrease": 30
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10069": {
     "cardId": 10069,
@@ -12122,7 +12190,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10070": {
     "cardId": 10070,
@@ -12292,7 +12361,8 @@
         "initialJiBan": 25,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10071": {
     "cardId": 10071,
@@ -12462,7 +12532,8 @@
         "initialJiBan": 20,
         "saiHou": 5
       }
-    ]
+    ],
+    "skillCount": 4
   },
   "10072": {
     "cardId": 10072,
@@ -12637,7 +12708,8 @@
         "hintProbIncrease": 40,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10073": {
     "cardId": 10073,
@@ -12817,7 +12889,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10074": {
     "cardId": 10074,
@@ -12982,7 +13055,8 @@
         "initialJiBan": 20,
         "eventEffectUp": 25
       }
-    ]
+    ],
+    "skillCount": 0
   },
   "10075": {
     "cardId": 10075,
@@ -13157,7 +13231,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10076": {
     "cardId": 10076,
@@ -13327,7 +13402,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10077": {
     "cardId": 10077,
@@ -13497,7 +13573,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10078": {
     "cardId": 10078,
@@ -13677,7 +13754,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10079": {
     "cardId": 10079,
@@ -13847,7 +13925,8 @@
         "initialJiBan": 25,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 11
   },
   "10080": {
     "cardId": 10080,
@@ -14012,7 +14091,8 @@
         "initialJiBan": 20,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10081": {
     "cardId": 10081,
@@ -14187,7 +14267,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10082": {
     "cardId": 10082,
@@ -14367,7 +14448,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10083": {
     "cardId": 10083,
@@ -14552,7 +14634,8 @@
         "failRateDrop": 20,
         "vitalCostDrop": 10
       }
-    ]
+    ],
+    "skillCount": 0
   },
   "10084": {
     "cardId": 10084,
@@ -14722,7 +14805,8 @@
         "saiHou": 5,
         "hintProbIncrease": 30
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10085": {
     "cardId": 10085,
@@ -14897,7 +14981,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10086": {
     "cardId": 10086,
@@ -15077,7 +15162,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10087": {
     "cardId": 10087,
@@ -15252,7 +15338,8 @@
         "hintProbIncrease": 40,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10088": {
     "cardId": 10088,
@@ -15427,7 +15514,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10089": {
     "cardId": 10089,
@@ -15602,7 +15690,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10090": {
     "cardId": 10090,
@@ -15777,7 +15866,8 @@
         "initialJiBan": 20,
         "hintProbIncrease": 30
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10091": {
     "cardId": 10091,
@@ -15952,7 +16042,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10092": {
     "cardId": 10092,
@@ -16122,7 +16213,8 @@
         "xunLian": 5,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10093": {
     "cardId": 10093,
@@ -16302,7 +16394,8 @@
         "hintProbIncrease": 40,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10094": {
     "cardId": 10094,
@@ -16482,7 +16575,8 @@
         "failRateDrop": 20,
         "vitalCostDrop": 10
       }
-    ]
+    ],
+    "skillCount": 0
   },
   "10095": {
     "cardId": 10095,
@@ -16657,7 +16751,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10096": {
     "cardId": 10096,
@@ -16837,7 +16932,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10097": {
     "cardId": 10097,
@@ -17012,7 +17108,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 5
   },
   "10098": {
     "cardId": 10098,
@@ -17192,7 +17289,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10099": {
     "cardId": 10099,
@@ -17372,7 +17470,8 @@
         "hintProbIncrease": 40,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10100": {
     "cardId": 10100,
@@ -17547,7 +17646,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10101": {
     "cardId": 10101,
@@ -17727,7 +17827,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10102": {
     "cardId": 10102,
@@ -17907,7 +18008,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10103": {
     "cardId": 10103,
@@ -18087,7 +18189,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10104": {
     "cardId": 10104,
@@ -18272,7 +18375,8 @@
         "failRateDrop": 20,
         "vitalCostDrop": 10
       }
-    ]
+    ],
+    "skillCount": 0
   },
   "10105": {
     "cardId": 10105,
@@ -18457,7 +18561,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10106": {
     "cardId": 10106,
@@ -18637,7 +18742,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10107": {
     "cardId": 10107,
@@ -18817,7 +18923,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10108": {
     "cardId": 10108,
@@ -18997,7 +19104,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10109": {
     "cardId": 10109,
@@ -19187,7 +19295,8 @@
         "failRateDrop": 10,
         "vitalCostDrop": 10
       }
-    ]
+    ],
+    "skillCount": 0
   },
   "10110": {
     "cardId": 10110,
@@ -19362,7 +19471,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10111": {
     "cardId": 10111,
@@ -19537,7 +19647,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10113": {
     "cardId": 10113,
@@ -19712,7 +19823,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10114": {
     "cardId": 10114,
@@ -19897,7 +20009,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10115": {
     "cardId": 10115,
@@ -20077,7 +20190,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10116": {
     "cardId": 10116,
@@ -20257,7 +20371,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10117": {
     "cardId": 10117,
@@ -20432,7 +20547,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10118": {
     "cardId": 10118,
@@ -20607,7 +20723,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10119": {
     "cardId": 10119,
@@ -20782,7 +20899,8 @@
         "hintProbIncrease": 40,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 10
   },
   "10120": {
     "cardId": 10120,
@@ -20967,7 +21085,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 10
   },
   "10121": {
     "cardId": 10121,
@@ -21142,7 +21261,8 @@
         "saiHou": 5,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10122": {
     "cardId": 10122,
@@ -21322,7 +21442,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 10
   },
   "10123": {
     "cardId": 10123,
@@ -21502,7 +21623,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10124": {
     "cardId": 10124,
@@ -21677,7 +21799,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10125": {
     "cardId": 10125,
@@ -21857,7 +21980,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 10
   },
   "10126": {
     "cardId": 10126,
@@ -22032,7 +22156,8 @@
         "saiHou": 5,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10127": {
     "cardId": 10127,
@@ -22212,7 +22337,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10128": {
     "cardId": 10128,
@@ -22397,7 +22523,8 @@
         "failRateDrop": 10,
         "vitalCostDrop": 10
       }
-    ]
+    ],
+    "skillCount": 0
   },
   "10129": {
     "cardId": 10129,
@@ -22577,7 +22704,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 7
   },
   "10131": {
     "cardId": 10131,
@@ -22752,7 +22880,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 11
   },
   "10132": {
     "cardId": 10132,
@@ -22932,7 +23061,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 12
   },
   "10133": {
     "cardId": 10133,
@@ -23107,7 +23237,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 11
   },
   "10134": {
     "cardId": 10134,
@@ -23287,7 +23418,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 6
   },
   "10135": {
     "cardId": 10135,
@@ -23462,7 +23594,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 13
   },
   "10136": {
     "cardId": 10136,
@@ -23642,7 +23775,8 @@
         "deYiLv": 35,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 10
   },
   "10137": {
     "cardId": 10137,
@@ -23827,7 +23961,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10138": {
     "cardId": 10138,
@@ -24007,7 +24142,8 @@
         "failRateDrop": 10,
         "vitalCostDrop": 15
       }
-    ]
+    ],
+    "skillCount": 0
   },
   "10139": {
     "cardId": 10139,
@@ -24187,7 +24323,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 11
   },
   "10140": {
     "cardId": 10140,
@@ -24372,7 +24509,8 @@
         "deYiLv": 50,
         "wizVitalBonus": 3
       }
-    ]
+    ],
+    "skillCount": 13
   },
   "10141": {
     "cardId": 10141,
@@ -24557,7 +24695,8 @@
         "failRateDrop": 10,
         "vitalCostDrop": 10
       }
-    ]
+    ],
+    "skillCount": 0
   },
   "10142": {
     "cardId": 10142,
@@ -24732,7 +24871,8 @@
         "hintProbIncrease": 20,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10143": {
     "cardId": 10143,
@@ -24907,7 +25047,8 @@
         "hintProbIncrease": 40,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10144": {
     "cardId": 10144,
@@ -25082,7 +25223,8 @@
         "hintProbIncrease": 40,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 13
   },
   "10145": {
     "cardId": 10145,
@@ -25257,7 +25399,8 @@
         "saiHou": 5,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 12
   },
   "10146": {
     "cardId": 10146,
@@ -25432,7 +25575,8 @@
         "saiHou": 5,
         "deYiLv": 50
       }
-    ]
+    ],
+    "skillCount": 12
   },
   "10147": {
     "cardId": 10147,
@@ -25607,7 +25751,8 @@
         "saiHou": 5,
         "hintProbIncrease": 40
       }
-    ]
+    ],
+    "skillCount": 8
   },
   "10148": {
     "cardId": 10148,
@@ -25782,7 +25927,8 @@
         "hintProbIncrease": 30,
         "deYiLv": 35
       }
-    ]
+    ],
+    "skillCount": 9
   },
   "10149": {
     "cardId": 10149,
@@ -25972,7 +26118,8 @@
         "failRateDrop": 10,
         "vitalCostDrop": 10
       }
-    ]
+    ],
+    "skillCount": 0
   },
   "20001": {
     "cardId": 20001,
@@ -26159,7 +26306,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "スキルポイントボーナス(1),初期賢さアップ(20)"
+    "uniqueEffectSummary": "スキルポイントボーナス(1),初期賢さアップ(20)",
+    "skillCount": 5
   },
   "20002": {
     "cardId": 20002,
@@ -26346,7 +26494,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)"
+    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)",
+    "skillCount": 6
   },
   "20003": {
     "cardId": 20003,
@@ -26523,7 +26672,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),saiHou(5)"
+    "uniqueEffectSummary": "youQing(10),saiHou(5)",
+    "skillCount": 5
   },
   "20004": {
     "cardId": 20004,
@@ -26710,7 +26860,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),saiHou(5)"
+    "uniqueEffectSummary": "ganJing(15),saiHou(5)",
+    "skillCount": 6
   },
   "20005": {
     "cardId": 20005,
@@ -26892,7 +27043,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),初期パワーアップ(20)"
+    "uniqueEffectSummary": "youQing(10),初期パワーアップ(20)",
+    "skillCount": 6
   },
   "20006": {
     "cardId": 20006,
@@ -27079,7 +27231,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)"
+    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)",
+    "skillCount": 5
   },
   "20007": {
     "cardId": 20007,
@@ -27256,7 +27409,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),deYiLv(20)"
+    "uniqueEffectSummary": "youQing(10),deYiLv(20)",
+    "skillCount": 6
   },
   "20008": {
     "cardId": 20008,
@@ -27443,7 +27597,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),deYiLv(20)"
+    "uniqueEffectSummary": "xunLian(5),deYiLv(20)",
+    "skillCount": 6
   },
   "20009": {
     "cardId": 20009,
@@ -27620,7 +27775,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),hintProbIncrease(20)"
+    "uniqueEffectSummary": "youQing(10),hintProbIncrease(20)",
+    "skillCount": 4
   },
   "20010": {
     "cardId": 20010,
@@ -27802,7 +27958,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),saiHou(5)"
+    "uniqueEffectSummary": "ganJing(15),saiHou(5)",
+    "skillCount": 4
   },
   "20011": {
     "cardId": 20011,
@@ -27984,7 +28141,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "根性ボーナス(1),初期根性アップ(20)"
+    "uniqueEffectSummary": "根性ボーナス(1),初期根性アップ(20)",
+    "skillCount": 4
   },
   "20012": {
     "cardId": 20012,
@@ -28171,7 +28329,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "スキルポイントボーナス(1),hintProbIncrease(20)"
+    "uniqueEffectSummary": "スキルポイントボーナス(1),hintProbIncrease(20)",
+    "skillCount": 4
   },
   "20013": {
     "cardId": 20013,
@@ -28358,7 +28517,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),saiHou(5)"
+    "uniqueEffectSummary": "ganJing(15),saiHou(5)",
+    "skillCount": 5
   },
   "20014": {
     "cardId": 20014,
@@ -28545,7 +28705,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),deYiLv(20)"
+    "uniqueEffectSummary": "ganJing(15),deYiLv(20)",
+    "skillCount": 7
   },
   "20015": {
     "cardId": 20015,
@@ -28732,7 +28893,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),初期賢さアップ(20)"
+    "uniqueEffectSummary": "ganJing(15),初期賢さアップ(20)",
+    "skillCount": 5
   },
   "20016": {
     "cardId": 20016,
@@ -28919,7 +29081,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),initialJiBan(15)"
+    "uniqueEffectSummary": "youQing(10),initialJiBan(15)",
+    "skillCount": 7
   },
   "20017": {
     "cardId": 20017,
@@ -29096,7 +29259,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)"
+    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)",
+    "skillCount": 7
   },
   "20018": {
     "cardId": 20018,
@@ -29283,7 +29447,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期賢さアップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期賢さアップ(20)",
+    "skillCount": 5
   },
   "20019": {
     "cardId": 20019,
@@ -29465,7 +29630,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),初期根性アップ(20)"
+    "uniqueEffectSummary": "ganJing(15),初期根性アップ(20)",
+    "skillCount": 8
   },
   "20020": {
     "cardId": 20020,
@@ -29647,7 +29813,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "速度ボーナス(1),初期速度アップ(20)"
+    "uniqueEffectSummary": "速度ボーナス(1),初期速度アップ(20)",
+    "skillCount": 6
   },
   "20021": {
     "cardId": 20021,
@@ -29829,7 +29996,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "failRateDrop(10),vitalCostDrop(5)"
+    "uniqueEffectSummary": "failRateDrop(10),vitalCostDrop(5)",
+    "skillCount": 0
   },
   "20022": {
     "cardId": 20022,
@@ -30006,7 +30174,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "スキルポイントボーナス(1),初期根性アップ(20)"
+    "uniqueEffectSummary": "スキルポイントボーナス(1),初期根性アップ(20)",
+    "skillCount": 7
   },
   "20023": {
     "cardId": 20023,
@@ -30188,7 +30357,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)"
+    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)",
+    "skillCount": 7
   },
   "20024": {
     "cardId": 20024,
@@ -30370,7 +30540,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),deYiLv(20)"
+    "uniqueEffectSummary": "ganJing(15),deYiLv(20)",
+    "skillCount": 7
   },
   "20025": {
     "cardId": 20025,
@@ -30547,7 +30718,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "賢さボーナス(1),deYiLv(20)"
+    "uniqueEffectSummary": "賢さボーナス(1),deYiLv(20)",
+    "skillCount": 5
   },
   "20026": {
     "cardId": 20026,
@@ -30729,7 +30901,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期賢さアップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期賢さアップ(20)",
+    "skillCount": 8
   },
   "20027": {
     "cardId": 20027,
@@ -30911,7 +31084,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),saiHou(5)"
+    "uniqueEffectSummary": "ganJing(15),saiHou(5)",
+    "skillCount": 5
   },
   "20028": {
     "cardId": 20028,
@@ -31093,7 +31267,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),初期持久力アップ(20)"
+    "uniqueEffectSummary": "youQing(10),初期持久力アップ(20)",
+    "skillCount": 8
   },
   "20029": {
     "cardId": 20029,
@@ -31275,7 +31450,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),initialJiBan(15)"
+    "uniqueEffectSummary": "youQing(10),initialJiBan(15)",
+    "skillCount": 6
   },
   "20030": {
     "cardId": 20030,
@@ -31462,7 +31638,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),saiHou(5)"
+    "uniqueEffectSummary": "ganJing(15),saiHou(5)",
+    "skillCount": 5
   },
   "20031": {
     "cardId": 20031,
@@ -31644,7 +31821,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),initialJiBan(15)"
+    "uniqueEffectSummary": "youQing(10),initialJiBan(15)",
+    "skillCount": 4
   },
   "20032": {
     "cardId": 20032,
@@ -31821,7 +31999,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),持久力ボーナス(1)"
+    "uniqueEffectSummary": "youQing(10),持久力ボーナス(1)",
+    "skillCount": 8
   },
   "20033": {
     "cardId": 20033,
@@ -32003,7 +32182,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "速度ボーナス(1),deYiLv(20)"
+    "uniqueEffectSummary": "速度ボーナス(1),deYiLv(20)",
+    "skillCount": 5
   },
   "20034": {
     "cardId": 20034,
@@ -32190,7 +32370,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),hintProbIncrease(20)"
+    "uniqueEffectSummary": "ganJing(15),hintProbIncrease(20)",
+    "skillCount": 5
   },
   "20035": {
     "cardId": 20035,
@@ -32372,7 +32553,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),saiHou(5)"
+    "uniqueEffectSummary": "ganJing(15),saiHou(5)",
+    "skillCount": 6
   },
   "20036": {
     "cardId": 20036,
@@ -32549,7 +32731,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "持久力ボーナス(1),初期根性アップ(20)"
+    "uniqueEffectSummary": "持久力ボーナス(1),初期根性アップ(20)",
+    "skillCount": 8
   },
   "20037": {
     "cardId": 20037,
@@ -32731,7 +32914,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),initialJiBan(15)"
+    "uniqueEffectSummary": "パワーボーナス(1),initialJiBan(15)",
+    "skillCount": 5
   },
   "20038": {
     "cardId": 20038,
@@ -32913,7 +33097,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期速度アップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期速度アップ(20)",
+    "skillCount": 4
   },
   "20039": {
     "cardId": 20039,
@@ -33100,7 +33285,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)"
+    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)",
+    "skillCount": 9
   },
   "20040": {
     "cardId": 20040,
@@ -33277,7 +33463,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),根性ボーナス(1)"
+    "uniqueEffectSummary": "youQing(10),根性ボーナス(1)",
+    "skillCount": 3
   },
   "20041": {
     "cardId": 20041,
@@ -33454,7 +33641,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "速度ボーナス(1),saiHou(5)"
+    "uniqueEffectSummary": "速度ボーナス(1),saiHou(5)",
+    "skillCount": 5
   },
   "20042": {
     "cardId": 20042,
@@ -33631,7 +33819,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),deYiLv(20)"
+    "uniqueEffectSummary": "youQing(10),deYiLv(20)",
+    "skillCount": 8
   },
   "20043": {
     "cardId": 20043,
@@ -33808,7 +33997,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)",
+    "skillCount": 7
   },
   "20044": {
     "cardId": 20044,
@@ -33990,7 +34180,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),saiHou(5)"
+    "uniqueEffectSummary": "youQing(10),saiHou(5)",
+    "skillCount": 5
   },
   "20045": {
     "cardId": 20045,
@@ -34167,7 +34358,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)",
+    "skillCount": 7
   },
   "20046": {
     "cardId": 20046,
@@ -34349,7 +34541,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期賢さアップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期賢さアップ(20)",
+    "skillCount": 7
   },
   "20047": {
     "cardId": 20047,
@@ -34526,7 +34719,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "初期持久力アップ(20),初期根性アップ(20)"
+    "uniqueEffectSummary": "初期持久力アップ(20),初期根性アップ(20)",
+    "skillCount": 6
   },
   "20048": {
     "cardId": 20048,
@@ -34708,7 +34902,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),saiHou(5)"
+    "uniqueEffectSummary": "パワーボーナス(1),saiHou(5)",
+    "skillCount": 8
   },
   "20049": {
     "cardId": 20049,
@@ -34885,7 +35080,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "速度ボーナス(1),初期賢さアップ(20)"
+    "uniqueEffectSummary": "速度ボーナス(1),初期賢さアップ(20)",
+    "skillCount": 5
   },
   "20050": {
     "cardId": 20050,
@@ -35077,7 +35273,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),saiHou(5)"
+    "uniqueEffectSummary": "xunLian(5),saiHou(5)",
+    "skillCount": 6
   },
   "20051": {
     "cardId": 20051,
@@ -35249,7 +35446,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),スキルポイントボーナス(1)"
+    "uniqueEffectSummary": "youQing(10),スキルポイントボーナス(1)",
+    "skillCount": 6
   },
   "20052": {
     "cardId": 20052,
@@ -35426,7 +35624,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "根性ボーナス(1),xunLian(5)"
+    "uniqueEffectSummary": "根性ボーナス(1),xunLian(5)",
+    "skillCount": 5
   },
   "20053": {
     "cardId": 20053,
@@ -35608,7 +35807,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),saiHou(5)"
+    "uniqueEffectSummary": "youQing(10),saiHou(5)",
+    "skillCount": 5
   },
   "20054": {
     "cardId": 20054,
@@ -35780,7 +35980,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),持久力ボーナス(1)"
+    "uniqueEffectSummary": "youQing(10),持久力ボーナス(1)",
+    "skillCount": 9
   },
   "20055": {
     "cardId": 20055,
@@ -35957,7 +36158,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),速度ボーナス(1)"
+    "uniqueEffectSummary": "youQing(10),速度ボーナス(1)",
+    "skillCount": 7
   },
   "20056": {
     "cardId": 20056,
@@ -36139,7 +36341,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),スキルポイントボーナス(1)"
+    "uniqueEffectSummary": "youQing(10),スキルポイントボーナス(1)",
+    "skillCount": 7
   },
   "20057": {
     "cardId": 20057,
@@ -36326,7 +36529,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),saiHou(5)"
+    "uniqueEffectSummary": "xunLian(5),saiHou(5)",
+    "skillCount": 6
   },
   "20058": {
     "cardId": 20058,
@@ -36508,7 +36712,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),持久力ボーナス(1)"
+    "uniqueEffectSummary": "youQing(10),持久力ボーナス(1)",
+    "skillCount": 8
   },
   "20059": {
     "cardId": 20059,
@@ -36685,7 +36890,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),initialJiBan(15)"
+    "uniqueEffectSummary": "パワーボーナス(1),initialJiBan(15)",
+    "skillCount": 9
   },
   "20060": {
     "cardId": 20060,
@@ -36867,7 +37073,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),スキルポイントボーナス(1)"
+    "uniqueEffectSummary": "xunLian(5),スキルポイントボーナス(1)",
+    "skillCount": 7
   },
   "20061": {
     "cardId": 20061,
@@ -37049,7 +37256,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),saiHou(5)"
+    "uniqueEffectSummary": "xunLian(5),saiHou(5)",
+    "skillCount": 24
   },
   "20062": {
     "cardId": 20062,
@@ -37231,7 +37439,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),初期賢さアップ(20)"
+    "uniqueEffectSummary": "youQing(10),初期賢さアップ(20)",
+    "skillCount": 7
   },
   "20063": {
     "cardId": 20063,
@@ -37418,7 +37627,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)"
+    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)",
+    "skillCount": 8
   },
   "20064": {
     "cardId": 20064,
@@ -37600,7 +37810,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)"
+    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)",
+    "skillCount": 8
   },
   "20065": {
     "cardId": 20065,
@@ -37782,7 +37993,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),saiHou(5)"
+    "uniqueEffectSummary": "xunLian(5),saiHou(5)",
+    "skillCount": 6
   },
   "20066": {
     "cardId": 20066,
@@ -37969,7 +38181,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期根性アップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期根性アップ(20)",
+    "skillCount": 7
   },
   "20067": {
     "cardId": 20067,
@@ -38156,7 +38369,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "速度ボーナス(1),deYiLv(20)"
+    "uniqueEffectSummary": "速度ボーナス(1),deYiLv(20)",
+    "skillCount": 5
   },
   "20068": {
     "cardId": 20068,
@@ -38338,7 +38552,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "持久力ボーナス(1),deYiLv(20)"
+    "uniqueEffectSummary": "持久力ボーナス(1),deYiLv(20)",
+    "skillCount": 6
   },
   "20069": {
     "cardId": 20069,
@@ -38520,7 +38735,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),ganJing(15)"
+    "uniqueEffectSummary": "パワーボーナス(1),ganJing(15)",
+    "skillCount": 6
   },
   "20070": {
     "cardId": 20070,
@@ -38697,7 +38913,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),速度ボーナス(1)"
+    "uniqueEffectSummary": "youQing(10),速度ボーナス(1)",
+    "skillCount": 5
   },
   "20071": {
     "cardId": 20071,
@@ -38874,7 +39091,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),deYiLv(20)"
+    "uniqueEffectSummary": "youQing(10),deYiLv(20)",
+    "skillCount": 7
   },
   "20072": {
     "cardId": 20072,
@@ -39061,7 +39279,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "スキルポイントボーナス(1),初期賢さアップ(20)"
+    "uniqueEffectSummary": "スキルポイントボーナス(1),初期賢さアップ(20)",
+    "skillCount": 7
   },
   "20073": {
     "cardId": 20073,
@@ -39248,7 +39467,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),xunLian(5)"
+    "uniqueEffectSummary": "パワーボーナス(1),xunLian(5)",
+    "skillCount": 7
   },
   "20074": {
     "cardId": 20074,
@@ -39425,7 +39645,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "初期持久力アップ(20),スキルポイントボーナス(1)"
+    "uniqueEffectSummary": "初期持久力アップ(20),スキルポイントボーナス(1)",
+    "skillCount": 7
   },
   "20075": {
     "cardId": 20075,
@@ -39612,7 +39833,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)",
+    "skillCount": 8
   },
   "20076": {
     "cardId": 20076,
@@ -39789,7 +40011,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "持久力ボーナス(1),初期パワーアップ(20)"
+    "uniqueEffectSummary": "持久力ボーナス(1),初期パワーアップ(20)",
+    "skillCount": 6
   },
   "20077": {
     "cardId": 20077,
@@ -39976,7 +40199,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "スキルポイントボーナス(1),initialJiBan(15)"
+    "uniqueEffectSummary": "スキルポイントボーナス(1),initialJiBan(15)",
+    "skillCount": 8
   },
   "20078": {
     "cardId": 20078,
@@ -40158,7 +40382,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),初期パワーアップ(20)"
+    "uniqueEffectSummary": "ganJing(15),初期パワーアップ(20)",
+    "skillCount": 6
   },
   "20079": {
     "cardId": 20079,
@@ -40345,7 +40570,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期速度アップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期速度アップ(20)",
+    "skillCount": 7
   },
   "20080": {
     "cardId": 20080,
@@ -40532,7 +40758,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "スキルポイントボーナス(1),初期賢さアップ(20)"
+    "uniqueEffectSummary": "スキルポイントボーナス(1),初期賢さアップ(20)",
+    "skillCount": 7
   },
   "20081": {
     "cardId": 20081,
@@ -40719,7 +40946,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)",
+    "skillCount": 8
   },
   "20082": {
     "cardId": 20082,
@@ -40906,7 +41134,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "速度ボーナス(1),初期速度アップ(20)"
+    "uniqueEffectSummary": "速度ボーナス(1),初期速度アップ(20)",
+    "skillCount": 6
   },
   "20083": {
     "cardId": 20083,
@@ -41088,7 +41317,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "スキルポイントボーナス(1),初期持久力アップ(20)"
+    "uniqueEffectSummary": "スキルポイントボーナス(1),初期持久力アップ(20)",
+    "skillCount": 7
   },
   "20084": {
     "cardId": 20084,
@@ -41280,7 +41510,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期賢さアップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期賢さアップ(20)",
+    "skillCount": 7
   },
   "20085": {
     "cardId": 20085,
@@ -41462,7 +41693,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "速度ボーナス(1),初期根性アップ(20)"
+    "uniqueEffectSummary": "速度ボーナス(1),初期根性アップ(20)",
+    "skillCount": 8
   },
   "20086": {
     "cardId": 20086,
@@ -41644,7 +41876,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)",
+    "skillCount": 7
   },
   "20087": {
     "cardId": 20087,
@@ -41831,7 +42064,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),初期パワーアップ(20)"
+    "uniqueEffectSummary": "パワーボーナス(1),初期パワーアップ(20)",
+    "skillCount": 8
   },
   "20088": {
     "cardId": 20088,
@@ -42018,7 +42252,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "持久力ボーナス(1),初期持久力アップ(20)"
+    "uniqueEffectSummary": "持久力ボーナス(1),初期持久力アップ(20)",
+    "skillCount": 9
   },
   "20089": {
     "cardId": 20089,
@@ -42200,7 +42435,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),初期パワーアップ(20)"
+    "uniqueEffectSummary": "パワーボーナス(1),初期パワーアップ(20)",
+    "skillCount": 7
   },
   "20090": {
     "cardId": 20090,
@@ -42392,7 +42628,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "スキルポイントボーナス(1),initialJiBan(15)"
+    "uniqueEffectSummary": "スキルポイントボーナス(1),initialJiBan(15)",
+    "skillCount": 8
   },
   "20091": {
     "cardId": 20091,
@@ -42579,7 +42816,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "スキルポイントボーナス(1),初期速度アップ(20)"
+    "uniqueEffectSummary": "スキルポイントボーナス(1),初期速度アップ(20)",
+    "skillCount": 9
   },
   "20092": {
     "cardId": 20092,
@@ -42766,7 +43004,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "スキルポイントボーナス(1),xunLian(5)"
+    "uniqueEffectSummary": "スキルポイントボーナス(1),xunLian(5)",
+    "skillCount": 8
   },
   "20093": {
     "cardId": 20093,
@@ -42948,7 +43187,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)",
+    "skillCount": 8
   },
   "20094": {
     "cardId": 20094,
@@ -43135,7 +43375,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "持久力ボーナス(1),deYiLv(20)"
+    "uniqueEffectSummary": "持久力ボーナス(1),deYiLv(20)",
+    "skillCount": 9
   },
   "20095": {
     "cardId": 20095,
@@ -43317,7 +43558,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "根性ボーナス(1),xunLian(5)"
+    "uniqueEffectSummary": "根性ボーナス(1),xunLian(5)",
+    "skillCount": 8
   },
   "20096": {
     "cardId": 20096,
@@ -43504,7 +43746,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),ganJing(15)"
+    "uniqueEffectSummary": "パワーボーナス(1),ganJing(15)",
+    "skillCount": 8
   },
   "20097": {
     "cardId": 20097,
@@ -43681,7 +43924,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "持久力ボーナス(1),初期持久力アップ(20)"
+    "uniqueEffectSummary": "持久力ボーナス(1),初期持久力アップ(20)",
+    "skillCount": 7
   },
   "20098": {
     "cardId": 20098,
@@ -43868,7 +44112,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)"
+    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)",
+    "skillCount": 7
   },
   "20099": {
     "cardId": 20099,
@@ -44050,7 +44295,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期根性アップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期根性アップ(20)",
+    "skillCount": 8
   },
   "20100": {
     "cardId": 20100,
@@ -44227,7 +44473,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),速度ボーナス(1)"
+    "uniqueEffectSummary": "youQing(10),速度ボーナス(1)",
+    "skillCount": 8
   },
   "20101": {
     "cardId": 20101,
@@ -44409,7 +44656,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),初期根性アップ(20)"
+    "uniqueEffectSummary": "パワーボーナス(1),初期根性アップ(20)",
+    "skillCount": 8
   },
   "20102": {
     "cardId": 20102,
@@ -44591,7 +44839,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "initialJiBan(15),saiHou(5)"
+    "uniqueEffectSummary": "initialJiBan(15),saiHou(5)",
+    "skillCount": 9
   },
   "30001": {
     "cardId": 30001,
@@ -44773,7 +45022,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "根性ボーナス(1),初期根性アップ(20)"
+    "uniqueEffectSummary": "根性ボーナス(1),初期根性アップ(20)",
+    "skillCount": 7
   },
   "30002": {
     "cardId": 30002,
@@ -44950,7 +45200,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),hintProbIncrease(20)"
+    "uniqueEffectSummary": "ganJing(15),hintProbIncrease(20)",
+    "skillCount": 9
   },
   "30003": {
     "cardId": 30003,
@@ -45132,7 +45383,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),初期速度アップ(20)"
+    "uniqueEffectSummary": "youQing(10),初期速度アップ(20)",
+    "skillCount": 6
   },
   "30004": {
     "cardId": 30004,
@@ -45309,7 +45561,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),initialJiBan(15)"
+    "uniqueEffectSummary": "xunLian(5),initialJiBan(15)",
+    "skillCount": 14
   },
   "30005": {
     "cardId": 30005,
@@ -45491,7 +45744,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),deYiLv(20)"
+    "uniqueEffectSummary": "youQing(10),deYiLv(20)",
+    "skillCount": 9
   },
   "30006": {
     "cardId": 30006,
@@ -45668,7 +45922,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)"
+    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)",
+    "skillCount": 8
   },
   "30007": {
     "cardId": 30007,
@@ -45850,7 +46105,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),deYiLv(20)"
+    "uniqueEffectSummary": "youQing(10),deYiLv(20)",
+    "skillCount": 7
   },
   "30008": {
     "cardId": 30008,
@@ -46032,7 +46288,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),deYiLv(20)"
+    "uniqueEffectSummary": "ganJing(15),deYiLv(20)",
+    "skillCount": 6
   },
   "30009": {
     "cardId": 30009,
@@ -46214,7 +46471,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期持久力アップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期持久力アップ(20)",
+    "skillCount": 7
   },
   "30010": {
     "cardId": 30010,
@@ -46401,7 +46659,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),initialJiBan(15)"
+    "uniqueEffectSummary": "youQing(10),initialJiBan(15)",
+    "skillCount": 5
   },
   "30011": {
     "cardId": 30011,
@@ -46588,7 +46847,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期根性アップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期根性アップ(20)",
+    "skillCount": 5
   },
   "30012": {
     "cardId": 30012,
@@ -46770,7 +47030,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),hintProbIncrease(20)"
+    "uniqueEffectSummary": "youQing(10),hintProbIncrease(20)",
+    "skillCount": 5
   },
   "30013": {
     "cardId": 30013,
@@ -46952,7 +47213,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)"
+    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)",
+    "skillCount": 3
   },
   "30014": {
     "cardId": 30014,
@@ -47134,7 +47396,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "速度ボーナス(1),初期速度アップ(20)"
+    "uniqueEffectSummary": "速度ボーナス(1),初期速度アップ(20)",
+    "skillCount": 3
   },
   "30015": {
     "cardId": 30015,
@@ -47316,7 +47579,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),initialJiBan(15)"
+    "uniqueEffectSummary": "youQing(10),initialJiBan(15)",
+    "skillCount": 8
   },
   "30016": {
     "cardId": 30016,
@@ -47493,7 +47757,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),deYiLv(20)"
+    "uniqueEffectSummary": "youQing(10),deYiLv(20)",
+    "skillCount": 5
   },
   "30017": {
     "cardId": 30017,
@@ -47675,7 +47940,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),初期パワーアップ(20)"
+    "uniqueEffectSummary": "パワーボーナス(1),初期パワーアップ(20)",
+    "skillCount": 8
   },
   "30018": {
     "cardId": 30018,
@@ -47857,7 +48123,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)"
+    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)",
+    "skillCount": 5
   },
   "30019": {
     "cardId": 30019,
@@ -48034,7 +48301,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),saiHou(5)"
+    "uniqueEffectSummary": "youQing(10),saiHou(5)",
+    "skillCount": 0
   },
   "30020": {
     "cardId": 30020,
@@ -48211,7 +48479,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),deYiLv(20)"
+    "uniqueEffectSummary": "xunLian(5),deYiLv(20)",
+    "skillCount": 7
   },
   "30021": {
     "cardId": 30021,
@@ -48393,7 +48662,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "failRateDrop(10),vitalCostDrop(5)"
+    "uniqueEffectSummary": "failRateDrop(10),vitalCostDrop(5)",
+    "skillCount": 0
   },
   "30022": {
     "cardId": 30022,
@@ -48575,7 +48845,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "持久力ボーナス(1),初期持久力アップ(20)"
+    "uniqueEffectSummary": "持久力ボーナス(1),初期持久力アップ(20)",
+    "skillCount": 10
   },
   "30023": {
     "cardId": 30023,
@@ -48757,7 +49028,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),hintProbIncrease(20)"
+    "uniqueEffectSummary": "youQing(10),hintProbIncrease(20)",
+    "skillCount": 9
   },
   "30024": {
     "cardId": 30024,
@@ -48939,7 +49211,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),初期パワーアップ(20)"
+    "uniqueEffectSummary": "パワーボーナス(1),初期パワーアップ(20)",
+    "skillCount": 10
   },
   "30025": {
     "cardId": 30025,
@@ -49121,7 +49394,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),saiHou(5)"
+    "uniqueEffectSummary": "xunLian(5),saiHou(5)",
+    "skillCount": 7
   },
   "30026": {
     "cardId": 30026,
@@ -49308,7 +49582,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),saiHou(5)"
+    "uniqueEffectSummary": "ganJing(15),saiHou(5)",
+    "skillCount": 6
   },
   "30027": {
     "cardId": 30027,
@@ -49495,7 +49770,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期根性アップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期根性アップ(20)",
+    "skillCount": 7
   },
   "30028": {
     "cardId": 30028,
@@ -49682,7 +49958,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),deYiLv(20)"
+    "uniqueEffectSummary": "xunLian(5),deYiLv(20)",
+    "skillCount": 8
   },
   "30029": {
     "cardId": 30029,
@@ -49864,7 +50141,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)"
+    "uniqueEffectSummary": "ganJing(15),initialJiBan(15)",
+    "skillCount": 7
   },
   "30030": {
     "cardId": 30030,
@@ -50041,7 +50319,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),初期根性アップ(20)"
+    "uniqueEffectSummary": "youQing(10),初期根性アップ(20)",
+    "skillCount": 5
   },
   "30031": {
     "cardId": 30031,
@@ -50233,7 +50512,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),saiHou(5)"
+    "uniqueEffectSummary": "xunLian(5),saiHou(5)",
+    "skillCount": 4
   },
   "30032": {
     "cardId": 30032,
@@ -50420,7 +50700,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),deYiLv(20)"
+    "uniqueEffectSummary": "xunLian(5),deYiLv(20)",
+    "skillCount": 5
   },
   "30033": {
     "cardId": 30033,
@@ -50602,7 +50883,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),initialJiBan(15)"
+    "uniqueEffectSummary": "youQing(10),initialJiBan(15)",
+    "skillCount": 5
   },
   "30034": {
     "cardId": 30034,
@@ -50784,7 +51066,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "持久力ボーナス(1),xunLian(5)"
+    "uniqueEffectSummary": "持久力ボーナス(1),xunLian(5)",
+    "skillCount": 9
   },
   "30036": {
     "cardId": 30036,
@@ -50971,7 +51254,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "failRateDrop(10),vitalCostDrop(5)"
+    "uniqueEffectSummary": "failRateDrop(10),vitalCostDrop(5)",
+    "skillCount": 0
   },
   "30037": {
     "cardId": 30037,
@@ -51161,7 +51445,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 12
   },
   "30038": {
     "cardId": 30038,
@@ -51348,7 +51633,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),saiHou(5)"
+    "uniqueEffectSummary": "xunLian(5),saiHou(5)",
+    "skillCount": 4
   },
   "30039": {
     "cardId": 30039,
@@ -51525,7 +51811,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "速度ボーナス(1),初期速度アップ(20)"
+    "uniqueEffectSummary": "速度ボーナス(1),初期速度アップ(20)",
+    "skillCount": 4
   },
   "30040": {
     "cardId": 30040,
@@ -51707,7 +51994,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),deYiLv(20)"
+    "uniqueEffectSummary": "ganJing(15),deYiLv(20)",
+    "skillCount": 6
   },
   "30041": {
     "cardId": 30041,
@@ -51894,7 +52182,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),saiHou(5)"
+    "uniqueEffectSummary": "xunLian(5),saiHou(5)",
+    "skillCount": 5
   },
   "30042": {
     "cardId": 30042,
@@ -52071,7 +52360,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),初期パワーアップ(20)"
+    "uniqueEffectSummary": "パワーボーナス(1),初期パワーアップ(20)",
+    "skillCount": 6
   },
   "30043": {
     "cardId": 30043,
@@ -52253,7 +52543,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),根性ボーナス(1)"
+    "uniqueEffectSummary": "youQing(10),根性ボーナス(1)",
+    "skillCount": 9
   },
   "30044": {
     "cardId": 30044,
@@ -52430,7 +52721,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "速度ボーナス(1),初期速度アップ(20)"
+    "uniqueEffectSummary": "速度ボーナス(1),初期速度アップ(20)",
+    "skillCount": 8
   },
   "30045": {
     "cardId": 30045,
@@ -52602,7 +52894,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),速度ボーナス(1)"
+    "uniqueEffectSummary": "youQing(10),速度ボーナス(1)",
+    "skillCount": 7
   },
   "30046": {
     "cardId": 30046,
@@ -52779,7 +53072,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),持久力ボーナス(1)"
+    "uniqueEffectSummary": "ganJing(15),持久力ボーナス(1)",
+    "skillCount": 5
   },
   "30047": {
     "cardId": 30047,
@@ -52956,7 +53250,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期パワーアップ(20)",
+    "skillCount": 6
   },
   "30048": {
     "cardId": 30048,
@@ -53138,7 +53433,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),スキルポイントボーナス(1)"
+    "uniqueEffectSummary": "パワーボーナス(1),スキルポイントボーナス(1)",
+    "skillCount": 4
   },
   "30052": {
     "cardId": 30052,
@@ -53333,7 +53629,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 0
   },
   "30053": {
     "cardId": 30053,
@@ -53523,7 +53820,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 6
   },
   "30054": {
     "cardId": 30054,
@@ -53710,7 +54008,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "賢さボーナス(1),saiHou(5)"
+    "uniqueEffectSummary": "賢さボーナス(1),saiHou(5)",
+    "skillCount": 8
   },
   "30055": {
     "cardId": 30055,
@@ -53892,7 +54191,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "速度ボーナス(1),初期賢さアップ(20)"
+    "uniqueEffectSummary": "速度ボーナス(1),初期賢さアップ(20)",
+    "skillCount": 6
   },
   "30056": {
     "cardId": 30056,
@@ -54069,7 +54369,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),deYiLv(20)"
+    "uniqueEffectSummary": "youQing(10),deYiLv(20)",
+    "skillCount": 6
   },
   "30057": {
     "cardId": 30057,
@@ -54246,7 +54547,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),hintProbIncrease(20)"
+    "uniqueEffectSummary": "パワーボーナス(1),hintProbIncrease(20)",
+    "skillCount": 14
   },
   "30058": {
     "cardId": 30058,
@@ -54423,7 +54725,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),初期パワーアップ(20)"
+    "uniqueEffectSummary": "パワーボーナス(1),初期パワーアップ(20)",
+    "skillCount": 6
   },
   "30059": {
     "cardId": 30059,
@@ -54600,7 +54903,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "持久力ボーナス(1),hintProbIncrease(20)"
+    "uniqueEffectSummary": "持久力ボーナス(1),hintProbIncrease(20)",
+    "skillCount": 4
   },
   "30060": {
     "cardId": 30060,
@@ -54782,7 +55086,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "根性ボーナス(1),saiHou(5)"
+    "uniqueEffectSummary": "根性ボーナス(1),saiHou(5)",
+    "skillCount": 6
   },
   "30061": {
     "cardId": 30061,
@@ -54969,7 +55274,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "賢さボーナス(1),initialJiBan(15)"
+    "uniqueEffectSummary": "賢さボーナス(1),initialJiBan(15)",
+    "skillCount": 5
   },
   "30062": {
     "cardId": 30062,
@@ -55151,7 +55457,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期持久力アップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期持久力アップ(20)",
+    "skillCount": 9
   },
   "30063": {
     "cardId": 30063,
@@ -55333,7 +55640,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),saiHou(5)"
+    "uniqueEffectSummary": "xunLian(5),saiHou(5)",
+    "skillCount": 5
   },
   "30064": {
     "cardId": 30064,
@@ -55510,7 +55818,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),initialJiBan(15)"
+    "uniqueEffectSummary": "youQing(10),initialJiBan(15)",
+    "skillCount": 7
   },
   "30065": {
     "cardId": 30065,
@@ -55692,7 +56001,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),xunLian(5)"
+    "uniqueEffectSummary": "youQing(10),xunLian(5)",
+    "skillCount": 8
   },
   "30066": {
     "cardId": 30066,
@@ -55879,7 +56189,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),初期速度アップ(20)"
+    "uniqueEffectSummary": "xunLian(5),初期速度アップ(20)",
+    "skillCount": 4
   },
   "30067": {
     "cardId": 30067,
@@ -56074,7 +56385,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 0
   },
   "30068": {
     "cardId": 30068,
@@ -56261,7 +56573,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),saiHou(5)"
+    "uniqueEffectSummary": "ganJing(15),saiHou(5)",
+    "skillCount": 5
   },
   "30069": {
     "cardId": 30069,
@@ -56448,7 +56761,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),deYiLv(20)"
+    "uniqueEffectSummary": "xunLian(5),deYiLv(20)",
+    "skillCount": 8
   },
   "30070": {
     "cardId": 30070,
@@ -56625,7 +56939,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),initialJiBan(15)"
+    "uniqueEffectSummary": "youQing(10),initialJiBan(15)",
+    "skillCount": 4
   },
   "30071": {
     "cardId": 30071,
@@ -56812,7 +57127,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),initialJiBan(15)"
+    "uniqueEffectSummary": "パワーボーナス(1),initialJiBan(15)",
+    "skillCount": 7
   },
   "30072": {
     "cardId": 30072,
@@ -56999,7 +57315,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),initialJiBan(15)"
+    "uniqueEffectSummary": "パワーボーナス(1),initialJiBan(15)",
+    "skillCount": 6
   },
   "30073": {
     "cardId": 30073,
@@ -57181,7 +57498,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "速度ボーナス(1),deYiLv(20)"
+    "uniqueEffectSummary": "速度ボーナス(1),deYiLv(20)",
+    "skillCount": 7
   },
   "30074": {
     "cardId": 30074,
@@ -57348,7 +57666,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),saiHou(5)"
+    "uniqueEffectSummary": "youQing(10),saiHou(5)",
+    "skillCount": 5
   },
   "30075": {
     "cardId": 30075,
@@ -57525,7 +57844,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "youQing(10),持久力ボーナス(1)"
+    "uniqueEffectSummary": "youQing(10),持久力ボーナス(1)",
+    "skillCount": 6
   },
   "30076": {
     "cardId": 30076,
@@ -57712,7 +58032,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),saiHou(5)"
+    "uniqueEffectSummary": "xunLian(5),saiHou(5)",
+    "skillCount": 9
   },
   "30077": {
     "cardId": 30077,
@@ -57894,7 +58215,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)"
+    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)",
+    "skillCount": 5
   },
   "30078": {
     "cardId": 30078,
@@ -58081,7 +58403,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "ganJing(15),failRateDrop(10)"
+    "uniqueEffectSummary": "ganJing(15),failRateDrop(10)",
+    "skillCount": 7
   },
   "30079": {
     "cardId": 30079,
@@ -58258,7 +58581,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)"
+    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)",
+    "skillCount": 7
   },
   "30080": {
     "cardId": 30080,
@@ -58430,7 +58754,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": ""
+    "uniqueEffectSummary": "",
+    "skillCount": 0
   },
   "30081": {
     "cardId": 30081,
@@ -58625,7 +58950,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 0
   },
   "30082": {
     "cardId": 30082,
@@ -58815,7 +59141,8 @@
       3,
       0,
       0
-    ]
+    ],
+    "skillCount": 5
   },
   "30083": {
     "cardId": 30083,
@@ -59000,7 +59327,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30084": {
     "cardId": 30084,
@@ -59177,7 +59505,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)"
+    "uniqueEffectSummary": "xunLian(5),hintProbIncrease(20)",
+    "skillCount": 6
   },
   "30085": {
     "cardId": 30085,
@@ -59367,7 +59696,8 @@
       15,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30086": {
     "cardId": 30086,
@@ -59552,7 +59882,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30087": {
     "cardId": 30087,
@@ -59732,7 +60063,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 5
   },
   "30088": {
     "cardId": 30088,
@@ -59922,7 +60254,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30089": {
     "cardId": 30089,
@@ -60107,7 +60440,8 @@
       60,
       0,
       0
-    ]
+    ],
+    "skillCount": 5
   },
   "30090": {
     "cardId": 30090,
@@ -60297,7 +60631,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30091": {
     "cardId": 30091,
@@ -60492,7 +60827,8 @@
       3,
       0,
       0
-    ]
+    ],
+    "skillCount": 5
   },
   "30092": {
     "cardId": 30092,
@@ -60682,7 +61018,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 5
   },
   "30093": {
     "cardId": 30093,
@@ -60862,7 +61199,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 5
   },
   "30094": {
     "cardId": 30094,
@@ -61047,7 +61385,8 @@
       30,
       15,
       5
-    ]
+    ],
+    "skillCount": 6
   },
   "30095": {
     "cardId": 30095,
@@ -61232,7 +61571,8 @@
       75,
       5,
       20
-    ]
+    ],
+    "skillCount": 9
   },
   "30096": {
     "cardId": 30096,
@@ -61409,7 +61749,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),saiHou(5)"
+    "uniqueEffectSummary": "パワーボーナス(1),saiHou(5)",
+    "skillCount": 4
   },
   "30097": {
     "cardId": 30097,
@@ -61609,7 +61950,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 7
   },
   "30098": {
     "cardId": 30098,
@@ -61791,7 +62133,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "スキルポイントボーナス(1)"
+    "uniqueEffectSummary": "スキルポイントボーナス(1)",
+    "skillCount": 0
   },
   "30099": {
     "cardId": 30099,
@@ -61976,7 +62319,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30100": {
     "cardId": 30100,
@@ -62166,7 +62510,8 @@
       10,
       0,
       1
-    ]
+    ],
+    "skillCount": 6
   },
   "30101": {
     "cardId": 30101,
@@ -62351,7 +62696,8 @@
       20,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30102": {
     "cardId": 30102,
@@ -62536,7 +62882,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30103": {
     "cardId": 30103,
@@ -62721,7 +63068,8 @@
       5,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30104": {
     "cardId": 30104,
@@ -62906,7 +63254,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30105": {
     "cardId": 30105,
@@ -63093,7 +63442,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "パワーボーナス(1),initialJiBan(15)"
+    "uniqueEffectSummary": "パワーボーナス(1),initialJiBan(15)",
+    "skillCount": 6
   },
   "30106": {
     "cardId": 30106,
@@ -63278,7 +63628,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 6
   },
   "30107": {
     "cardId": 30107,
@@ -63468,7 +63819,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 10
   },
   "30108": {
     "cardId": 30108,
@@ -63663,7 +64015,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 12
   },
   "30109": {
     "cardId": 30109,
@@ -63838,7 +64191,8 @@
       10,
       0,
       1
-    ]
+    ],
+    "skillCount": 7
   },
   "30110": {
     "cardId": 30110,
@@ -64028,7 +64382,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30111": {
     "cardId": 30111,
@@ -64218,7 +64573,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30112": {
     "cardId": 30112,
@@ -64398,7 +64754,8 @@
       3,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30113": {
     "cardId": 30113,
@@ -64583,7 +64940,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 11
   },
   "30114": {
     "cardId": 30114,
@@ -64763,7 +65121,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 11
   },
   "30115": {
     "cardId": 30115,
@@ -64943,7 +65302,8 @@
       20,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30116": {
     "cardId": 30116,
@@ -65128,7 +65488,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30117": {
     "cardId": 30117,
@@ -65308,7 +65669,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30118": {
     "cardId": 30118,
@@ -65503,7 +65865,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30119": {
     "cardId": 30119,
@@ -65688,7 +66051,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 5
   },
   "30120": {
     "cardId": 30120,
@@ -65873,7 +66237,8 @@
       3,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30121": {
     "cardId": 30121,
@@ -66053,7 +66418,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30122": {
     "cardId": 30122,
@@ -66238,7 +66604,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 7
   },
   "30123": {
     "cardId": 30123,
@@ -66423,7 +66790,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 10
   },
   "30124": {
     "cardId": 30124,
@@ -66618,7 +66986,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30125": {
     "cardId": 30125,
@@ -66803,7 +67172,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30126": {
     "cardId": 30126,
@@ -66993,7 +67363,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30127": {
     "cardId": 30127,
@@ -67183,7 +67554,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 10
   },
   "30128": {
     "cardId": 30128,
@@ -67370,7 +67742,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "羁绊>=80时deYiLv(40)"
+    "uniqueEffectSummary": "羁绊>=80时deYiLv(40)",
+    "skillCount": 8
   },
   "30129": {
     "cardId": 30129,
@@ -67555,7 +67928,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 5
   },
   "30130": {
     "cardId": 30130,
@@ -67745,7 +68119,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30131": {
     "cardId": 30131,
@@ -67935,7 +68310,8 @@
       15,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30132": {
     "cardId": 30132,
@@ -68120,7 +68496,8 @@
       75,
       5,
       20
-    ]
+    ],
+    "skillCount": 7
   },
   "30133": {
     "cardId": 30133,
@@ -68310,7 +68687,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30134": {
     "cardId": 30134,
@@ -68500,7 +68878,8 @@
       4,
       5,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30135": {
     "cardId": 30135,
@@ -68690,7 +69069,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30136": {
     "cardId": 30136,
@@ -68875,7 +69255,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30137": {
     "cardId": 30137,
@@ -69065,7 +69446,8 @@
       1,
       0,
       0
-    ]
+    ],
+    "skillCount": 0
   },
   "30138": {
     "cardId": 30138,
@@ -69255,7 +69637,8 @@
       3,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30139": {
     "cardId": 30139,
@@ -69440,7 +69823,8 @@
       3,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30140": {
     "cardId": 30140,
@@ -69620,7 +70004,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30141": {
     "cardId": 30141,
@@ -69810,7 +70195,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30142": {
     "cardId": 30142,
@@ -70005,7 +70391,8 @@
       1,
       3,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30143": {
     "cardId": 30143,
@@ -70190,7 +70577,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 5
   },
   "30145": {
     "cardId": 30145,
@@ -70375,7 +70763,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30146": {
     "cardId": 30146,
@@ -70570,7 +70959,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 12
   },
   "30147": {
     "cardId": 30147,
@@ -70760,7 +71150,8 @@
       3,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30148": {
     "cardId": 30148,
@@ -70945,7 +71336,8 @@
       20,
       0,
       0
-    ]
+    ],
+    "skillCount": 10
   },
   "30149": {
     "cardId": 30149,
@@ -71140,7 +71532,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30150": {
     "cardId": 30150,
@@ -71330,7 +71723,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30151": {
     "cardId": 30151,
@@ -71520,7 +71914,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30152": {
     "cardId": 30152,
@@ -71720,7 +72115,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30153": {
     "cardId": 30153,
@@ -71915,7 +72311,8 @@
       3,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30154": {
     "cardId": 30154,
@@ -72105,7 +72502,8 @@
       1,
       3,
       0
-    ]
+    ],
+    "skillCount": 10
   },
   "30155": {
     "cardId": 30155,
@@ -72297,7 +72695,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "羁绊>=80时deYiLv(40)"
+    "uniqueEffectSummary": "羁绊>=80时deYiLv(40)",
+    "skillCount": 8
   },
   "30156": {
     "cardId": 30156,
@@ -72492,7 +72891,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30157": {
     "cardId": 30157,
@@ -72692,7 +73092,8 @@
       2,
       30,
       1
-    ]
+    ],
+    "skillCount": 7
   },
   "30158": {
     "cardId": 30158,
@@ -72877,7 +73278,8 @@
       20,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30159": {
     "cardId": 30159,
@@ -73067,7 +73469,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30160": {
     "cardId": 30160,
@@ -73262,7 +73665,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 0
   },
   "30161": {
     "cardId": 30161,
@@ -73457,7 +73861,8 @@
       1,
       41,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30162": {
     "cardId": 30162,
@@ -73642,7 +74047,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 5
   },
   "30163": {
     "cardId": 30163,
@@ -73827,7 +74233,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30164": {
     "cardId": 30164,
@@ -74022,7 +74429,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30165": {
     "cardId": 30165,
@@ -74217,7 +74625,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30166": {
     "cardId": 30166,
@@ -74402,7 +74811,8 @@
       5,
       3,
       0
-    ]
+    ],
+    "skillCount": 5
   },
   "30167": {
     "cardId": 30167,
@@ -74587,7 +74997,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30168": {
     "cardId": 30168,
@@ -74772,7 +75183,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30169": {
     "cardId": 30169,
@@ -74957,7 +75369,8 @@
       20,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30170": {
     "cardId": 30170,
@@ -75147,7 +75560,8 @@
       1,
       3,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30171": {
     "cardId": 30171,
@@ -75324,7 +75738,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "羁绊>=80时deYiLv(40)"
+    "uniqueEffectSummary": "羁绊>=80时deYiLv(40)",
+    "skillCount": 0
   },
   "30172": {
     "cardId": 30172,
@@ -75524,7 +75939,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30173": {
     "cardId": 30173,
@@ -75719,7 +76135,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30174": {
     "cardId": 30174,
@@ -75914,7 +76331,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30175": {
     "cardId": 30175,
@@ -76104,7 +76522,8 @@
       1,
       3,
       0
-    ]
+    ],
+    "skillCount": 11
   },
   "30176": {
     "cardId": 30176,
@@ -76284,7 +76703,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30177": {
     "cardId": 30177,
@@ -76479,7 +76899,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30178": {
     "cardId": 30178,
@@ -76674,7 +77095,8 @@
       10,
       2,
       15
-    ]
+    ],
+    "skillCount": 7
   },
   "30179": {
     "cardId": 30179,
@@ -76874,7 +77296,8 @@
       10,
       30,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30180": {
     "cardId": 30180,
@@ -77064,7 +77487,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 0
   },
   "30181": {
     "cardId": 30181,
@@ -77254,7 +77678,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 10
   },
   "30182": {
     "cardId": 30182,
@@ -77444,7 +77869,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30183": {
     "cardId": 30183,
@@ -77634,7 +78060,8 @@
       20,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30184": {
     "cardId": 30184,
@@ -77824,7 +78251,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30185": {
     "cardId": 30185,
@@ -78014,7 +78442,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30186": {
     "cardId": 30186,
@@ -78199,7 +78628,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30187": {
     "cardId": 30187,
@@ -78389,7 +78819,8 @@
       1,
       2,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30188": {
     "cardId": 30188,
@@ -78589,7 +79020,8 @@
       60,
       0,
       0
-    ]
+    ],
+    "skillCount": 0
   },
   "30189": {
     "cardId": 30189,
@@ -78774,7 +79206,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30190": {
     "cardId": 30190,
@@ -78959,7 +79392,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 4
   },
   "30191": {
     "cardId": 30191,
@@ -79149,7 +79583,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30192": {
     "cardId": 30192,
@@ -79339,7 +79774,8 @@
       1,
       5,
       1
-    ]
+    ],
+    "skillCount": 6
   },
   "30193": {
     "cardId": 30193,
@@ -79524,7 +79960,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30194": {
     "cardId": 30194,
@@ -79714,7 +80151,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30195": {
     "cardId": 30195,
@@ -79909,7 +80347,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 7
   },
   "30196": {
     "cardId": 30196,
@@ -80104,7 +80543,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30197": {
     "cardId": 30197,
@@ -80294,7 +80734,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30198": {
     "cardId": 30198,
@@ -80494,7 +80935,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30199": {
     "cardId": 30199,
@@ -80684,7 +81126,8 @@
       20,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30200": {
     "cardId": 30200,
@@ -80874,7 +81317,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30201": {
     "cardId": 30201,
@@ -81074,7 +81518,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30202": {
     "cardId": 30202,
@@ -81264,7 +81709,8 @@
       1,
       5,
       1
-    ]
+    ],
+    "skillCount": 7
   },
   "30203": {
     "cardId": 30203,
@@ -81454,7 +81900,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30204": {
     "cardId": 30204,
@@ -81649,7 +82096,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30205": {
     "cardId": 30205,
@@ -81834,7 +82282,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30206": {
     "cardId": 30206,
@@ -82024,7 +82473,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 6
   },
   "30207": {
     "cardId": 30207,
@@ -82224,7 +82674,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 0
   },
   "30208": {
     "cardId": 30208,
@@ -82414,7 +82865,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30209": {
     "cardId": 30209,
@@ -82609,7 +83061,8 @@
       1,
       6,
       2
-    ]
+    ],
+    "skillCount": 9
   },
   "30210": {
     "cardId": 30210,
@@ -82804,7 +83257,8 @@
       1,
       3,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30211": {
     "cardId": 30211,
@@ -83004,7 +83458,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 9
   },
   "30212": {
     "cardId": 30212,
@@ -83194,7 +83649,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 5
   },
   "30213": {
     "cardId": 30213,
@@ -83376,7 +83832,8 @@
       }
     ],
     "uniqueEffectType": 0,
-    "uniqueEffectSummary": "初期パワーアップ(20),スキルポイントボーナス(1)"
+    "uniqueEffectSummary": "初期パワーアップ(20),スキルポイントボーナス(1)",
+    "skillCount": 5
   },
   "30214": {
     "cardId": 30214,
@@ -83571,7 +84028,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30215": {
     "cardId": 30215,
@@ -83766,7 +84224,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30216": {
     "cardId": 30216,
@@ -83951,7 +84410,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30217": {
     "cardId": 30217,
@@ -84141,7 +84601,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30218": {
     "cardId": 30218,
@@ -84341,7 +84802,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30219": {
     "cardId": 30219,
@@ -84536,7 +84998,8 @@
       1,
       6,
       1
-    ]
+    ],
+    "skillCount": 7
   },
   "30220": {
     "cardId": 30220,
@@ -84726,7 +85189,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30221": {
     "cardId": 30221,
@@ -84916,7 +85380,8 @@
       1,
       6,
       1
-    ]
+    ],
+    "skillCount": 7
   },
   "30222": {
     "cardId": 30222,
@@ -85111,7 +85576,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 9
   },
   "30223": {
     "cardId": 30223,
@@ -85301,7 +85767,8 @@
       4,
       5,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30224": {
     "cardId": 30224,
@@ -85496,7 +85963,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 7
   },
   "30225": {
     "cardId": 30225,
@@ -85681,7 +86149,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 6
   },
   "30226": {
     "cardId": 30226,
@@ -85876,7 +86345,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30227": {
     "cardId": 30227,
@@ -86076,7 +86546,8 @@
       1,
       3,
       0
-    ]
+    ],
+    "skillCount": 10
   },
   "30228": {
     "cardId": 30228,
@@ -86266,7 +86737,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30229": {
     "cardId": 30229,
@@ -86466,7 +86938,8 @@
       1,
       3,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30230": {
     "cardId": 30230,
@@ -86661,7 +87134,8 @@
       3,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30231": {
     "cardId": 30231,
@@ -86846,7 +87320,8 @@
       1,
       5,
       1
-    ]
+    ],
+    "skillCount": 6
   },
   "30232": {
     "cardId": 30232,
@@ -87041,7 +87516,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30233": {
     "cardId": 30233,
@@ -87241,7 +87717,8 @@
       1,
       7,
       1
-    ]
+    ],
+    "skillCount": 9
   },
   "30234": {
     "cardId": 30234,
@@ -87436,7 +87913,8 @@
       1,
       5,
       1
-    ]
+    ],
+    "skillCount": 10
   },
   "30235": {
     "cardId": 30235,
@@ -87621,7 +88099,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30236": {
     "cardId": 30236,
@@ -87816,7 +88295,8 @@
       2,
       30,
       1
-    ]
+    ],
+    "skillCount": 7
   },
   "30237": {
     "cardId": 30237,
@@ -88011,7 +88491,8 @@
       1,
       6,
       1
-    ]
+    ],
+    "skillCount": 9
   },
   "30238": {
     "cardId": 30238,
@@ -88211,7 +88692,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30239": {
     "cardId": 30239,
@@ -88396,7 +88878,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30240": {
     "cardId": 30240,
@@ -88581,7 +89064,8 @@
       1,
       6,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30241": {
     "cardId": 30241,
@@ -88776,7 +89260,8 @@
       1,
       41,
       1
-    ]
+    ],
+    "skillCount": 0
   },
   "30242": {
     "cardId": 30242,
@@ -88966,7 +89451,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 10
   },
   "30243": {
     "cardId": 30243,
@@ -89156,7 +89642,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30244": {
     "cardId": 30244,
@@ -89351,7 +89838,8 @@
       2,
       6,
       1
-    ]
+    ],
+    "skillCount": 11
   },
   "30245": {
     "cardId": 30245,
@@ -89546,7 +90034,8 @@
       1,
       5,
       1
-    ]
+    ],
+    "skillCount": 10
   },
   "30246": {
     "cardId": 30246,
@@ -89741,7 +90230,8 @@
       1,
       5,
       1
-    ]
+    ],
+    "skillCount": 10
   },
   "30247": {
     "cardId": 30247,
@@ -89926,7 +90416,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30248": {
     "cardId": 30248,
@@ -90126,7 +90617,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 10
   },
   "30249": {
     "cardId": 30249,
@@ -90321,7 +90813,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 10
   },
   "30250": {
     "cardId": 30250,
@@ -90516,7 +91009,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 10
   },
   "30251": {
     "cardId": 30251,
@@ -90706,7 +91200,8 @@
       1,
       6,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30252": {
     "cardId": 30252,
@@ -90901,7 +91396,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 10
   },
   "30253": {
     "cardId": 30253,
@@ -91096,7 +91592,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 10
   },
   "30254": {
     "cardId": 30254,
@@ -91296,7 +91793,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 9
   },
   "30255": {
     "cardId": 30255,
@@ -91491,7 +91989,8 @@
       1,
       7,
       1
-    ]
+    ],
+    "skillCount": 7
   },
   "30256": {
     "cardId": 30256,
@@ -91681,7 +92180,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30257": {
     "cardId": 30257,
@@ -91876,7 +92376,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 0
   },
   "30258": {
     "cardId": 30258,
@@ -92071,7 +92572,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 10
   },
   "30259": {
     "cardId": 30259,
@@ -92261,7 +92763,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 7
   },
   "30260": {
     "cardId": 30260,
@@ -92456,7 +92959,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30261": {
     "cardId": 30261,
@@ -92656,7 +93160,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 11
   },
   "30262": {
     "cardId": 30262,
@@ -92846,7 +93351,8 @@
       1,
       6,
       1
-    ]
+    ],
+    "skillCount": 10
   },
   "30263": {
     "cardId": 30263,
@@ -93036,7 +93542,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30264": {
     "cardId": 30264,
@@ -93231,7 +93738,8 @@
       1,
       2,
       0
-    ]
+    ],
+    "skillCount": 12
   },
   "30265": {
     "cardId": 30265,
@@ -93426,7 +93934,8 @@
       1,
       5,
       1
-    ]
+    ],
+    "skillCount": 11
   },
   "30266": {
     "cardId": 30266,
@@ -93621,7 +94130,8 @@
       1,
       7,
       1
-    ]
+    ],
+    "skillCount": 6
   },
   "30267": {
     "cardId": 30267,
@@ -93816,7 +94326,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 13
   },
   "30268": {
     "cardId": 30268,
@@ -94016,7 +94527,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 10
   },
   "30269": {
     "cardId": 30269,
@@ -94196,7 +94708,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 7
   },
   "30270": {
     "cardId": 30270,
@@ -94386,7 +94899,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 11
   },
   "30271": {
     "cardId": 30271,
@@ -94581,7 +95095,8 @@
       1,
       5,
       1
-    ]
+    ],
+    "skillCount": 12
   },
   "30272": {
     "cardId": 30272,
@@ -94776,7 +95291,8 @@
       1,
       5,
       1
-    ]
+    ],
+    "skillCount": 10
   },
   "30273": {
     "cardId": 30273,
@@ -94966,7 +95482,8 @@
       15,
       5,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30274": {
     "cardId": 30274,
@@ -95161,7 +95678,8 @@
       20,
       0,
       0
-    ]
+    ],
+    "skillCount": 11
   },
   "30275": {
     "cardId": 30275,
@@ -95356,7 +95874,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 12
   },
   "30276": {
     "cardId": 30276,
@@ -95551,7 +96070,8 @@
       5,
       28,
       5
-    ]
+    ],
+    "skillCount": 0
   },
   "30277": {
     "cardId": 30277,
@@ -95746,7 +96266,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 12
   },
   "30278": {
     "cardId": 30278,
@@ -95941,7 +96462,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 13
   },
   "30279": {
     "cardId": 30279,
@@ -96136,7 +96658,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 11
   },
   "30280": {
     "cardId": 30280,
@@ -96331,7 +96854,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30281": {
     "cardId": 30281,
@@ -96526,7 +97050,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 12
   },
   "30282": {
     "cardId": 30282,
@@ -96721,7 +97246,8 @@
       1,
       8,
       5
-    ]
+    ],
+    "skillCount": 13
   },
   "30283": {
     "cardId": 30283,
@@ -96916,7 +97442,8 @@
       1,
       33,
       1
-    ]
+    ],
+    "skillCount": 14
   },
   "30284": {
     "cardId": 30284,
@@ -97106,7 +97633,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30285": {
     "cardId": 30285,
@@ -97301,7 +97829,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 12
   },
   "30286": {
     "cardId": 30286,
@@ -97496,7 +98025,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 12
   },
   "30287": {
     "cardId": 30287,
@@ -97691,7 +98221,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 12
   },
   "30288": {
     "cardId": 30288,
@@ -97881,7 +98412,8 @@
       15,
       3,
       1
-    ]
+    ],
+    "skillCount": 9
   },
   "30289": {
     "cardId": 30289,
@@ -98081,7 +98613,8 @@
       5,
       33,
       1
-    ]
+    ],
+    "skillCount": 13
   },
   "30290": {
     "cardId": 30290,
@@ -98281,7 +98814,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 0
   },
   "30291": {
     "cardId": 30291,
@@ -98466,7 +99000,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 9
   },
   "30292": {
     "cardId": 30292,
@@ -98661,7 +99196,8 @@
       10,
       5,
       1
-    ]
+    ],
+    "skillCount": 13
   },
   "30293": {
     "cardId": 30293,
@@ -98856,7 +99392,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 12
   },
   "30294": {
     "cardId": 30294,
@@ -99051,7 +99588,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 12
   },
   "30295": {
     "cardId": 30295,
@@ -99241,7 +99779,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30296": {
     "cardId": 30296,
@@ -99436,7 +99975,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 14
   },
   "30297": {
     "cardId": 30297,
@@ -99631,7 +100171,8 @@
       0,
       0,
       0
-    ]
+    ],
+    "skillCount": 13
   },
   "30298": {
     "cardId": 30298,
@@ -99826,7 +100367,8 @@
       1,
       33,
       1
-    ]
+    ],
+    "skillCount": 14
   },
   "30299": {
     "cardId": 30299,
@@ -100011,7 +100553,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30300": {
     "cardId": 30300,
@@ -100206,7 +100749,8 @@
       1,
       8,
       5
-    ]
+    ],
+    "skillCount": 13
   },
   "30301": {
     "cardId": 30301,
@@ -100401,7 +100945,8 @@
       1,
       8,
       5
-    ]
+    ],
+    "skillCount": 12
   },
   "30302": {
     "cardId": 30302,
@@ -100596,7 +101141,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 13
   },
   "30303": {
     "cardId": 30303,
@@ -100786,7 +101332,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 9
   },
   "30304": {
     "cardId": 30304,
@@ -100981,7 +101528,8 @@
       1,
       6,
       1
-    ]
+    ],
+    "skillCount": 11
   },
   "30305": {
     "cardId": 30305,
@@ -101176,7 +101724,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 0
   },
   "30306": {
     "cardId": 30306,
@@ -101376,7 +101925,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 13
   },
   "30307": {
     "cardId": 30307,
@@ -101571,7 +102121,8 @@
       1,
       8,
       5
-    ]
+    ],
+    "skillCount": 12
   },
   "30308": {
     "cardId": 30308,
@@ -101766,7 +102317,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 11
   },
   "30309": {
     "cardId": 30309,
@@ -101961,7 +102513,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30310": {
     "cardId": 30310,
@@ -102156,7 +102709,8 @@
       1,
       8,
       5
-    ]
+    ],
+    "skillCount": 6
   },
   "30311": {
     "cardId": 30311,
@@ -102351,7 +102905,8 @@
       1,
       8,
       5
-    ]
+    ],
+    "skillCount": 12
   },
   "30312": {
     "cardId": 30312,
@@ -102546,7 +103101,8 @@
       1,
       33,
       1
-    ]
+    ],
+    "skillCount": 15
   },
   "30313": {
     "cardId": 30313,
@@ -102736,7 +103292,8 @@
       1,
       6,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30314": {
     "cardId": 30314,
@@ -102931,7 +103488,8 @@
       2,
       0,
       0
-    ]
+    ],
+    "skillCount": 10
   },
   "30315": {
     "cardId": 30315,
@@ -103126,7 +103684,8 @@
       10,
       5,
       1
-    ]
+    ],
+    "skillCount": 12
   },
   "30316": {
     "cardId": 30316,
@@ -103316,7 +103875,8 @@
       1,
       30,
       1
-    ]
+    ],
+    "skillCount": 9
   },
   "30317": {
     "cardId": 30317,
@@ -103511,7 +104071,8 @@
       10,
       33,
       1
-    ]
+    ],
+    "skillCount": 14
   },
   "30318": {
     "cardId": 30318,
@@ -103701,7 +104262,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 8
   },
   "30319": {
     "cardId": 30319,
@@ -103901,7 +104463,8 @@
       5,
       33,
       1
-    ]
+    ],
+    "skillCount": 15
   },
   "30320": {
     "cardId": 30320,
@@ -104101,7 +104664,8 @@
       10,
       7,
       1
-    ]
+    ],
+    "skillCount": 13
   },
   "30321": {
     "cardId": 30321,
@@ -104291,7 +104855,8 @@
       5,
       5,
       1
-    ]
+    ],
+    "skillCount": 8
   },
   "30322": {
     "cardId": 30322,
@@ -104486,7 +105051,8 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 14
   },
   "30323": {
     "cardId": 30323,
@@ -104686,7 +105252,8 @@
       1,
       4,
       1
-    ]
+    ],
+    "skillCount": 0
   },
   "30324": {
     "cardId": 30324,
@@ -104881,6 +105448,7 @@
       10,
       0,
       0
-    ]
+    ],
+    "skillCount": 14
   }
 }
