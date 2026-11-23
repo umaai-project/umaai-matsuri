@@ -18,6 +18,8 @@
 - [ ] **教诲估值窗口级 horizon**：`value.rs` 改用 9–12 回合窗口级 horizon 与合宿感知 `slot_value`，先做全 120 vs Top-16 召回率/遗漏收益对照。
 - [ ] **`advice.route` 先验与终局边际重扫**：下调过强先验并评估 `pt_favor_rate` 退火，重录基线。
 - [ ] **锁位 CRN 余项**：只剩「有稽古 vs 无稽古」的结构差异——友人补位与访客落位走不同规则；要继续闭合需改规则本身。
+- [ ] **hint 折算公式收尾（510 → 0 已实验）**：真机 6341/6342 skillplan 支持去 510；待补无切/切者局与搜索档更多局后重录基线并定稿（见 `hint_formula.md`）。
+- [ ] **hint 产出偏差**：搜索档 H 420.4/412.4 vs 真机 393/363；`hint_efficiency` 0.84 可对齐 6341 卡组、6342 仍 +24，待更多真机局再定是否调整。
 - [ ] **搜索失败与新鲜度门禁**：失败帧可重试；搜索结果绑定 generation/state_hash；rollout 失败结果标记 invalid/degraded，不直接正常排名。
 - [ ] **训练/协议验算守门**：训练帧 lower/upper 必须为 7 项；验算同时比较收益和 failure_rate；`campRemain` / `assistSupportLeft` 区分 None 与 0。
 - [ ] **`max_depth` 叶估与去假令牌**：需要截断叶估时在引擎侧接线；PendingDecision/step+choose 是否重构另行拍板。

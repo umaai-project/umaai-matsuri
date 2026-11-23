@@ -75,8 +75,14 @@ impl AiTrace {
         if self.written {
             return Ok(());
         }
+        let cfg = &output.game.config;
+        let qie = match cfg.pre.qie {
+            matsuri_core::Qie::None => "none",
+            matsuri_core::Qie::Xiaoqie => "xiaoqie",
+            matsuri_core::Qie::Qiezhe => "qiezhe",
+        };
         let payload = serde_json::json!({
-            "schema": 1,
+            "schema": 2,
             "game": output.epoch,
             "turn": output.view.turn.turn,
             "firstTurn": self.first_turn,
@@ -84,6 +90,12 @@ impl AiTrace {
             "expected": self.expected,
             "rank": self.rank,
             "mode": mode,
+            "params": {
+                "ptFavorRate": cfg.deck.trainer.pt_favor_rate,
+                "searchN": cfg.search.search_n,
+                "qie": qie,
+                "hintEfficiency": cfg.pre.hint_efficiency,
+            },
             "luck": self
                 .luck
                 .iter()
