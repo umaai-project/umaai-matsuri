@@ -15,14 +15,28 @@
 use anyhow::Result;
 use rand::Rng;
 use umaai_core::Data;
-use umasim::game::{Game, Person, PersonType, sample_bucket};
+use umasim::game::{Game, Person, PersonType};
 
 use super::MatsuriGame;
 use super::person::PersonOrigin;
+use umasim::game::{bucket_of, sample_bucket_once};
+
 use crate::diag;
 
 /// 每个训练位的人数上限（引擎通用口径）
 const TRAIN_CAP: usize = 5;
+
+/// 等权选一个下标，**恒定消费 1 个随机字**（`len == 0` 时也消费并返回 `None`）
+///
+/// 剧本侧不能直接用 `random_range(0..len)`：它的字数随 `len` 与拒绝采样变化，
+/// 而 `len` 依赖板（锁位预放会占掉候选），会让后续人头整体错位。
+fn pick_index(len: usize, rng: &mut impl Rng) -> Option<usize> {
+    let word = rng.next_u64();
+    if len == 0 || len > TRAIN_CAP {
+        return None;
+    }
+    bucket_of(word, &[1i32; TRAIN_CAP][..len])
+}
 
 impl MatsuriGame {
     /// 本回合是否需要分布（比赛 / 强制休息回合不训练，不分布）
@@ -30,40 +44,23 @@ impl MatsuriGame {
         !self.plan.race && !self.forced_rest
     }
 
-    /// 锁位分支补消费：按未锁位时 `Game::distribute_person` 的抽签次数推进共享随机流
+    /// 锁位分支补消费：按引擎同一口径推进共享随机流（不在判定 1 次 + 落位固定 10 次）
     ///
-    /// 只推进随机流、不改分布：让后续人头在「某演目满槽锁位」与「未满槽」两条 rollout
-    /// 分支上抽到同一组随机数，恢复 CRN 配对；锁位本身仍由 `place_locked` 固定落位。
+    /// 只推进随机流、不改分布，且**不读分布板**：引擎落位已改为「可行槽单次采样」，
+    /// 每人恒定 1 个字，所以锁位与否不再改变后面人头的随机位置。
     fn burn_locked_person(&mut self, person_index: usize, rng: &mut impl Rng) -> Result<()> {
         let train_type = self.persons[person_index].train_type() as usize;
-        let is_friend = self.persons[person_index].is_friend();
         let absent_rate = self.absent_weight(person_index);
         if absent_rate > 0 && rng.random_bool(absent_rate as f64 / (500 + absent_rate) as f64) {
             return Ok(());
         }
-        let mut weights = [100, 100, 100, 100, 100];
+        // 权重与引擎同口径（保留 `deyilv` 的副作用），落位只消费 **1 个字**；
+        // **不读分布板**——锁位与否不再改变后续人头的随机位置。
+        let mut weights = [100i32; 5];
         if train_type <= 4 {
             weights[train_type] += self.deyilv(person_index as i32) as i32;
         }
-        let mut retries = 0;
-        while retries < 10 {
-            let train = sample_bucket(&weights, rng)?;
-            retries += 1;
-            // 与 distribute_person 的落位校验同口径；锁位分支只消费随机、不写入分布
-            if self.base.distribution[train].len() >= TRAIN_CAP
-                || self.base.distribution[train].contains(&(person_index as i32))
-            {
-                continue;
-            }
-            if is_friend
-                && self.base.distribution[train]
-                    .iter()
-                    .any(|index| self.persons[*index as usize].is_friend())
-            {
-                continue;
-            }
-            break;
-        }
+        let _ = sample_bucket_once(&weights, rng);
         Ok(())
     }
 
@@ -225,15 +222,16 @@ impl MatsuriGame {
                 len += 1;
             }
         }
-        if len == 0 {
-            return false;
-        }
-        // 与引擎 `distribute_person` 同口径：先判不在（理事长 / 记者 absent_weight = 200）
+        // 与引擎 `distribute_person` 同口径：先判不在（理事长 / 记者 absent_weight = 200）；
+        // 无论有无可用位都消费固定字数，保证消费量与板无关。
         let absent = self.absent_weight(person_index);
-        if absent > 0 && rng.random_bool(f64::from(absent) / f64::from(500 + absent)) {
+        let absent_hit = absent > 0 && rng.random_bool(f64::from(absent) / f64::from(500 + absent));
+        let Some(pick) = pick_index(len, rng) else {
+            return false;
+        };
+        if absent_hit {
             return true;
         }
-        let pick = rng.random_range(0..len);
         self.base.distribution[allowed[pick]].push(person_index as i32);
         true
     }
@@ -266,10 +264,9 @@ impl MatsuriGame {
                     len += 1;
                 }
             }
-            if len == 0 {
+            let Some(pick) = pick_index(len, rng) else {
                 return Ok(());
-            }
-            let pick = rng.random_range(0..len);
+            };
             let train = empty[pick];
             self.base.distribution[train].push(friend_index as i32);
             diag!("【分布】T{} 吾妻补位 → 训练位{}", self.turn(), train);
@@ -339,10 +336,9 @@ impl MatsuriGame {
                 len += 1;
             }
         }
-        if len == 0 {
+        let Some(pick) = pick_index(len, rng) else {
             return;
-        }
-        let pick = rng.random_range(0..len);
+        };
         let train = candidates[pick];
         self.base.distribution[train].push(person_index as i32);
         diag!(
@@ -420,9 +416,10 @@ impl MatsuriGame {
 
 #[cfg(test)]
 mod tests {
+    use rand::RngCore;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
-    use umasim::game::{Game, Person, PersonType};
+    use umasim::game::{Game, Person, PersonType, bucket_of};
 
     use super::*;
 
@@ -700,45 +697,444 @@ mod tests {
         assert!(!game.persons()[npc].hint(), "神驹不产生灵感图标");
     }
 
-    /// 演目满槽锁位不应改变其他人头的随机落位（人头级独立流 / CRN）
+    /// 回退只允许发生在**意向槽不可行**时：意向槽两侧都可行时，落位必须一致
+    ///
+    /// 对照取「两个都含稽古」的板（只差多亮一个演目），保证友人 / 访客走同一条路径、
+    /// 消费严格对齐；此时任何一个落位差异都只能来自回退，能被精确定位。
     #[test]
-    fn locked_act_keeps_other_person_placement_aligned() {
+    fn fallback_only_when_intended_slot_blocked() -> Result<()> {
         let mut base = crate::testing::sample_game();
         base.base.turn = 10;
         base.plan = base.derive_plan();
         base.set_rule_master(42);
 
-        let mut locked = base.clone();
-        locked.acts.gauge[0] = locked.act_gauge_max();
-        let mut open = base.clone();
-        open.acts.gauge[0] = 0;
+        let mut one = base.clone();
+        one.acts.gauge = [one.act_gauge_max(), 0, 0, 0, 0];
+        let mut two = base.clone();
+        two.acts.gauge = [two.act_gauge_max(), two.act_gauge_max(), 0, 0, 0];
 
-        let mut rng_a = StdRng::seed_from_u64(1);
-        let mut rng_b = StdRng::seed_from_u64(1);
-        locked.distribute_round(&mut rng_a).expect("锁位分布失败");
-        open.distribute_round(&mut rng_b).expect("普通分布失败");
+        let mut compared = 0usize;
+        let mut fallbacks = 0usize;
+        let mut placed = 0usize;
+        for seed in 0..64 {
+            let a = trace_round(one.clone(), seed)?;
+            let b = trace_round(two.clone(), seed)?;
+            for index in 0..base.persons.len() {
+                // 两个演目的担当本人允许不同（一个被锁、一个正常抽）
+                if matches!(base.persons[index].act, Some(0) | Some(1)) {
+                    continue;
+                }
+                if !base.person_is_available(index) {
+                    continue;
+                }
+                let (Some(x), Some(y)) = (a.draws[index].as_ref(), b.draws[index].as_ref()) else {
+                    continue;
+                };
+                // 只有消费对齐、两侧都出现的人头才可比；结构差异导致的错位另行统计
+                if x.absent || y.absent || x.start != y.start {
+                    continue;
+                }
+                assert_eq!(
+                    x.intended, y.intended,
+                    "seed={seed} p={index}: 同一个字必须给出同一意向槽"
+                );
+                if x.intended_feasible && y.intended_feasible {
+                    assert_eq!(
+                        x.slot, y.slot,
+                        "seed={seed} p={index}: 意向槽两侧都可行，不得回退"
+                    );
+                } else {
+                    fallbacks += 1;
+                }
+                placed += usize::from(x.slot.is_some() && y.slot.is_some());
+                compared += 1;
+            }
+        }
+        assert!(compared > 0, "对照为空，测试无意义");
+        assert!(fallbacks > 0, "未覆盖回退分支：e000");
+        assert_eq!(placed, compared, "两侧都应落位（不得因手气差消失）");
+        println!("focused compared={compared} fallback_cases={fallbacks}");
+        Ok(())
+    }
 
-        let person = base
-            .persons
+    use umaai_core::rng::TurnFixedRng;
+
+    #[derive(Debug)]
+    struct Draws {
+        start: u64,
+        absent: bool,
+        /// 意向槽：同一个字在固定权重上的映射（与板无关）
+        intended: Option<usize>,
+        /// 意向槽在本分支是否可行；不可行才允许回退
+        intended_feasible: bool,
+        /// 实际落入的槽（`None` = 没有可行槽，本回合不出现）
+        slot: Option<usize>,
+        end: u64,
+    }
+
+    impl Draws {
+        fn accepted(&self) -> Option<usize> {
+            self.slot
+        }
+
+        /// 结算后是否“消失”（没有可行槽）；不再有拒绝重抽
+        fn rejected(&self) -> usize {
+            usize::from(self.slot.is_none())
+        }
+    }
+
+    // 在随机流的副本上重建语义：与生产同口径（不在 1 字 + 可行槽采样 1 字）。
+    // 计数器差值与“抽签次数”不一定相等，所以这里逐步重放并核对 end。
+    fn probe_draws(g: &mut MatsuriGame, i: usize, mut rng: TurnFixedRng) -> Result<Draws> {
+        let start = rng.counter();
+        let w = g.absent_weight(i);
+        let absent = w > 0 && rng.random_bool(f64::from(w) / f64::from(500 + w));
+        let mut slot = None;
+        let mut intended = None;
+        let mut intended_feasible = false;
+        if !absent {
+            let mut weights = [100i32; 5];
+            if let Some(w) = weights.get_mut(g.persons[i].train_type() as usize) {
+                *w += g.deyilv(i as i32) as i32;
+            }
+            let mut feasible = weights;
+            for (train, weight) in feasible.iter_mut().enumerate() {
+                let row = &g.distribution()[train];
+                let blocked = row.len() >= TRAIN_CAP
+                    || row.contains(&(i as i32))
+                    || (g.persons[i].is_friend() && g.has_social_person(train));
+                if blocked {
+                    *weight = 0;
+                }
+            }
+            // 与生产同口径：先按固定权重定「意向槽」，不可行才用同一个字回退
+            let word = rng.next_u64();
+            intended = bucket_of(word, &weights);
+            intended_feasible = intended.is_some_and(|train| feasible[train] > 0);
+            slot = match intended {
+                Some(train) if feasible[train] > 0 => Some(train),
+                _ => bucket_of(word, &feasible),
+            };
+        }
+        Ok(Draws {
+            start,
+            absent,
+            intended,
+            intended_feasible,
+            slot,
+            end: rng.counter(),
+        })
+    }
+
+    fn position(g: &MatsuriGame, i: usize) -> Option<usize> {
+        g.distribution()
             .iter()
-            .enumerate()
-            .find(|(index, person)| {
-                person.person_type() == PersonType::Card
-                    && person.act != Some(0)
-                    && base.person_is_available(*index)
-            })
-            .map(|(index, _)| index)
-            .expect("非演目 0 的支援卡");
-        let slot = |game: &MatsuriGame| {
-            game.base
-                .distribution
-                .iter()
-                .position(|row| row.contains(&(person as i32)))
-        };
+            .position(|s| s.contains(&(i as i32)))
+    }
+
+    struct RoundTrace {
+        draws: Vec<Option<Draws>>,
+        positions: Vec<Option<usize>>,
+        before_guests: u64,
+        after_guests: u64,
+        end: u64,
+    }
+
+    // Replay only the dispatch order. Actual placement and burn use production
+    // routines. Anchor every replay to an independent, uninstrumented full call.
+    fn trace_round(mut g: MatsuriGame, seed: u64) -> Result<RoundTrace> {
+        g.set_rule_master(seed);
+        let mut rng = g.base.take_rule_streams()?.turn_fixed;
+        let mut real = g.clone();
+        let mut real_rng = rng;
+        Game::distribute_all(&mut real, &mut real_rng)?;
+        let mut repeat = g.clone();
+        let mut repeat_rng = rng;
+        Game::distribute_all(&mut repeat, &mut repeat_rng)?;
         assert_eq!(
-            slot(&locked),
-            slot(&open),
-            "锁位不应把其他人头的随机落位整体错位"
+            real.distribution(),
+            repeat.distribution(),
+            "A/A seed={seed}"
         );
+        assert_eq!(real_rng, repeat_rng, "A/A seed={seed}");
+        assert!(g.needs_distribution());
+        g.reset_distribution();
+        let practice = g.practice_acts();
+        let mask = g.practice_train_mask(&practice);
+        let keiko = mask.contains(&true);
+        g.place_locked(&practice);
+        let friend = g.friend_person_index();
+        let mut draws: Vec<_> = (0..g.persons.len()).map(|_| None).collect();
+        if keiko {
+            g.place_friend_filler(&mask, &mut rng)?;
+        }
+        let before_guests = rng.counter();
+        for ty in [PersonType::Yayoi, PersonType::Reporter] {
+            for i in 0..g.persons.len() {
+                if g.persons[i].person_type() == ty && g.person_is_available(i) {
+                    g.place_guest_outside_practice(i, &mask, &mut rng);
+                }
+            }
+        }
+        let after_guests = rng.counter();
+        for ty in [PersonType::Card, PersonType::Npc] {
+            for (i, record) in draws.iter_mut().enumerate() {
+                if Some(i) == friend
+                    || g.persons[i].person_type() != ty
+                    || !g.person_is_available(i)
+                {
+                    continue;
+                }
+                let trace = probe_draws(&mut g, i, rng)?;
+                if g.persons[i].act.is_some_and(|a| practice[a]) {
+                    let before = g.distribution().clone();
+                    g.burn_locked_person(i, &mut rng)?;
+                    assert_eq!(&before, g.distribution());
+                } else {
+                    let placed = Game::distribute_person(&mut g, i as i32, true, &mut rng)?;
+                    assert_eq!(usize::try_from(placed).ok(), trace.accepted());
+                }
+                assert_eq!(trace.end, rng.counter(), "seed={seed} person={i}");
+                *record = Some(trace);
+            }
+        }
+        if !keiko {
+            if let Some(i) = friend.filter(|&i| g.person_is_available(i)) {
+                draws[i] = Some(probe_draws(&mut g, i, rng)?);
+            }
+            g.place_friend_filler(&mask, &mut rng)?;
+            if let Some((i, trace)) = friend.and_then(|i| draws[i].as_ref().map(|t| (i, t))) {
+                assert_eq!(
+                    (trace.end, trace.accepted()),
+                    (rng.counter(), position(&g, i))
+                );
+            }
+        }
+        g.place_splits(&practice, &mut rng)?;
+        assert_eq!(g.distribution(), real.distribution(), "seed={seed}");
+        assert_eq!(rng, real_rng, "seed={seed}");
+        Ok(RoundTrace {
+            draws,
+            positions: (0..g.persons.len()).map(|i| position(&real, i)).collect(),
+            before_guests,
+            after_guests,
+            end: real_rng.counter(),
+        })
+    }
+
+    /// 描述共享回合流在当前实现下的行为；分叉数量不是需要维持的契约。
+    #[test]
+    #[ignore = "paired seed sweep; run explicitly with --include-ignored --nocapture"]
+    fn crn_paired_round_sweep() -> Result<()> {
+        const N: u64 = 1024;
+        let fixture = crate::testing::sample_game();
+        for (name, turn, open_mask, lock_mask) in [
+            ("early_synthetic", 0, 0, 1),
+            ("one", 20, 0, 1),
+            ("two", 20, 1, 3),
+            ("all", 20, 0, 31),
+            ("capacity", 20, 1, 3),
+        ] {
+            let mut base = fixture.clone();
+            base.turn = turn;
+            base.plan = base.derive_plan();
+            if name == "capacity" {
+                // Synthetic stress: five available members of act 1 (newly locked).
+                let ids: Vec<_> = (0..base.persons.len())
+                    .filter(|&i| base.persons[i].act.is_some() && base.person_is_available(i))
+                    .take(TRAIN_CAP)
+                    .collect();
+                assert_eq!(ids.len(), TRAIN_CAP);
+                for p in &mut base.persons {
+                    if p.act == Some(1) {
+                        p.act = Some(0);
+                    }
+                }
+                for i in ids {
+                    base.persons[i].act = Some(1);
+                }
+            }
+            let branch = |mask: u32| {
+                let mut g = base.clone();
+                g.acts.gauge = std::array::from_fn(|i| {
+                    if mask & (1 << i) != 0 {
+                        g.act_gauge_max()
+                    } else {
+                        0
+                    }
+                });
+                assert_eq!(
+                    g.practice_acts(),
+                    std::array::from_fn(|i| mask & (1 << i) != 0)
+                );
+                g
+            };
+            let (open, locked) = (branch(open_mask), branch(lock_mask));
+            let mut terminal = 0;
+            let mut shifted = 0;
+            let mut pos_only = 0;
+            let mut common = 0;
+            let mut both_drew_slot = 0;
+            let mut entry_diff = 0;
+            let mut position_diff = 0;
+            let mut absent_diff = 0;
+            let mut slot_diff = 0;
+            let mut retry_diff = 0;
+            let mut first_cursor = None;
+            let mut first_pos = None;
+            let mut first_retry = None;
+            let mut first_absent = None;
+            for seed in 0..N {
+                let a = trace_round(open.clone(), seed)?;
+                let b = trace_round(locked.clone(), seed)?;
+                let mut boundary_shift = a.before_guests != b.before_guests
+                    || a.after_guests != b.after_guests
+                    || a.end != b.end;
+                for (i, (x, y)) in a.draws.iter().zip(&b.draws).enumerate() {
+                    let (Some(x), Some(y)) = (x, y) else { continue };
+                    boundary_shift |= x.start != y.start || x.end != y.end;
+                    if x.start == y.start && x.rejected() != y.rejected() && first_retry.is_none() {
+                        first_retry = Some(format!("seed={seed} p={i} {x:?} -> {y:?}"));
+                    }
+                    if base.persons[i]
+                        .act
+                        .is_none_or(|act| lock_mask & (1 << act) != 0)
+                    {
+                        continue;
+                    }
+                    common += 1;
+                    entry_diff += usize::from(x.start != y.start);
+                    position_diff += usize::from(a.positions[i] != b.positions[i]);
+                    both_drew_slot += usize::from(x.slot.is_some() && y.slot.is_some());
+                    if x.start == y.start {
+                        assert_eq!(x.absent, y.absent);
+                    }
+                    if x.absent != y.absent && first_absent.is_none() {
+                        first_absent = Some(format!("seed={seed} p={i} {x:?} -> {y:?}"));
+                    }
+                    absent_diff += usize::from(x.absent != y.absent);
+                    slot_diff +=
+                        usize::from(matches!((x.slot, y.slot), (Some(s), Some(t)) if s != t));
+                    retry_diff += usize::from(x.rejected() != y.rejected());
+                    if a.positions[i] != b.positions[i] && first_pos.is_none() {
+                        first_pos = Some(format!(
+                            "seed={seed} p={i} {:?}->{:?} {x:?} -> {y:?}",
+                            a.positions[i], b.positions[i]
+                        ));
+                    }
+                }
+                if boundary_shift && first_cursor.is_none() {
+                    first_cursor = Some(format!(
+                        "seed={seed} filler/guests/end={:?}->{:?}",
+                        (a.before_guests, a.after_guests, a.end),
+                        (b.before_guests, b.after_guests, b.end)
+                    ));
+                }
+                terminal += usize::from(a.end != b.end);
+                shifted += usize::from(boundary_shift);
+                pos_only += usize::from(!boundary_shift && a.positions != b.positions);
+            }
+            match name {
+                "early_synthetic" => assert!(pos_only > 0),
+                "one" => assert!(common > 0),
+                "capacity" => assert!(common > 0),
+                "all" => assert_eq!(common, 0),
+                _ => (),
+            }
+            println!(
+                "CRN {name} pairs={N} aa_pairs={} end_diff={terminal} boundary_diff={shifted} placement_only={pos_only} common={common} entry_diff={entry_diff} position_diff={position_diff} absent_diff={absent_diff} first_slot_diff={slot_diff}/{both_drew_slot} retry_diff={retry_diff}",
+                2 * N
+            );
+            println!(
+                "  first_cursor={first_cursor:?} first_common_pos={first_pos:?} first_equal_input_retry={first_retry:?} first_common_absent={first_absent:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn crn_same_board_burn_matches_engine() -> Result<()> {
+        let mut base = crate::testing::sample_game();
+        base.reset_distribution();
+        let card = person_of_type(&base, PersonType::Card);
+        let friend = base.friend_person_index().unwrap();
+        let guest = person_of_type(&base, PersonType::Yayoi);
+        let mut absent = 0;
+        let mut exhausted = 0;
+        for (case, i) in [
+            ("empty", card),
+            ("full", card),
+            ("duplicate", card),
+            ("social", friend),
+        ] {
+            let mut g = base.clone();
+            for row in g.distribution_mut().iter_mut().take(5) {
+                match case {
+                    "full" => row.extend(
+                        (0..base.persons.len() as i32)
+                            .filter(|p| *p != i as i32)
+                            .take(TRAIN_CAP),
+                    ),
+                    "duplicate" => row.push(i as i32),
+                    "social" => row.push(guest as i32),
+                    _ => (),
+                }
+            }
+            for seed in 0..256 {
+                let start = TurnFixedRng::new(seed);
+                let trace = probe_draws(&mut g, i, start)?;
+                let (mut burn, mut engine) = (start, start);
+                let mut ordinary = g.clone();
+                let before = g.distribution().clone();
+                g.burn_locked_person(i, &mut burn)?;
+                let result = Game::distribute_person(&mut ordinary, i as i32, true, &mut engine)?;
+                assert_eq!(g.distribution(), &before);
+                assert_eq!(burn, engine);
+                assert_eq!(trace.end, engine.counter());
+                assert_eq!(trace.accepted(), usize::try_from(result).ok());
+                if trace.absent {
+                    assert!(trace.slot.is_none());
+                    absent += 1;
+                } else if case == "empty" {
+                    assert!(
+                        trace.accepted().is_some(),
+                        "空板必定落位（不再有手气差不出现）"
+                    );
+                } else {
+                    assert!(trace.accepted().is_none(), "全部槽不可行时不出现");
+                    exhausted += 1;
+                }
+            }
+        }
+        assert!(absent > 0 && exhausted > 0);
+        println!("CRN same_board pairs=1024 absent={absent} exhausted={exhausted}");
+        Ok(())
+    }
+
+    /// 落位抽签的**消费量**必须与板无关：这是锁位 CRN 对齐的前提
+    #[test]
+    fn slot_draws_do_not_depend_on_board() -> Result<()> {
+        let mut base = crate::testing::sample_game();
+        base.reset_distribution();
+        let card = person_of_type(&base, PersonType::Card);
+        let others: Vec<i32> = (0..base.persons.len() as i32)
+            .filter(|index| *index != card as i32)
+            .take(TRAIN_CAP)
+            .collect();
+        let mut full = base.clone();
+        for row in full.distribution_mut().iter_mut().take(5) {
+            row.extend(others.iter().copied());
+        }
+        let mut outcomes = 0;
+        for seed in 0..64 {
+            let (mut empty_arm, mut full_arm) = (base.clone(), full.clone());
+            let (mut a, mut b) = (TurnFixedRng::new(seed), TurnFixedRng::new(seed));
+            let empty_result = Game::distribute_person(&mut empty_arm, card as i32, true, &mut a)?;
+            let full_result = Game::distribute_person(&mut full_arm, card as i32, true, &mut b)?;
+            assert_eq!(a, b, "seed={seed}: 同一人头的抽签消费不得随板变化");
+            outcomes += usize::from(empty_result != full_result);
+        }
+        assert!(outcomes > 0, "两板结果不应恒等（否则对照无意义）");
+        Ok(())
     }
 }

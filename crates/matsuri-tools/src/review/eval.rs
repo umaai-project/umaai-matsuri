@@ -17,7 +17,6 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 use serde::{Deserialize, Serialize};
 use umaai::protocol::final_score::FinalAction;
-use umaai_core::rng::{StreamTag, derive_seed};
 use umasim::game::{Game, Trainer};
 
 use super::default_data_root;
@@ -208,7 +207,6 @@ pub fn eval(args: EvalArgs<'_>) -> Result<(PathBuf, EvalReport)> {
     let data = Arc::new(MatsuriData::load(&data_root)?);
     let base = MatsuriConfig::load_with_overlay_file(&data_root, ".")?;
     let master = engine.sim.seed;
-    let seed = derive_seed(master, &[args.turn as u64, StreamTag::Probe.tag()]);
     let version = env!("CARGO_PKG_VERSION").to_string();
 
     let out = args.out.map_or_else(
@@ -222,21 +220,27 @@ pub fn eval(args: EvalArgs<'_>) -> Result<(PathBuf, EvalReport)> {
         Path::to_path_buf,
     );
 
+    // 先选帧、再算种子：决策流按**实际决策面**派生（`matsuri_ai::online::decision_seed`），
+    // 而决策面要还原局面才知道。若提前按 `args.seq` 读缓存，同回合多面时会把另一个面的
+    // 旧结果当成这一面的缓存返回。
+    let mut session = open_session(&engine, Arc::clone(&data), base.clone())?;
+    let (seq, frame, game) = pick_frame(&mut session, &files, args.turn, args.seq)?;
+    let route = matsuri_ai::online::route(&game, &frame);
+    let seed = matsuri_ai::online::decision_seed(master, &game, route)?;
+
     // `--swap` 的输入（动作名）不进缓存键，命中旧缓存会掩盖结果，故 swap 模式一律重算
     if !args.force
         && args.swap.is_none()
-        && let Some((path, cached)) = read_cache(&out, &files, args.turn, args.seq)
+        && let Some((path, cached)) = read_cache(&out, &files, args.turn, Some(seq))
         && cached.schema == SCHEMA
         && cached.turn == args.turn
+        && cached.seq == seq
         && cached.n == args.n
         && cached.seed == seed
         && cached.version == version
     {
         return Ok((path, cached));
     }
-
-    let mut session = open_session(&engine, Arc::clone(&data), base.clone())?;
-    let (seq, frame, game) = pick_frame(&mut session, &files, args.turn, args.seq)?;
     let deck = session.deck_profile().cloned();
     let mut config = match &deck {
         Some(profile) => base.for_profile(&profile.name)?,

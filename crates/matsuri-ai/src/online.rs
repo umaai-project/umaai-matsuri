@@ -19,12 +19,13 @@
 //! 「多选项」口径照抄引擎 `Session::run_events`：`player_select && choices.len() > 1`
 //! 才算需要决策——单选项事件只是一个结果，不问。
 
-use anyhow::Result;
+use anyhow::{Result, anyhow, bail};
 use matsuri_core::data::CheckPointResult;
 use matsuri_core::game::MatsuriGame;
 use matsuri_core::{Action, Stage};
 use umaai::decision::{Candidate, DecisionRecord};
 use umaai_core::gamedata::EventData;
+use umaai_core::rng::{StreamTag, derive_seed};
 
 use crate::frame::{ParsedFrame, TrainingFrame};
 use crate::output::{TrainingDeviation, TrainingReport};
@@ -106,6 +107,43 @@ pub fn pending_event(game: &MatsuriGame) -> Option<&EventData> {
         .unresolved_events
         .iter()
         .find(|event| event.player_select && event.choices.len() > 1)
+}
+
+/// 决策面判别分量（参与决策流派生；号是稳定契约，只增不改）
+///
+/// 同一回合可能有多个决策面（事件 / 训练 / 教诲）。若共用一条决策流，三面的搜索会拿到
+/// 同一批 rollout 种子，抽样误差完全相关；分开派生让各面各用各的流。
+fn decision_surface_parts(game: &MatsuriGame, route: Route) -> Result<(u64, u64)> {
+    Ok(match route {
+        Route::Train => (1, 0),
+        Route::Event => {
+            let event =
+                pending_event(game).ok_or_else(|| anyhow!("事件帧缺少待选事件，无法派生决策流"))?;
+            (2, u64::from(event.id))
+        }
+        Route::Advice(window) => (3, window as u64),
+        Route::Skip(reason) => bail!("跳过帧没有决策面：{reason}"),
+    })
+}
+
+/// 一帧决策的随机流种子（在线决策与复盘重算共用同一口径）
+///
+/// 派生形如 `derive_seed(master, [turn, PROBE_TAG, 决策面, 面内标识])`：
+///
+/// - **同帧可复现**：同一帧、同一局面、同一路由必然得到同一条流；
+/// - **跨面独立**：事件 / 训练 / 教诲各用各的流，一面的抽样不位移另一面；
+/// - **面内共用**：同回合同一面（例如反复进出训练屏）仍取同一条流——局面不同则结果不同，
+///   但「同回合换动作」这类反事实对照仍共享随机骨架；
+/// - **不吃帧字节**：只用回合、路由与事件 id。训练预览等仅供验算的字段不参与，
+///   以免破坏 `G13`（预览不进决策）与跨版本可复现性。
+///
+/// 复盘 `review eval` 必须调用本函数，否则与在线逐位对不上。
+pub fn decision_seed(master: u64, game: &MatsuriGame, route: Route) -> Result<u64> {
+    let (surface, detail) = decision_surface_parts(game, route)?;
+    Ok(derive_seed(
+        master,
+        &[game.turn as u64, StreamTag::Probe.tag(), surface, detail],
+    ))
 }
 
 /// 在线教诲搜索的根阶段（只按剧本窗口表定档）

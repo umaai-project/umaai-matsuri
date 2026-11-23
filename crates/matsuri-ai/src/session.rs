@@ -32,7 +32,6 @@ use matsuri_core::{
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use umaai::{BaseParams, FrameOutcome, LuckAttach, LuckScorer};
-use umaai_core::rng::{StreamTag, derive_seed};
 use umaai_core::{Array5, Array6, Data};
 use umasim::game::{Game, SupportCard, Trainer, UmaFlagsExt};
 use umasim::search::SearchConfig;
@@ -345,7 +344,8 @@ impl OnlineSession {
                 search_game.stage = online::event_stage(&game, &frame);
                 search_game.event_queue = vec![event.clone()];
                 search_game.event_cursor = 0;
-                let mut rng = self.decision_rng(turn);
+                let mut rng =
+                    StdRng::seed_from_u64(online::decision_seed(self.master, &game, Route::Event)?);
                 let choice = self.trainer.as_dyn().select_event_choice(
                     &search_game,
                     event,
@@ -453,7 +453,11 @@ impl OnlineSession {
                         summary: None,
                     });
                 }
-                let mut rng = self.decision_rng(turn);
+                let mut rng = StdRng::seed_from_u64(online::decision_seed(
+                    self.master,
+                    &game,
+                    Route::Advice(window),
+                )?);
                 // 根阶段按窗口表定档（T2/T11/T35/T59 → Begin，T23/T47 → End），
                 // 与离线 `begin_tail` / `settle_advice_window` 同源；不看会粘连的
                 // `isAfterTraining`。保留 `plan.advice_window` 让落位先验同口径。
@@ -523,7 +527,8 @@ impl OnlineSession {
                 // 同回合允许多次决策：每张新帧都重算（玩家可能反复进出同一训练屏）
                 let actions = game.list_actions()?;
                 before_search(&game, &actions)?;
-                let mut rng = self.decision_rng(turn);
+                let mut rng =
+                    StdRng::seed_from_u64(online::decision_seed(self.master, &game, Route::Train)?);
                 let index = self
                     .trainer
                     .as_dyn()
@@ -785,16 +790,6 @@ impl OnlineSession {
         Ok(())
     }
 
-    /// 本帧的决策随机流（按 `(master, turn)` 派生：同帧可复现，不跨帧位移）
-    ///
-    /// 用 `Probe` 标签另开一条流：既不与引擎的回合固定流 / 事件流共用，也不动策略流的序列。
-    fn decision_rng(&self, turn: i32) -> StdRng {
-        StdRng::seed_from_u64(derive_seed(
-            self.master,
-            &[turn as u64, StreamTag::Probe.tag()],
-        ))
-    }
-
     /// 宿主注入参数（协议不发的量）
     fn params(&self) -> BaseParams<'_> {
         BaseParams {
@@ -890,6 +885,148 @@ mod tests {
                 "{name}：还原 / 融合 / 训练员共用生效档"
             );
         }
+    }
+
+    /// 7084 局原始帧（未改字段）；显式 --ignored 运行，缺少局包时报出文件名。
+    ///
+    /// 守三件事：①同一帧在新会话里逐位一致；②同回合的事件 / 训练 / 教诲三个决策面
+    /// 各自派生**不同**的决策流与 rollout 种子；③换回合确实换流。
+    /// 旧口径（只按回合派生）一并打印作对照，不参与断言——它是修复前的行为。
+    #[test]
+    #[ignore = "requires original game7084 frames; set MATSURI_RNG_FRAME_DIR to the capture directory"]
+    fn online_decision_rng_probe() -> Result<()> {
+        use matsuri_core::testing::repo_root;
+        use rand::RngCore;
+        use std::path::PathBuf;
+        use std::sync::Mutex;
+        use umaai_core::rng::{StreamTag, derive_seed};
+        use umasim::search::{FlatSearch, FlatSearchGame};
+
+        let root = data_dir();
+        ensure_data(&root)?;
+        let mut cfg = umaai::Config::load_from_data_root(&root, None)?;
+        cfg.sim.seed = 61444;
+        cfg.search.use_ucb = false;
+        let mut mc = MatsuriConfig::load(root.join("matsuri_config.toml"), None)?;
+        mc.search.search_n = 4;
+        let data = Arc::new(MatsuriData::load(&root)?);
+        let new_session =
+            || OnlineSession::new(&cfg, data.clone(), mc.clone(), TrainerKind::Search, false);
+        let dir = std::env::var_os("MATSURI_RNG_FRAME_DIR")
+            .map_or_else(|| repo_root().join("../Backup/game7084"), PathBuf::from);
+        let cases = [
+            ("47", 47, Route::Event),
+            ("47_2", 47, Route::Train),
+            ("47_4", 47, Route::Advice(4)),
+            ("48_2", 48, Route::Train),
+        ];
+        let (mut live, mut restart) = (new_session()?, new_session()?);
+        let mut seeds = Vec::new();
+        let mut samples = Vec::new();
+        for (suffix, turn, route) in cases {
+            let name = format!("game7084_turn{suffix}.json");
+            let file = dir.join(&name);
+            let text = std::fs::read_to_string(&file)
+                .with_context(|| format!("缺少 7084 局真实帧: {}", file.display()))?;
+            let frame = ParsedFrame::parse(&text)?;
+            let out = live.handle_frame(&text)?;
+            assert_eq!(
+                (out.epoch, out.turn, out.kind),
+                (7084, turn, TurnKind::Decision),
+                "{name}: {:?}",
+                out.skip_reason
+            );
+            assert_eq!(online::route(&out.game, &frame), route);
+            let summary = out.summary.as_ref().expect("必须实际搜索，不得回退手写");
+            assert!(out.search_backed && summary.candidates.len() >= 2);
+            assert!(summary.candidates.iter().all(|c| c.n == 4));
+
+            // ① 同一帧在新会话里必须给出同一份结果
+            let rerun = restart.handle_frame(&text)?;
+            assert_eq!(out.summary, rerun.summary, "{name}: 同帧重放摘要不一致");
+            assert_eq!(out.json_payload(), rerun.json_payload());
+            assert_eq!(restart.handle_frame(&text)?.kind, TurnKind::Skipped);
+
+            // ② 种子只由 (master, 回合, 决策面) 决定
+            let seed = online::decision_seed(live.master, &out.game, route)?;
+            assert_eq!(
+                seed,
+                online::decision_seed(restart.master, &rerun.game, route)?,
+                "{name}: 同帧必须派生同一条决策流"
+            );
+            let mut rng = StdRng::seed_from_u64(seed);
+            let words = [rng.next_u64(), rng.next_u64()];
+
+            // 独立观察内核：占位动作只用于读取回调实收的 seed，不用占位分数证明决策效果。
+            let mut game = out.game.clone();
+            match route {
+                Route::Event => {
+                    game.stage = online::event_stage(&game, &frame);
+                    game.event_queue = vec![online::pending_event(&game).unwrap().clone()];
+                    game.event_cursor = 0;
+                }
+                Route::Advice(_) => game.stage = online::advice_stage(&game),
+                Route::Train => (),
+                Route::Skip(_) => unreachable!(),
+            }
+            let drawn = Mutex::new(Vec::new());
+            let kernel = FlatSearch::new(cfg.search.clone().with_search_n(4)).with_parallel(false);
+            kernel.search_with(
+                &game,
+                &[Action::Rest],
+                &mut StdRng::seed_from_u64(seed),
+                |_, _, sample| {
+                    drawn.lock().unwrap().push(sample);
+                    Ok(0.0)
+                },
+            )?;
+            let drawn = drawn.into_inner().unwrap();
+            assert_eq!(drawn.len(), 4);
+
+            // 修复前的口径只吃 (master, 回合)：三个面会得到同一条流。仅打印对照。
+            let legacy = derive_seed(live.master, &[turn as u64, StreamTag::Probe.tag()]);
+            if route == Route::Train && turn == 47 {
+                let TrainerChoice::Search(trainer) = &live.trainer else {
+                    unreachable!()
+                };
+                let mut legacy_rng = StdRng::seed_from_u64(legacy);
+                let legacy_choice = trainer.select_action(&game, &out.actions, &mut legacy_rng)?;
+                println!("fixed {name} legacy_stream chosen=#{legacy_choice}");
+            }
+            let chosen = summary
+                .candidates
+                .iter()
+                .find(|c| c.index == summary.chosen)
+                .unwrap();
+            println!(
+                "{name} {route:?} key={} seed={seed:#018x} legacy={legacy:#018x} words={words:?} rollout={drawn:?} chosen=#{} {} score={}",
+                game.crn_stage_key(),
+                chosen.index,
+                chosen.description,
+                chosen.score
+            );
+            seeds.push(seed);
+            samples.push(drawn);
+        }
+        // ② 同回合三面互不相同，且不与 T48 相同
+        assert_ne!(seeds[0], seeds[1], "事件面与训练面不得共用决策流");
+        assert_ne!(seeds[0], seeds[2], "事件面与教诲面不得共用决策流");
+        assert_ne!(seeds[1], seeds[2], "训练面与教诲面不得共用决策流");
+        assert_ne!(seeds[1], seeds[3], "不同回合不得共用决策流");
+        assert_ne!(
+            samples[0], samples[1],
+            "事件面与训练面的 rollout 种子不得相同"
+        );
+        assert_ne!(
+            samples[0], samples[2],
+            "事件面与教诲面的 rollout 种子不得相同"
+        );
+        assert_ne!(
+            samples[1], samples[2],
+            "训练面与教诲面的 rollout 种子不得相同"
+        );
+        assert_ne!(samples[1], samples[3], "不同回合的 rollout 种子不得相同");
+        Ok(())
     }
 
     /// 本地卡表缺卡（AI 数据落后于游戏版本）→ 拒绝并要玩家更新，而不是报字段错
