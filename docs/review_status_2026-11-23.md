@@ -16,14 +16,15 @@
 
 | 来源问题 | 当前结论 | 当前证据 |
 |---|---|---|
-| derive_seed 纯 XOR 低位碰撞 | 部分修复：派生算法与非零 TurnFixed 标签已修，BaseGame 调用口径仍未完全闭合 | umaai_next/crates/umaai-core/src/rng.rs；umaai_next/crates/umasim/src/game/base/mod.rs |
+| derive_seed 纯 XOR 低位碰撞 | 已修复：派生算法改逐段加法，BaseGame 的 TurnFixed 也已带显式非零标签 | umaai_next/crates/umaai-core/src/rng.rs；umaai_next/crates/umasim/src/game/base/mod.rs |
 | MAX_SCORE 高分右尾截断 | 已修复 | umaai_next/crates/umasim/src/search/result.rs 已改样本存储，并有 110000 分测试 |
 | 在线事件搜索因 event_queue 为空而旁路 | 已修复 | crates/matsuri-ai/src/session.rs 注入当前事件并按阶段续跑 |
 | 在线教诲帧错误落 Stage::Train | 已修复 | crates/matsuri-ai/src/online.rs 按 advice window 判 Begin/End |
 | 在线融合帧与预设重复落地 | 已修复 | crates/matsuri-ai/src/session.rs、crates/matsuri-core/src/game/settle.rs |
 | preview_training_layers 漏判变胖 | 已修复 | crates/matsuri-core/src/game/train.rs，已有预览/结算对齐测试 |
 | 技能灵感字段统一与每卡上限 | 已修复 | cardDB.skillCount、引擎 SupportCardData.skill_count、删除 card_skills.json |
-| 锁位分支跳过随机导致 CRN 游标错位 | 同板单人补消费已验证；跨板整轮逐位等价已被反例否定（§8） | crates/matsuri-core/src/game/distribute.rs；仍共用一条流 |
+| 规则流派生散落为手写数组 | 已修复：收敛到 `StreamTag::derive(master, turn)`，形状在其中固化 | umaai_next/crates/umaai-core/src/rng.rs；base/mod.rs、basic.rs、umaai/session.rs、模板、matsuri-core/stage.rs |
+| 锁位分支跳过随机导致 CRN 游标错位 | **已修复**（方案 A）：落位恒定 1 字、意向槽不可行才用同一个字回退；同结构对照的入口/不在/终游标归零，跨板仍分叉属结构差异（§8） | crates/matsuri-core/src/game/distribute.rs；引擎 `distribute_person` |
 | 目标赛 +4 涨槽并列规则 | 已修复 | 旧评审已记录 6da1e88 修复，当前不再列为现存 Bug |
 | 融合/状态位类型化与主要结算链 | 已落地 | game/advice.rs、game/settle.rs、数据层 deny_unknown_fields |
 | 复盘局包动作/教诲/融合差分反推 MVP | 部分已落地 | matsuri-tools/src/review；事件动作和完整质量门禁仍有边界 |
@@ -236,6 +237,20 @@ BasicGame 实测 master=42、T0，TurnFixed 主种子为 `0x57e1faba65107204`，
 **尚未覆盖**：基线 JSON 未改写——按 C 批次与 `TurnFixed` 标签一起重录，避免同一批数据位移两次。
 
 读法：四个档的 PT 全部上移（+135 ~ +440），方向一致；分数只有 b-ideal 手写档超出容差。搜索档两组分数差异都在容差内，b-ideal 搜索档整体判 OK。四组 sd 同步下降，与「落位不再因手气差丢人、每回合人数更稳定」一致。
+
+
+### TurnFixed 显式标签迁移（已实施）
+
+`BaseGame::reset_rule_streams` 的回合固定流由 `derive_seed(master, [turn])` 改为 `derive_seed(master, [turn, TURN_FIXED_TAG])`，与事件流形成对称的两条带标签规则流。常量与 `StreamTag::TurnFixed` 的映射本来就有，缺的只是调用口径。
+
+迁移会改掉每个回合的 TurnFixed 主种子，因此全部分布重掷。手写档复跑（100 局，seed0 73200）：
+
+| 档 | 分数 | Δ | PT | Δ |
+|---|---:|---:|---:|---:|
+| a-normal | 82420.6（上一版 82548.8） | +227.5 | 12175.9 | +325.3 |
+| b-ideal | 87303.7（上一版 87773.4） | +381.2 | 12751.3 | +332.7 |
+
+引擎 L4 同样再位移：`basic_full_run` score 16387→16916，`basic_search_root` 的 `best_action` 由 `NormalOuting` 变为 `Train(1)`。这些数字与落位改动叠加，**只作为重录输入，不作机制收益解读**。
 
 ### 复跑
 

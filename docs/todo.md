@@ -16,7 +16,7 @@
 
 - [ ] **教诲估值窗口级 horizon**：`value.rs` 改用 9–12 回合窗口级 horizon 与合宿感知 `slot_value`，先做全 120 vs Top-16 召回率/遗漏收益对照。
 - [ ] **`advice.route` 先验与终局边际重扫**：下调过强先验并评估 `pt_favor_rate` 退火，重录基线。
-- [ ] **锁位 CRN 余项**：落位已改「同一字定意向槽 + 可行槽回退」（恒定 1 字），同结构对照的入口 / 不在 / 终游标差异全部归零；仍分叉的只剩「有稽古 vs 无稽古」的结构差异——友人补位与访客落位走不同规则。要继续闭合需改规则本身。
+- [ ] **锁位 CRN 余项**：只剩「有稽古 vs 无稽古」的结构差异——友人补位与访客落位走不同规则；要继续闭合需改规则本身。
 - [ ] **搜索失败与新鲜度门禁**：失败帧可重试；搜索结果绑定 generation/state_hash；rollout 失败结果标记 invalid/degraded，不直接正常排名。
 - [ ] **训练/协议验算守门**：训练帧 lower/upper 必须为 7 项；验算同时比较收益和 failure_rate；`campRemain` / `assistSupportLeft` 区分 None 与 0。
 - [ ] **`max_depth` 叶估与去假令牌**：需要截断叶估时在引擎侧接线；PendingDecision/step+choose 是否重构另行拍板。
