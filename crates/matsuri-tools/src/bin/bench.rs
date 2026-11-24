@@ -2,6 +2,7 @@
 //!
 //! 用法（仓根执行，先 cargo build --release --offline -p matsuri-tools）：
 //! - bench game --games 20 --seed 61444 --search-n 0  整局耗时 + 终局 CSV（手写档；缺省走配置 search_n=8192）
+//! - 手写档默认带配置 `[distilled]` 蒸馏；`--no-distilled` 回到纯手写，`--distilled-policy <json>` 覆盖权重
 //! - bench luck --games 20 --seed 73200 --search-n 2048  MCTS 自博弈逐决策 expected_score，
 //!   输出每局首末回合估分差与 `luck_turn_bonus` 补偿斜率
 //! - bench micro --turn 32 --iters 2000            决策链分段 ns/op
@@ -81,6 +82,8 @@ static GLOBAL_ALLOC: CountingAlloc = CountingAlloc;
 struct Outcome {
     score: i32,
     pt: i32,
+    /// 不计入 Hint 折算的实际 PT（skill_pt 字段）
+    skill_pt: i32,
     turn: i32,
 }
 
@@ -159,6 +162,7 @@ fn play_with_engine(
     Ok(Outcome {
         score: game.uma().calc_score()?,
         pt: game.uma().total_pt()?,
+        skill_pt: game.uma().skill_pt,
         turn: game.turn(),
     })
 }
@@ -504,7 +508,7 @@ fn cmd_baseline(env: &Env, args: &[String]) -> Result<()> {
             case.name, case.uma, case.qie, case.shield, case.note
         );
         println!(
-            "trainer,search_n,games,score_mean,score_sd,score_delta,score_allow,pt_mean,pt_sd,pt_delta,pt_allow,verdict"
+            "trainer,search_n,games,score_mean,score_sd,score_delta,score_allow,pt_mean,pt_sd,skill_pt_mean,skill_pt_sd,pt_delta,pt_allow,verdict"
         );
         for record in &case.records {
             let run_search = match want.as_str() {
@@ -529,7 +533,7 @@ fn cmd_baseline(env: &Env, args: &[String]) -> Result<()> {
             let mut engine = env.engine.clone();
             engine.sim.uma = case.uma;
             let started = Instant::now();
-            let samples: Vec<(i32, i32)> = if record.search_n > 0 {
+            let samples: Vec<(i32, i32, i32)> = if record.search_n > 0 {
                 let trainer = MatsuriSearchTrainer::new(
                     config.clone(),
                     engine.search.clone().with_search_n(record.search_n),
@@ -543,7 +547,7 @@ fn cmd_baseline(env: &Env, args: &[String]) -> Result<()> {
                             record.seed0 + i as u64,
                             &trainer,
                         )?;
-                        Ok((outcome.score, outcome.pt))
+                        Ok((outcome.score, outcome.pt, outcome.skill_pt))
                     })
                     .collect::<Result<Vec<_>>>()?
             } else {
@@ -557,15 +561,17 @@ fn cmd_baseline(env: &Env, args: &[String]) -> Result<()> {
                             record.seed0 + i as u64,
                             &trainer,
                         )?;
-                        Ok((outcome.score, outcome.pt))
+                        Ok((outcome.score, outcome.pt, outcome.skill_pt))
                     })
                     .collect::<Result<Vec<_>>>()?
             };
-            let verdict = judge(record, &samples, sigma, rel);
-            let score: Vec<f64> = samples.iter().map(|(s, _)| f64::from(*s)).collect();
-            let pts: Vec<f64> = samples.iter().map(|(_, p)| f64::from(*p)).collect();
+            let pairs: Vec<(i32, i32)> = samples.iter().map(|(s, p, _)| (*s, *p)).collect();
+            let skills: Vec<f64> = samples.iter().map(|(_, _, k)| f64::from(*k)).collect();
+            let verdict = judge(record, &pairs, sigma, rel);
+            let score: Vec<f64> = samples.iter().map(|(s, _, _)| f64::from(*s)).collect();
+            let pts: Vec<f64> = samples.iter().map(|(_, p, _)| f64::from(*p)).collect();
             println!(
-                "{},{},{},{:.1},{:.1},{:+.1},{:.1},{:.1},{:.1},{:+.1},{:.1},{}（{:.1}s）",
+                "{},{},{},{:.1},{:.1},{:+.1},{:.1},{:.1},{:.1},{:.1},{:.1},{:+.1},{:.1},{}（{:.1}s）",
                 record.trainer,
                 record.search_n,
                 n,
@@ -575,6 +581,8 @@ fn cmd_baseline(env: &Env, args: &[String]) -> Result<()> {
                 verdict.score_allow,
                 umaai_core::stats::mean(&pts),
                 umaai_core::stats::stdev(&pts),
+                umaai_core::stats::mean(&skills),
+                umaai_core::stats::stdev(&skills),
                 verdict.pt_delta,
                 verdict.pt_allow,
                 if verdict.ok { "OK" } else { "DRIFT" },
@@ -600,6 +608,10 @@ fn cmd_game(env: &Env, args: &[String]) -> Result<()> {
     if args.iter().any(|arg| arg == "--distilled-policy") && policy_file.is_none() {
         bail!("--distilled-policy 需要 JSON 权重文件路径");
     }
+    let no_distilled = args.iter().any(|arg| arg == "--no-distilled");
+    if policy_file.is_some() && no_distilled {
+        bail!("--distilled-policy 与 --no-distilled 互斥");
+    }
     let default_n = if policy_file.is_some() {
         0
     } else {
@@ -612,6 +624,9 @@ fn cmd_game(env: &Env, args: &[String]) -> Result<()> {
 
     let mut config = env.config.clone();
     config.search.search_n = search_n;
+    if no_distilled {
+        config.distilled = None;
+    }
     if search_n > 0 {
         let trainer = MatsuriSearchTrainer::new(
             config.clone(),

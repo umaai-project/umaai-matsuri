@@ -22,8 +22,8 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use matsuri_core::testing::data_dir;
 use matsuri_core::{
-    Action, MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer, MatsuriTrainer, build_game,
-    deck_comp,
+    Action, MatsuriConfig, MatsuriData, MatsuriGame, MatsuriSearchTrainer, MatsuriTrainer,
+    build_game, deck_comp,
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -246,13 +246,13 @@ fn probe_hint_curve() -> Result<()> {
         base.pre.qie,
         max_turn - 1
     );
-    println!("seed,turn,hints,skill_pt,d_total,ev8002,ev8003,ev_hint,train_hint,hint_events,action");
+    println!(
+        "seed,turn,hints,skill_pt,d_total,ev8002,ev8003,ev_hint,train_hint,hint_events,action"
+    );
 
     if search_n > 0 {
-        let trainer = MatsuriSearchTrainer::new(
-            base.clone(),
-            engine.search.clone().with_search_n(search_n),
-        )?;
+        let trainer =
+            MatsuriSearchTrainer::new(base.clone(), engine.search.clone().with_search_n(search_n))?;
         let recorder = Recorder {
             inner: trainer,
             actions: Mutex::new(BTreeMap::new()),

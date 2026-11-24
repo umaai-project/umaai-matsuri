@@ -30,6 +30,9 @@ pub struct MatsuriConfig {
     /// 搜索档作用面（`search_n > 0` 时生效）
     #[serde(default)]
     pub search: SearchScopeConfig,
+    /// 搜索蒸馏权重（`[distilled]`；`None` = 纯手写打分）
+    #[serde(default)]
+    pub distilled: Option<DistilledPolicy>,
     /// 按卡组的参数表（`[decks.*]`；载入时解析完成）
     ///
     /// `Arc`：`MatsuriGame` 每次 rollout 克隆只拷指针，不深拷贝整张表。
@@ -77,6 +80,33 @@ impl Default for SearchScopeConfig {
             event: true,
             pt_favor_rate: None,
         }
+    }
+}
+
+/// 搜索蒸馏权重（`[distilled]`）：离线搜索终局样本拟合的线性残差
+///
+/// 与 `[decks.*.trainer.weights]` **不是同一层参数**：weights 是手写 base 的内部换算
+/// （属性分 / PT / 羁绊 / 演目），本段是叠加在 base 之上的动作级偏置
+/// （动作组 15×3 + 训练预览 9×2）。两者联合校准，不能互相折算。
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DistilledPolicy {
+    /// 普通训练五轴、稽古五轴、比赛、休息、普通出行、友人出行、治病；
+    /// 各行动的三项系数依次对应常数、回合 / 72 和体力 / 100。
+    pub groups: [[f64; 3]; 15],
+    /// 训练预览九项特征的常数系数及其与回合 / 72 的交互系数。
+    pub board: [[f64; 9]; 2],
+}
+
+impl DistilledPolicy {
+    /// 校验：权重必须全部有限
+    fn validate(&self) -> Result<()> {
+        ensure!(
+            self.groups.iter().flatten().all(|v| v.is_finite())
+                && self.board.iter().flatten().all(|v| v.is_finite()),
+            "[distilled] 权重必须全部为有限数"
+        );
+        Ok(())
     }
 }
 
@@ -167,6 +197,8 @@ pub struct MatsuriConfigOverlay {
     pre: Option<PreConfig>,
     /// 搜索作用面：给了就**整段替换**
     search: Option<SearchScopeConfig>,
+    /// 蒸馏权重：给了就**整段替换**（不写 = 沿用默认层）
+    distilled: Option<DistilledPolicy>,
 }
 
 impl OverlayConfig for MatsuriConfig {
@@ -178,6 +210,9 @@ impl OverlayConfig for MatsuriConfig {
         }
         if let Some(search) = overlay.search {
             self.search = search;
+        }
+        if let Some(distilled) = overlay.distilled {
+            self.distilled = Some(distilled);
         }
     }
 
@@ -251,6 +286,9 @@ impl MatsuriConfig {
     fn validate(&self) -> Result<()> {
         self.decks.validate()?;
         self.deck.validate()?;
+        if let Some(policy) = &self.distilled {
+            policy.validate()?;
+        }
         if let Some(rate) = self.search.pt_favor_rate {
             ensure!(
                 rate.is_finite() && rate > 0.0,
@@ -285,6 +323,7 @@ impl Default for MatsuriConfig {
         Self {
             pre: PreConfig::default(),
             search: SearchScopeConfig::default(),
+            distilled: None,
             decks: Arc::new(DeckTable::default()),
             deck: Arc::new(DeckParams::default()),
         }
@@ -405,6 +444,32 @@ mod tests {
         assert!(
             MatsuriConfig::parse(&bad, None).is_err(),
             "非正 search.pt_favor_rate 应报错"
+        );
+    }
+
+    /// 蒸馏权重：默认层带 `[distilled]`、覆盖层整段替换、非有限数拒绝
+    #[test]
+    fn distilled_policy_parses_and_overlays() {
+        let cfg = MatsuriConfig::parse(&repo_text(), None).expect("默认层应可解析");
+        let policy = cfg.distilled.as_ref().expect("默认层应带 [distilled]");
+        assert_eq!(policy.groups.len(), 15);
+        assert_eq!(policy.board.len(), 2);
+        assert_eq!(policy.groups[0][0], 5.180464184710154);
+        assert_eq!(policy.board[1][8], 51.23739191561617);
+
+        let zeros = "0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0";
+        let row = "[1.0, 0.0, 0.0]";
+        let overlay = format!(
+            "[distilled]\ngroups = [{}]\nboard = [[{zeros}], [{zeros}]]\n",
+            vec![row; 15].join(", ")
+        );
+        let cfg = MatsuriConfig::parse(&repo_text(), Some(&overlay)).expect("覆盖层应可合并");
+        assert_eq!(cfg.distilled.as_ref().unwrap().groups[0], [1.0, 0.0, 0.0]);
+
+        let bad = repo_text().replace("5.180464184710154", "inf");
+        assert!(
+            MatsuriConfig::parse(&bad, None).is_err(),
+            "非有限权重应拒绝"
         );
     }
 

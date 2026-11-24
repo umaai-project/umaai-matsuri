@@ -19,7 +19,7 @@ pub mod testing;
 pub mod trainer;
 mod value;
 
-pub use config::{MatsuriConfig, Qie};
+pub use config::{DistilledPolicy, MatsuriConfig, Qie};
 pub use data::MatsuriData;
 pub use deck_config::{AdvicePreset, DEFAULT_DECK, DeckParams, DeckTable, deck_comp};
 pub use game::{

@@ -286,6 +286,8 @@
 | 2026-11-23 | **终局与回合行的 PT / Hint 分开显示** | 终局块与回合行不再显示折算后 PT（`total_pt`），改为「技能点」（剩余 `skill_pt`）+「Hint」（`total_hints`）两栏；评分仍按 `total_pt` 折算不变。`Summary` / `UmaStatus` 补 `skill_pt` / `total_hints` | user 2026-11-23「显示终局PT时不要折算Hint等级，而把PT和Hint等级分开显示。算分仍按现有算法」 | 无（呈现层；算分不变） |
 | 2026-11-23 | **hint 折扣脱钩方案被新真机数据否定** | 6341/6342 skillplan 反推：折扣公式 `base` 实测 1.87–1.92（文档假设 1.34–1.46），平均折扣受组价行污染、仅凭总 H 不可预测；线性 `1.88 × 切因子 × PT`（去 510）对最优方案已准，折扣脱钩不再作为候选。真机技能价格公式确认：`floor(baseCost × (100 − hint 折扣 − 切折扣) / 100)`，hint L1–L5 = 10/20/30/35/40%，小切 −4%、切者 −10% | 用户 2026-11-23 讨论与确认 | 无（研究结论） |
 
+| 2026-11-24 | **搜索蒸馏权重写入配置（全链路）** | `data/matsuri_config.toml` 新增顶层 `[distilled]`（15 动作组×常数/回合/体力 + 训练预览 9 特征×常数/回合），`MatsuriTrainer::new` 自动装配：离线（bench / cardtest / sweep）与在线手写档、搜索档 fallback / rollout 教师全部生效；`bench --no-distilled` 关闭、`--distilled-policy <json>` 覆盖；`benchmark/policies/distilled-v1.json` 保留为冻结副本，覆盖层写 `[distilled]` 可整段替换 | user 2026-11-24「直接把新权重写入现有模拟和在线配置，并且重测基线。基线随程序更新漂移是符合预期的，需要随时重测。」| 有：手写档 a-normal +515.9 / b-ideal +576.2（含 510 移除回补）；搜索档 a-normal −600.4 / b-ideal +232.1（PT +289.5 / +206.1）；基线输出新增 `skill_pt_mean` / `skill_pt_sd`（不计 Hint 折算的实际 PT，仅展示不参与判定） |
+
 ## 2. 与旧实现 / 资料的已知分歧
 
 | 项 | 旧实现 / 资料 | 本仓 | 原因 | 备注 |

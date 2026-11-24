@@ -15,21 +15,10 @@ use umaai_core::Ill;
 use umaai_core::gamedata::{EventChoice, EventData};
 use umasim::game::{Game, Trainer};
 
-use crate::config::MatsuriConfig;
+use crate::config::{DistilledPolicy, MatsuriConfig};
 use crate::diag;
 use crate::game::{Action, MatsuriGame};
 use crate::value::Model;
-
-/// 蒸馏策略的线性权重，由离线搜索终局样本拟合。
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct DistilledPolicy {
-    /// 普通训练五轴、稽古五轴、比赛、休息、普通出行、友人出行、治病；
-    /// 各行动的三项系数依次对应常数、回合和体力。
-    groups: [[f64; 3]; 15],
-    /// 训练预览九项特征的常数系数及其回合交互系数。
-    board: [[f64; 9]; 2],
-}
 
 /// 手写训练员（无状态：策略只来自随局配置；便于 `FlatSearch` rollout 复用）
 pub struct MatsuriTrainer {
@@ -40,11 +29,12 @@ pub struct MatsuriTrainer {
 
 impl MatsuriTrainer {
     /// 用剧本配置构造训练员（纯手写，不含任何搜索）
+    ///
+    /// 配置带 `[distilled]` 时自动启用蒸馏打分；搜索档的 fallback / rollout 教师
+    /// 走同一构造，因此全链路一致。
     pub fn new(config: MatsuriConfig) -> Self {
-        Self {
-            config,
-            policy: None,
-        }
+        let policy = config.distilled.clone().map(Box::new);
+        Self { policy, config }
     }
 
     /// 在普通动作打分阶段启用指定的搜索蒸馏权重。

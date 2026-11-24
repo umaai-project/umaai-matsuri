@@ -65,6 +65,12 @@ pub struct Record {
     pub pt_mean: f64,
     /// PT 样本标准差
     pub pt_sd: f64,
+    /// 不计入 Hint 折算的实际 PT 均值（旧档缺省 0）
+    #[serde(default)]
+    pub skill_pt_mean: f64,
+    /// 不计入 Hint 折算的实际 PT 样本标准差（旧档缺省 0）
+    #[serde(default)]
+    pub skill_pt_sd: f64,
 }
 
 impl Record {
@@ -182,6 +188,8 @@ mod tests {
             score_sd: 1526.3,
             pt_mean: 12_247.4,
             pt_sd: 276.2,
+            skill_pt_mean: 9_380.0,
+            skill_pt_sd: 300.0,
         }
     }
 

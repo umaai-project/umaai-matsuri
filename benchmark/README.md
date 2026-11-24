@@ -33,16 +33,24 @@
 - 测试清单与基线快照：[`docs/tests_overview.md`](../docs/tests_overview.md)
 - 性能剖面与火焰图（`bench prof` 缺省输出至 `_local/perf/`）：[`docs/perf_profiling.md`](../docs/perf_profiling.md)
 
-## 可选的搜索蒸馏策略
+## 搜索蒸馏权重
 
-`bench game --distilled-policy benchmark/policies/distilled-v1.json` 加载冻结权重，使用普通动作打分策略跑整局。显式指定搜索预算时设为 `--search-n 0`。无此参数时沿用原配置。逐局 CSV 沿用 `seed,score,pt,turn,elapsed_us`。
+`data/matsuri_config.toml` 顶层 `[distilled]` 是手写档的默认蒸馏权重（2026-11-24 冻结，源副本 [`policies/distilled-v1.json`](policies/distilled-v1.json)）。它在守门链之后对普通动作打分叠加动作组残差，训练 / 稽古再叠加预览特征残差；教诲、事件与守门分支不叠加。
+
+配置带权重时，离线（`bench` / `cardtest` / `sweep`）与在线（`matsuri-cli` 手写档）自动启用；**搜索档的 fallback 与 rollout 教师同样带权重**（全链路）。
 
 ```shell
 cargo build --locked --release -p matsuri-tools --bin bench
+# 默认：配置内联权重（手写档）
 ./target/release/bench game --search-n 0 --uma 105902 --seed 500000 --games 2048
+# 纯手写对照
+./target/release/bench game --search-n 0 --no-distilled --uma 105902 --seed 500000 --games 2048
+# 外部 JSON 覆盖权重（实验；与 --search-n >0 互斥）
 ./target/release/bench game --distilled-policy benchmark/policies/distilled-v1.json --uma 105902 --seed 500000 --games 2048
 ```
 
-权重作用于守门决策之后的打分阶段。`groups` 的 15 行依次为普通训练五轴、稽古五轴、比赛、休息、普通出行、友人出行、治病；每行系数对应常数、回合 / 72、体力 / 100。`board` 两行分别为训练预览系数及其与回合 / 72 的交互系数。前六个特征是按成功概率加权的五维增量和技能点增量（除以 50），后三个是体力增量 / 25、训练失败概率、闪彩人数。
-
-该权重用目白多伯默认卡组的 4693 个决策局面训练。搜索教师以官方终局评分为目标，用手写策略完成后续回合；按配对终局分差拟合动作间的相对价值。评估中普通训练以外的守门、教诲及事件由原策略决定。基准结果见 [冻结策略配对验收](_local/distillation/benchmark.md)。
+- `groups` 15 行 = 普通训练五轴、稽古五轴、比赛、休息、普通出行、友人出行、治病；每行 = 常数 + 回合 / 72 + 体力 / 100。`board` 两行 = 训练预览 9 特征的常数系数与回合交互系数；前六个特征是按成功概率加权的五维增量与技能点增量（÷50），后三个是体力增量 / 25、失败率、闪彩人数。
+- 与 `[decks.*.trainer.weights]` **不是同一层参数**：weights 是手写 base 的内部换算，本段是叠加在 base 之上的动作级残差，两者联合校准、不可互相折算。
+- 覆盖层写 `[distilled]` 可整段替换权重（不必改默认层）。
+- 训练来源：目白多伯默认卡组 4693 个决策局面拟合；搜索教师以官方终局评分为目标，用手写策略完成后续回合，按配对终局分差拟合相对价值。验收见 [冻结策略配对验收](_local/distillation/benchmark.md)。
+- 验收种子块：`500,000–541,999`（14 组 × 2048）与 `3,100,000–3,141,999`（独立复核），不得与定卡 / 扫参 / 基线块复用。

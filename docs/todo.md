@@ -10,10 +10,11 @@
 - [ ] **默认档换耐卡后重扫参数**（原 `deck_param_scan.md` §10.5）：11-11 默认卡组 1 耐位 `30300 → 30324` 换卡后，尚未重扫 `[decks.default]` 参数。
 - [ ] **`guts_build`（20111）建档**（原 `deck_param_scan.md` §9.5）：当前回落 `default`；待后续放开 `comp` 构成搜索时一并处理。
 - [ ] **GA 适应度与 `wisdom_build` 优化**（原 `deck_param_scan.md` §10.3）：新马娘（`112901` / `114101` / `106301`）进 GA 适应度；改善 `wisdom_build` 主卡组搜索档增益偏小问题。
-- [ ] **基线重录（落位 + TurnFixed + 具名入口后）**：引擎 L4 三份与剧本四档（手写 100 局 / 搜索 N=8192 × 10 局）全部位移，当前三套门禁红；重录后同步 `benchmark/baselines/README.md` 与 `docs/tests_overview.md` §4.1/§4.2。
 - [ ] **S9 固定种子基线测试**（原 `scenario_dev_plan.md`）：补齐 `crates/matsuri-sim/tests/baseline.rs`；确认搜索档基线局数（10 局 vs 100 局）口径。
 
 ## 2. 剧本估值、随机流与引擎接缝
+
+- [ ] **搜索蒸馏收尾**：拟合脚本入库 + 权重元信息（当前只有冻结 JSON）；搜索档教师带蒸馏后的 10 局配对验收（vs `--no-distilled`）；训练 / 评估种子块隔离复核。
 
 - [ ] **教诲估值窗口级 horizon**：`value.rs` 改用 9–12 回合窗口级 horizon 与合宿感知 `slot_value`，先做全 120 vs Top-16 召回率/遗漏收益对照。
 - [ ] **`advice.route` 先验与终局边际重扫**：下调过强先验并评估 `pt_favor_rate` 退火，重录基线。
