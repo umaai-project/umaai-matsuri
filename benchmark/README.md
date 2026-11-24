@@ -32,3 +32,17 @@
 - 基线复跑与重录纪律：[`baselines/README.md`](baselines/README.md)
 - 测试清单与基线快照：[`docs/tests_overview.md`](../docs/tests_overview.md)
 - 性能剖面与火焰图（`bench prof` 缺省输出至 `_local/perf/`）：[`docs/perf_profiling.md`](../docs/perf_profiling.md)
+
+## 可选的搜索蒸馏策略
+
+`bench game --distilled-policy benchmark/policies/distilled-v1.json` 加载冻结权重，使用普通动作打分策略跑整局。显式指定搜索预算时设为 `--search-n 0`。无此参数时沿用原配置。逐局 CSV 沿用 `seed,score,pt,turn,elapsed_us`。
+
+```shell
+cargo build --locked --release -p matsuri-tools --bin bench
+./target/release/bench game --search-n 0 --uma 105902 --seed 500000 --games 2048
+./target/release/bench game --distilled-policy benchmark/policies/distilled-v1.json --uma 105902 --seed 500000 --games 2048
+```
+
+权重作用于守门决策之后的打分阶段。`groups` 的 15 行依次为普通训练五轴、稽古五轴、比赛、休息、普通出行、友人出行、治病；每行系数对应常数、回合 / 72、体力 / 100。`board` 两行分别为训练预览系数及其与回合 / 72 的交互系数。前六个特征是按成功概率加权的五维增量和技能点增量（除以 50），后三个是体力增量 / 25、训练失败概率、闪彩人数。
+
+该权重用目白多伯默认卡组的 4693 个决策局面训练。搜索教师以官方终局评分为目标，用手写策略完成后续回合；按配对终局分差拟合动作间的相对价值。评估中普通训练以外的守门、教诲及事件由原策略决定。基准结果见 [冻结策略配对验收](_local/distillation/benchmark.md)。

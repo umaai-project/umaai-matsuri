@@ -331,14 +331,24 @@ impl<'a> Model<'a> {
 
     /// 单动作估值（评分点）
     pub(crate) fn action_value(&self, action: &Action) -> f64 {
+        self.action_with_board(action, |_, _| 0.0)
+    }
+
+    pub(crate) fn action_with_board(
+        &self,
+        action: &Action,
+        correction: impl FnOnce(&crate::TrainingPreview, usize) -> f64,
+    ) -> f64 {
         match action {
-            Action::Train(train) => self.train_value(usize::from(*train), false, action),
+            Action::Train(train) => {
+                self.train_value(usize::from(*train), false, action, correction)
+            }
             Action::ActTrain(act) => {
                 let act = usize::from(*act);
                 let Some(row) = self.game.data.acts.get(act) else {
                     return f64::NEG_INFINITY;
                 };
-                self.train_value(row.train, true, action)
+                self.train_value(row.train, true, action, correction)
             }
             Action::Race => self.race_value(),
             Action::Rest => self.rest_value(),
@@ -461,7 +471,13 @@ impl<'a> Model<'a> {
     // ------------------------------------------------------------------
 
     /// 训练 / 演目稽古估值（成功收益 × (1-p) + 失败惩罚 × p）
-    fn train_value(&self, train: usize, keiko: bool, action: &Action) -> f64 {
+    fn train_value(
+        &self,
+        train: usize,
+        keiko: bool,
+        action: &Action,
+        correction: impl FnOnce(&crate::TrainingPreview, usize) -> f64,
+    ) -> f64 {
         // 预览同时返回参与教诲与闪彩人数，供羁绊估值复用（同一候选不重算）
         let Ok((preview, advice, shining)) = self.game.preview_training_full(train, keiko) else {
             return f64::NEG_INFINITY;
@@ -504,7 +520,7 @@ impl<'a> Model<'a> {
         {
             expected -= self.cfg.endgame.normal_penalty * self.ctx.endgame_pressure;
         }
-        expected
+        expected + correction(&preview, shining)
     }
 
     /// 训练动作对应的主属性轴（ActionResult 的下标）

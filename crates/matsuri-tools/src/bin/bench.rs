@@ -596,7 +596,19 @@ fn cmd_game(env: &Env, args: &[String]) -> Result<()> {
     let games = parse_usize(args, "--games", 10)?;
     let seed = parse_usize(args, "--seed", 61444)? as u64;
     let warmup = parse_usize(args, "--warmup", 1)?;
-    let search_n = parse_usize(args, "--search-n", env.config.search.search_n)?;
+    let policy_file = parse_arg(args, "--distilled-policy");
+    if args.iter().any(|arg| arg == "--distilled-policy") && policy_file.is_none() {
+        bail!("--distilled-policy 需要 JSON 权重文件路径");
+    }
+    let default_n = if policy_file.is_some() {
+        0
+    } else {
+        env.config.search.search_n
+    };
+    let search_n = parse_usize(args, "--search-n", default_n)?;
+    if policy_file.is_some() && search_n > 0 {
+        bail!("--distilled-policy 仅用于无搜索策略；请省略 --search-n 或设为 0");
+    }
 
     let mut config = env.config.clone();
     config.search.search_n = search_n;
@@ -607,7 +619,13 @@ fn cmd_game(env: &Env, args: &[String]) -> Result<()> {
         )?;
         run_batch(env, &config, &trainer, games, seed, warmup, search_n)
     } else {
-        let trainer = MatsuriTrainer::new(config.clone());
+        let mut trainer = MatsuriTrainer::new(config.clone());
+        if let Some(path) = policy_file {
+            let bytes = std::fs::read(&path).with_context(|| format!("读取策略权重 {path}"))?;
+            let policy =
+                serde_json::from_slice(&bytes).with_context(|| format!("解析策略权重 {path}"))?;
+            trainer = trainer.with_distilled_policy(policy);
+        }
         run_batch(env, &config, &trainer, games, seed, warmup, search_n)
     }
 }

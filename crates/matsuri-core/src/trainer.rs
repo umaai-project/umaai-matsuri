@@ -20,8 +20,20 @@ use crate::diag;
 use crate::game::{Action, MatsuriGame};
 use crate::value::Model;
 
+/// 蒸馏策略的线性权重，由离线搜索终局样本拟合。
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DistilledPolicy {
+    /// 普通训练五轴、稽古五轴、比赛、休息、普通出行、友人出行、治病；
+    /// 各行动的三项系数依次对应常数、回合和体力。
+    groups: [[f64; 3]; 15],
+    /// 训练预览九项特征的常数系数及其回合交互系数。
+    board: [[f64; 9]; 2],
+}
+
 /// 手写训练员（无状态：策略只来自随局配置；便于 `FlatSearch` rollout 复用）
 pub struct MatsuriTrainer {
+    policy: Option<Box<DistilledPolicy>>,
     /// 剧本配置（融合预设 + 训练员旋钮）
     config: MatsuriConfig,
 }
@@ -29,7 +41,41 @@ pub struct MatsuriTrainer {
 impl MatsuriTrainer {
     /// 用剧本配置构造训练员（纯手写，不含任何搜索）
     pub fn new(config: MatsuriConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            policy: None,
+        }
+    }
+
+    /// 在普通动作打分阶段启用指定的搜索蒸馏权重。
+    pub fn with_distilled_policy(mut self, policy: DistilledPolicy) -> Self {
+        self.policy = Some(Box::new(policy));
+        self
+    }
+
+    fn board_features(p: &crate::TrainingPreview, shining: usize) -> [f64; 9] {
+        let failure = f64::from(p.failure_rate) / 100.0;
+        let mut features = [0.0; 9];
+        for (target, source) in features[..6].iter_mut().zip(p.value.status_pt.iter()) {
+            *target = f64::from(*source) * (1.0 - failure) / 50.0;
+        }
+        features[6] = f64::from(p.value.vital) / 25.0;
+        features[7] = failure;
+        features[8] = shining as f64;
+        features
+    }
+
+    fn action_group(action: &Action) -> Option<usize> {
+        Some(match action {
+            Action::Train(i) => usize::from(*i),
+            Action::ActTrain(i) => 5 + usize::from(*i),
+            Action::Race => 10,
+            Action::Rest => 11,
+            Action::NormalOuting => 12,
+            Action::FriendOuting => 13,
+            Action::Clinic => 14,
+            Action::AssignAdvice(_) => return None,
+        })
     }
 
     /// 是否需要优先治病（变胖只影响训练速度、每回合 15% 自解，不占动作；不擅长 / 具名病才治）
@@ -289,7 +335,7 @@ impl MatsuriTrainer {
         let mut best = 0;
         let mut best_value = f64::NEG_INFINITY;
         for (index, action) in actions.iter().enumerate() {
-            let value = model.action_value(action);
+            let value = self.ordinary_score(game, &model, action);
             if value.is_nan() {
                 continue;
             }
@@ -308,6 +354,27 @@ impl MatsuriTrainer {
             best_value
         );
         Ok((best, reason(explain, format_args!("打分 {best_value:.1}"))))
+    }
+
+    fn ordinary_score(&self, game: &MatsuriGame, model: &Model<'_>, action: &Action) -> f64 {
+        let Some(policy) = &self.policy else {
+            return model.action_value(action);
+        };
+        let Some(weights) = Self::action_group(action).and_then(|group| policy.groups.get(group))
+        else {
+            return model.action_value(action);
+        };
+        let time = f64::from(game.turn()) / 72.0;
+        let base = model.action_with_board(action, |preview, shining| {
+            Self::board_features(preview, shining)
+                .into_iter()
+                .enumerate()
+                .map(|(i, x)| x * (policy.board[0][i] + time * policy.board[1][i]))
+                .sum()
+        });
+        base + (weights[0]
+            + weights[1] * f64::from(game.turn()) / 72.0
+            + weights[2] * f64::from(game.uma().vital) / 100.0)
     }
 
     /// 解释一次动作决策：中选原因 + 全部候选打分（与 [`Trainer::select_action`] 同源）
@@ -351,7 +418,7 @@ impl MatsuriTrainer {
         Ok(actions
             .iter()
             .enumerate()
-            .map(|(index, action)| (index, model.action_value(action)))
+            .map(|(index, action)| (index, self.ordinary_score(game, &model, action)))
             .collect())
     }
 
