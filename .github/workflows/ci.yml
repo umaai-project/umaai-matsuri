@@ -38,3 +38,25 @@ jobs:
 
       - name: test
         run: cargo test --workspace --release
+
+  deslop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rust-analyzer, rust-src
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-binstall
+
+      - name: Install deslop-please
+        run: cargo binstall -y deslop-please
+
+      - name: deslop-please
+        run: deslop-please

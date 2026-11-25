@@ -18,7 +18,11 @@
 ## 编码、测试与工具纪律
 
 - **Rust 规范**：`Result` 优先（非测试与非临时代码禁用 `unwrap` / `panic`，越界直接报错）；固定结构建新类型；新增公开 API 须配只描述当前行为与契约的 `rustdoc`。
-- **测试规范**：测试取仓根统一经 `matsuri_core::testing`；Release 档跑 binary。
+- **测试规范**：测试取仓根统一经 `matsuri_core::testing`；Release 档跑 binary；测试与验收闭环须一并运行 `deslop-please`。
+- **架构检查（`deslop-please`）**：与 `cargo` 共用 `target/` 锁，顺序执行；报错须从第一性原理整体修复（以深模块与窄接口隐藏复杂度，而非机械挪动绕过）：
+  - `module-cycle` / `tangle`：厘清目标抽象分层与各模块归属。
+  - `field-leak` / `shallow-module`：审视字段与函数的存在意义及调用模式，整体收口为窄接口而非逐点修补。
+  - 重构前先画结构图，向用户说明调整前后的模块关系。
 - **Cargo 纪律**：在仓根直接运行 `cargo`；同一 `target` 一次只跑一个 cargo；日常 `fmt --all --check`、`clippy --workspace --all-targets -- -D warnings`、`test` 加 `--offline`；改 registry（`add` / `fetch`）先请求提权；**确认进入提交准备前，保持工作树格式原样（不运行会改写文件的 `cargo fmt` 或 `--fix`）**。
 - **Git 提交**：待用户确认全部调整后再进入提交准备（涵盖工作树全部修改）；禁止主动 `commit` 或 `push`。
 
