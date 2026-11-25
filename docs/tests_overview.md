@@ -2,7 +2,7 @@
 
 > **前期验证以对话核对为主**：机制以 [`mechanism.md`](mechanism.md) 与 [`stubs.md`](stubs.md) 为准，不用测试代替机制确认。
 > **环境与基准约定**：测试路径统一经 `matsuri_core::testing` 取仓根；**测试基准马娘 = 105902（目白多伯）**，106301 / 106302 仅作「铁心」专项验证（不作普适基线）。
-> **CI 门禁**：`cargo clippy --workspace --all-targets --offline -- -D warnings`（仅 Windows 侧运行）与 `cargo fmt --all --check`。
+> **CI 门禁**：`cargo clippy --workspace --all-targets --offline -- -D warnings`（仅 Windows 侧运行）、`cargo fmt --all --check` 与 `deslop-please`。
 
 ## 1. 分 crate 测试布局
 
