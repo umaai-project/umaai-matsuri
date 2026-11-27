@@ -133,8 +133,8 @@ impl Trainer<MatsuriGame> for Probe {
             game.turn(),
             event.id,
             choices.len(),
-            game.advice.acquired,
-            game.advice.slots
+            game.advice_acquired(),
+            game.advice_slots()
         );
         let started = std::time::Instant::now();
         let out = self.inner.select_event_choice(game, event, choices, rng);

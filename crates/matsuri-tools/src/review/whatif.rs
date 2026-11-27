@@ -207,19 +207,15 @@ pub fn whatif(args: WhatifArgs<'_>) -> Result<(PathBuf, WhatifReport)> {
     let (kind, actions) = match matsuri_ai::online::route(&base, &parsed) {
         Route::Train => ("train", base.list_actions()?),
         Route::Advice(window) => {
-            if !base.advice.acquired || base.advice.slots == [0; 5] {
-                base.advice.acquired = true;
-                base.advice.slots = [101, 201, 301, 401, 501];
-                base.advice.fused = [0; 5];
-            }
+            base.ensure_base_advice();
             // 实机融合由玩家自选：帧内已融合的以帧为准，只补本窗口预设尚未生效的目标
             if base.is_fusion_window(window) {
                 base.apply_window_fusion(window)?;
             }
             base.stage = matsuri_ai::online::advice_stage(&base);
             advice_ctx = Some(AdviceCtx {
-                slots: base.advice.slots,
-                fused: base.advice.fused,
+                slots: base.advice_slots(),
+                fused: base.advice_fused(),
             });
             ("advice", base.advice_actions())
         }
@@ -469,7 +465,7 @@ impl Trainer<MatsuriGame> for TracePolicy<'_> {
 /// 动作展示名（教诲用槽位映射，与 `eval` 候选描述同口径）
 fn label_of(game: &MatsuriGame, action: &Action) -> String {
     match action {
-        Action::AssignAdvice(assign) => assign.describe(&game.advice.slots, &game.advice.fused),
+        Action::AssignAdvice(assign) => assign.describe(&game.advice_slots(), &game.advice_fused()),
         other => other.decision_label(),
     }
 }

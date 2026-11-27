@@ -342,8 +342,7 @@ impl OnlineSession {
                 // 已结算 End；并把当前事件放进队列，激活事件搜索（决策点帧本队为空）。
                 let mut search_game = game.clone();
                 search_game.stage = online::event_stage(&game, &frame);
-                search_game.event_queue = vec![event.clone()];
-                search_game.event_cursor = 0;
+                search_game.set_pending_events(vec![event.clone()]);
                 let mut rng =
                     StdRng::seed_from_u64(online::decision_seed(self.master, &game, Route::Event)?);
                 let choice = self.trainer.as_dyn().select_event_choice(
@@ -389,7 +388,7 @@ impl OnlineSession {
             }
             Route::Advice(window) => {
                 let mut game = game;
-                if !game.advice.acquired || game.advice.slots == [0; 5] {
+                if !game.advice_acquired() || game.advice_slots() == [0; 5] {
                     if window != 0 {
                         return Ok(OnlineTurnOutput {
                             turn,
@@ -411,9 +410,7 @@ impl OnlineSession {
                             summary: None,
                         });
                     }
-                    game.advice.acquired = true;
-                    game.advice.slots = [101, 201, 301, 401, 501];
-                    game.advice.fused = [0; 5];
+                    game.set_advice(true, [101, 201, 301, 401, 501], [0; 5]);
                 }
                 // T23 / T47：实机融合由玩家自选配对，帧内已融合的部分以帧为准；
                 // 只补当前档预设里尚未生效的目标（被抢先融合的 base 自动顶替）
@@ -962,8 +959,8 @@ mod tests {
             match route {
                 Route::Event => {
                     game.stage = online::event_stage(&game, &frame);
-                    game.event_queue = vec![online::pending_event(&game).unwrap().clone()];
-                    game.event_cursor = 0;
+                    let pending = online::pending_event(&game).unwrap().clone();
+                    game.set_pending_events(vec![pending]);
                 }
                 Route::Advice(_) => game.stage = online::advice_stage(&game),
                 Route::Train => (),

@@ -820,9 +820,9 @@ impl ViewCheckingTrainer {
             view.resources.act_level_max,
             game.data.rules.act_level_max_with_friend
         );
-        assert_eq!(view.resources.advice_slots, game.advice.slots);
-        assert_eq!(view.resources.advice_fused, game.advice.fused);
-        assert_eq!(view.resources.advice_acquired, game.advice.acquired);
+        assert_eq!(view.resources.advice_slots, game.advice_slots());
+        assert_eq!(view.resources.advice_fused, game.advice_fused());
+        assert_eq!(view.resources.advice_acquired, game.advice_acquired());
         assert_eq!(view.resources.assist_support_left, game.assist_support_left);
         assert_eq!(view.resources.kensan_pending, game.kensan_pending);
         assert_eq!(view.resources.train_level_bonus, game.train_level_bonus);
@@ -2062,9 +2062,7 @@ fn kensan_event_presented_to_trainer_at_turn_end() -> Result<()> {
     // 构造：T20 普通回合、研鑽（701）转成在演目 0、体力拉满保证训练成功
     game.base.turn = 20;
     game.plan = TurnPlan::default();
-    game.advice.acquired = true;
-    game.advice.slots = [101, 201, 301, 401, 501];
-    game.advice.fused = [701, 0, 0, 0, 0];
+    game.set_advice(true, [101, 201, 301, 401, 501], [701, 0, 0, 0, 0]);
     game.acts.level = [3; 5];
     game.uma_mut().vital = 100;
     game.uma_mut().max_vital = 100;
@@ -2201,9 +2199,9 @@ fn handwritten_trainer_covers_all_decision_points() -> Result<()> {
         vec![2, 11, 23, 35, 47, 59],
         "教诲分配决策的回合序列"
     );
-    assert!(game.advice.acquired, "T2 已获得 5 个基础教诲");
+    assert!(game.advice_acquired(), "T2 已获得 5 个基础教诲");
     assert!(
-        game.advice.fused.iter().any(|fused| *fused != 0),
+        game.advice_fused().iter().any(|fused| *fused != 0),
         "turn 23 / 47 融合已应用"
     );
     assert!(recorder.event_calls.get() > 0, "事件选项决策应被调用");

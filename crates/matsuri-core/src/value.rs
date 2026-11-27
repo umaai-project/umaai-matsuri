@@ -430,7 +430,7 @@ impl<'a> Model<'a> {
                 *cell = self.slot_value(&effect, act);
             }
         }
-        let target_801 = self.game.advice.fused.contains(&801).then(|| {
+        let target_801 = self.game.advice_fused().contains(&801).then(|| {
             (0..5)
                 .max_by_key(|act| {
                     (
@@ -453,7 +453,7 @@ impl<'a> Model<'a> {
                 .advice_window
                 .and_then(|window| self.game.config.deck.advice.window(window))
         {
-            for (slot_index, slot) in self.game.advice.slots.iter().enumerate().take(5) {
+            for (slot_index, slot) in self.game.advice_slots().iter().enumerate().take(5) {
                 for (act, expected) in prior.iter().enumerate() {
                     route_hit[act][slot_index] = *slot == *expected;
                 }
@@ -1084,7 +1084,7 @@ impl<'a> Model<'a> {
         let Some(target) = target_801 else {
             return effective;
         };
-        let Some(source) = (0..5).find(|slot| self.game.advice.fused[*slot] == 801) else {
+        let Some(source) = (0..5).find(|slot| self.game.advice_fused()[*slot] == 801) else {
             return effective;
         };
         if usize::from(effective[target]) == source {
@@ -1295,7 +1295,7 @@ mod tests {
     fn kensan_bonus_uses_participants_for_keiko() {
         let mut game = sample_game();
         game.acquire_advice();
-        game.advice.fused = [701, 0, 0, 0, 0];
+        game.set_advice_fused([701, 0, 0, 0, 0]);
         game.acts.level = [5; 5];
         game.kensan_pending = true;
         let person = game
@@ -1327,7 +1327,7 @@ mod tests {
     fn assignment_puts_801_on_most_assigned_act() {
         let mut game = sample_game();
         game.acquire_advice();
-        game.advice.fused = [801, 0, 0, 0, 0];
+        game.set_advice_fused([801, 0, 0, 0, 0]);
         let model = Model::new(&game, &game.config.deck.trainer).expect("模型");
         let candidates = game.assignment_candidates();
         let best = candidates
@@ -1355,7 +1355,7 @@ mod tests {
             .max_by_key(|act| (counts[*act], usize::MAX - *act))
             .expect("5 演目");
         let slot = (0..5)
-            .find(|act| probe.advice.fused[*act] == 801)
+            .find(|act| probe.advice_fused()[*act] == 801)
             .expect("801 已分配");
         assert_eq!(slot, target, "801 应落在担当数最多的演目（{counts:?}）");
     }

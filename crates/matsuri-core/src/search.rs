@@ -515,7 +515,7 @@ impl MatsuriSearchTrainer {
             |position| map[position],
             |index| match &actions[index] {
                 Action::AssignAdvice(assign) => {
-                    assign.describe(&game.advice.slots, &game.advice.fused)
+                    assign.describe(&game.advice_slots(), &game.advice_fused())
                 }
                 other => other.decision_label(),
             },
@@ -556,7 +556,7 @@ impl MatsuriSearchTrainer {
             .search_with_terminal(game, &tokens, rng, |g, token, seed| {
                 let choice = choice_of_token(token)?;
                 let mut sim = g.fork_for_rollout(seed);
-                if sim.event_queue.get(sim.event_cursor).is_none() {
+                if !sim.has_pending_event() {
                     bail!("事件搜索缺少事件队列游标");
                 }
                 let mut streams = sim.base.take_rule_streams()?;
@@ -565,14 +565,15 @@ impl MatsuriSearchTrainer {
                 sim.event_cursor += 1;
                 // 同一 stage 的剩余事件从下一个继续（fallback 决策 / 结算）
                 let mut sim_rng = StdRng::seed_from_u64(seed);
-                while sim.event_cursor < sim.event_queue.len() {
+                while sim.has_pending_event() {
                     // 与 `run_event_queue` 同口径：取走当前槽留占位，避免每事件一次深拷贝
-                    let next = std::mem::take(&mut sim.event_queue[sim.event_cursor]);
+                    let next = sim
+                        .take_event_at_cursor()
+                        .ok_or_else(|| anyhow::anyhow!("事件队列游标越界"))?;
                     sim.run_event(&next, fallback, &mut sim_rng, &mut streams.event)?;
                     sim.event_cursor += 1;
                 }
-                sim.event_queue.clear();
-                sim.event_cursor = 0;
+                sim.reset_event_queue();
                 sim.base.put_rule_streams(streams);
                 // 事件可能在 Begin / End 内部结算：由剧本按根动作补完当前阶段
                 // （Begin 补 begin_tail，End 补教诲窗口与尾部），再推进到下一阶段。
@@ -664,7 +665,7 @@ impl Trainer<MatsuriGame> for MatsuriSearchTrainer {
         if !self.scope.event
             || choices.len() <= 1
             || choices.len() > EVENT_MAX_CHOICES
-            || game.event_queue.get(game.event_cursor).is_none()
+            || !game.has_pending_event()
         {
             return self.fallback.select_event_choice(game, event, choices, rng);
         }

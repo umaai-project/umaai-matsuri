@@ -1,0 +1,24 @@
+# Existing architectural debt suppressed by `deslop-please --allow`.
+# Fixing an entry here never fails CI; new issues not listed here fail.
+field-leak matsuri_ai::session::OnlineSession::profile
+field-leak matsuri_core::data::MatsuriData::act_effects
+field-leak matsuri_core::data::MatsuriData::acts
+field-leak matsuri_core::data::MatsuriData::advice_windows
+field-leak matsuri_core::data::MatsuriData::advices
+field-leak matsuri_core::data::MatsuriData::camp
+field-leak matsuri_core::data::MatsuriData::card_skills
+field-leak matsuri_core::data::MatsuriData::career_end_rewards
+field-leak matsuri_core::data::MatsuriData::check_point_rewards
+field-leak matsuri_core::data::MatsuriData::check_points
+field-leak matsuri_core::data::MatsuriData::event_extras
+field-leak matsuri_core::data::MatsuriData::fusion
+field-leak matsuri_core::data::MatsuriData::outing
+field-leak matsuri_core::data::MatsuriData::rules
+field-leak matsuri_core::data::MatsuriData::scenario_events
+field-leak matsuri_core::data::MatsuriData::schedule
+field-leak matsuri_core::data::MatsuriData::training
+field-leak matsuri_core::game::MatsuriGame::config
+field-leak matsuri_core::game::MatsuriGame::data
+field-leak matsuri_sim::baseline::Case::records
+wide-directory crates/matsuri-core/src/game/
+long-file crates/matsuri-core/tests/mechanics.rs

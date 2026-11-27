@@ -774,7 +774,7 @@ impl Trainer<MatsuriGame> for LuckTrainer {
             // 应用后的槽内容（基础 id），可直接写进 [decks.*.advice] 的对应窗口
             let ids = match actions.get(chosen) {
                 Some(Action::AssignAdvice(assign)) => {
-                    assign.0.map(|src| game.advice.slots[usize::from(src)])
+                    assign.0.map(|src| game.advice_slots()[usize::from(src)])
                 }
                 _ => [0; 5],
             };
@@ -1015,7 +1015,7 @@ fn cmd_micro(env: &Env, args: &[String]) -> Result<()> {
     println!("clone_whole_game       {clone_ns:10.1}");
     let mut no_log = game.clone();
     no_log.event_log.clear();
-    no_log.event_queue.clear();
+    no_log.reset_event_queue();
     let clone_nolog = bench(iters, || {
         black_box(black_box(&no_log).clone());
     });
@@ -1028,7 +1028,7 @@ fn cmd_micro(env: &Env, args: &[String]) -> Result<()> {
     println!("clone_cfg_default      {clone_nocfg:10.1}");
     let mut slim = game.clone();
     slim.event_log.clear();
-    slim.event_queue.clear();
+    slim.reset_event_queue();
     slim.config = MatsuriConfig::default();
     let clone_slim = bench(iters, || {
         black_box(black_box(&slim).clone());

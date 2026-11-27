@@ -370,8 +370,8 @@ impl MatsuriGame {
         let five_types = self.deck_has_five_types();
         // 该人头当前是否落在某个排练位上（分身同 person_index 可能重复占位，只记一次）
         let mut on_practice = vec![false; self.persons.len()];
-        for train in 0..practice.len() {
-            if !practice[train] {
+        for (train, on_practice_slot) in practice.iter().enumerate() {
+            if !*on_practice_slot {
                 continue;
             }
             for &index in &self.base.distribution[train] {

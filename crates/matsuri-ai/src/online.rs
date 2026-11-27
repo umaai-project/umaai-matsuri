@@ -272,7 +272,7 @@ pub fn advice_record(
 ) -> DecisionRecord {
     let describe = |index: usize| match actions.get(index) {
         Some(Action::AssignAdvice(assign)) => {
-            assign.describe(&game.advice.slots, &game.advice.fused)
+            assign.describe(&game.advice_slots(), &game.advice_fused())
         }
         Some(action) => action.decision_label(),
         None => format!("#{index}"),

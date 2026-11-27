@@ -268,8 +268,8 @@ impl Game for MatsuriGame {
             let _engine_scale: f64 = rng.random_range(0.0..2.0);
             let scale = 1.0;
             let mut status = [0i32; 6];
-            for axis in 0..5 {
-                status[axis] = self.base.inherit.blue_count[axis] * 6
+            for (axis, slot) in status.iter_mut().take(5).enumerate() {
+                *slot = self.base.inherit.blue_count[axis] * 6
                     + (scale * f64::from(self.base.inherit.extra_count[axis])).round() as i32;
             }
             status[5] =

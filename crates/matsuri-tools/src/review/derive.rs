@@ -257,8 +257,7 @@ fn advice_slots(trace: &[TraceRow]) -> Vec<AdviceSlot> {
     let mut prev = [0i32; 5];
     // 同回合多帧（先授后调）只取回合末状态，避免把一次分配拆成两轮
     for row in turn_end(trace) {
-        for act in 0..5 {
-            let now = row.advice[act];
+        for (act, now) in row.advice.iter().copied().take(5).enumerate() {
             if now != prev[act] && now != 0 {
                 out.push(AdviceSlot {
                     act,
@@ -278,8 +277,7 @@ fn fusions(trace: &[TraceRow]) -> Vec<FusionRecord> {
     let mut out = Vec::new();
     let mut prev = [0i32; 5];
     for row in turn_end(trace) {
-        for act in 0..5 {
-            let now = row.fusion[act];
+        for (act, now) in row.fusion.iter().copied().take(5).enumerate() {
             if now != prev[act] && now != 0 {
                 out.push(FusionRecord {
                     act,
@@ -525,8 +523,8 @@ fn kensan_report(
 /// 折半只发生在 `baseGame.training` 预览上，见 [`match_preview`]。
 fn actual_gain(base: &TraceRow, next: &TraceRow) -> [i32; AXES] {
     let mut out = [0; AXES];
-    for axis in 0..5 {
-        out[axis] = next.five[axis] - base.five[axis];
+    for (axis, slot) in out.iter_mut().take(5).enumerate() {
+        *slot = next.five[axis] - base.five[axis];
     }
     out[5] = next.skill_pt - base.skill_pt;
     out[6] = next.vital - base.vital;
@@ -541,9 +539,9 @@ fn match_preview(base: &TraceRow, actual: &[i32; AXES]) -> Option<(usize, i32)> 
     let mut best: Option<(usize, i32)> = None;
     for (index, row) in base.training.iter().enumerate() {
         let mut dist = 3 * (actual[6] - row.total[6]).abs();
-        for axis in 0..5 {
+        for (axis, gained) in actual.iter().take(5).enumerate() {
             let expected = restore_displayed_gain(base.five[axis], row.total[axis]);
-            dist += (actual[axis] - expected).abs();
+            dist += (gained - expected).abs();
         }
         if best.is_none_or(|(_, best)| dist < best) {
             best = Some((index, dist));

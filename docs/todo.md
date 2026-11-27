@@ -30,6 +30,7 @@
 ## 3. 在线、插件与启动器
 
 - [ ] **启动器边缘扩展（待议）**（原 `release_launcher.md`）：离线模拟菜单与进阶参数透传（`--explain` / `--deck-profile`）、图标与快捷方式、`matsuri-tools` 是否进 `bin/`。
+- [ ] **模块环与字段泄漏收敛（[ADR-0011](adr/提议中/0011-提议中-模块环与字段泄漏收敛方案.md)，提议中）**：deslop-please 剩 11 条（3 module-cycle + 1 tangle + 7 field-leak），按阶段一 `deck↔roster` → 阶段二 `game` 门面 → 阶段三 `value` 收窄推进；未拍板前不动代码。
 - [ ] **deslop 扫描接入 CI（待定）**：仓根 `.deslop.toml` 已配置（只扫 Rust，`scripts/`、`benchmark/` 抑制）；`rust_clone_heavy_state_in_loop` / `rust_hashmap_default_hasher` 临时启用待评估；是否进 CI 门禁待拍板。
 
 ## 4. 复盘工具链（原 `review_tool_plan_2026-11-13.md`）

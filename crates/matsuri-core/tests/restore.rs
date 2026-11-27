@@ -174,7 +174,11 @@ fn restore_round_trip_at_decision_point() -> Result<()> {
 
     // 演目 / 教诲 / 合宿 / 発表会 / 资源旗标
     assert_eq!(restored.acts, game.acts, "演目槽与 Lv");
-    assert_eq!(restored.advice, game.advice, "教诲槽 / 転成 / 已授予");
+    assert_eq!(
+        restored.advice_state(),
+        game.advice_state(),
+        "教诲槽 / 転成 / 已授予"
+    );
     assert_eq!(restored.camp, game.camp, "合宿进度");
     assert_eq!(restored.check_points, game.check_points, "発表会结果");
     assert_eq!(restored.finals_done, game.finals_done, "本番是否已结算");
@@ -278,9 +282,9 @@ fn restore_carries_hint_from_frame() -> Result<()> {
     persons[2].is_hint = true;
     let restored = restore_frame(&game, &festa, &persons, raw_dist)?;
     let deck_len = restored.deck.len();
-    for index in 0..deck_len {
+    for (index, person) in restored.persons.iter().take(deck_len).enumerate() {
         assert_eq!(
-            restored.persons[index].hint(),
+            person.hint(),
             persons[index].is_hint,
             "第 {} 位红点应与帧一致",
             index + 1
@@ -333,7 +337,7 @@ fn restore_keeps_build_roster_before_scenario_start() -> Result<()> {
     for (after, before) in restored.persons.iter().zip(game.persons.iter()) {
         assert_eq!(after.act, before.act, "T0 不做担当覆盖");
     }
-    assert!(!restored.advice.acquired, "T0 尚未获得教诲");
+    assert!(!restored.advice_acquired(), "T0 尚未获得教诲");
     Ok(())
 }
 

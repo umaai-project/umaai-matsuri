@@ -397,19 +397,15 @@ fn run_decision(
         }
         Route::Advice(window) => {
             let mut search = game.clone();
-            if !search.advice.acquired || search.advice.slots == [0; 5] {
-                search.advice.acquired = true;
-                search.advice.slots = [101, 201, 301, 401, 501];
-                search.advice.fused = [0; 5];
-            }
+            search.ensure_base_advice();
             // 实机融合由玩家自选：帧内已融合的以帧为准，只补本窗口预设尚未生效的目标
             if search.is_fusion_window(window) {
                 search.apply_window_fusion(window)?;
             }
             search.stage = matsuri_ai::online::advice_stage(&search);
             let ctx = AdviceCtx {
-                slots: search.advice.slots,
-                fused: search.advice.fused,
+                slots: search.advice_slots(),
+                fused: search.advice_fused(),
             };
             let actions = search.advice_actions();
             trainer.select_action(&search, &actions, rng)?;
@@ -594,8 +590,8 @@ fn turn_actual(files: &GameFiles, turn: i32) -> Option<[i32; 7]> {
     let base = ParsedFrame::parse(&base.contents).ok()?;
     let next = ParsedFrame::parse(&next.contents).ok()?;
     let mut out = [0i32; 7];
-    for axis in 0..5 {
-        out[axis] = next.status.five_status[axis] - base.status.five_status[axis];
+    for (axis, slot) in out.iter_mut().take(5).enumerate() {
+        *slot = next.status.five_status[axis] - base.status.five_status[axis];
     }
     out[5] = next.status.skill_pt - base.status.skill_pt;
     out[6] = next.status.vital - base.status.vital;

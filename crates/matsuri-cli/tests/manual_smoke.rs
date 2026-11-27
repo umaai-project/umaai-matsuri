@@ -63,16 +63,22 @@ fn manual_mode_runs_full_game_with_scripted_input() {
         "非 TTY 输出不应含 ANSI 颜色序列（stdout 长度 {}）",
         stdout.len()
     );
-    // 事件回显覆盖事件关键链
-    for event in [
-        "马娘登场",
-        "求むるは、新たな書",
-        "駿大祭合宿の申し出",
-        "追加の稽古",
-    ] {
+    // 事件回显只锁**固定剧情事件**（每个种子都会出）。
+    // 「追加の稽古」是研鑽掷中且担当参与成功训练才触发的事件，属随机分支：
+    // 同一二进制在不同平台/种子上不一定出现，不作为冒烟断言（数据与结算由
+    // core/tests/data.rs 与 core/tests/restore.rs 覆盖）。
+    for event in ["马娘登场", "求むるは、新たな書", "駿大祭合宿の申し出"] {
         assert!(
             stdout.contains(event) || stderr.contains(event),
-            "手动档应回显事件 `{event}`"
+            "手动档应回显固定剧情事件 `{event}`；stdout 末尾：\n{}",
+            tail_chars(&stdout, 1500)
         );
     }
+}
+
+/// 取字符串末尾 n 个字符（失败信息用，避免整段日志刷屏）
+fn tail_chars(text: &str, n: usize) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let start = chars.len().saturating_sub(n);
+    chars[start..].iter().collect()
 }

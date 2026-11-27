@@ -545,9 +545,7 @@ mod tests {
         game.plan = game.derive_plan();
         game.uma_mut().vital = 20;
         game.acts.level[0] = 10;
-        game.advice.acquired = true;
-        game.advice.slots = [901, 0, 0, 0, 0];
-        game.advice.fused = [0; 5];
+        game.set_advice(true, [901, 0, 0, 0, 0], [0; 5]);
         let person = game
             .persons
             .iter()
@@ -578,9 +576,7 @@ mod tests {
         game.plan = game.derive_plan();
         game.uma_mut().vital = 20;
         game.acts.level[0] = 10;
-        game.advice.acquired = true;
-        game.advice.slots = [101, 0, 0, 0, 0];
-        game.advice.fused = [0; 5];
+        game.set_advice(true, [101, 0, 0, 0, 0], [0; 5]);
         let person = game
             .persons
             .iter()
@@ -623,9 +619,7 @@ mod tests {
 
         // 教诲分配：120 个排列全部给出方案分
         game.turn = 23;
-        game.advice.acquired = true;
-        game.advice.slots = [101, 201, 301, 401, 501];
-        game.advice.fused = [0; 5];
+        game.set_advice(true, [101, 201, 301, 401, 501], [0; 5]);
         let assigns = game.assignment_candidates();
         let actions: Vec<Action> = assigns
             .iter()

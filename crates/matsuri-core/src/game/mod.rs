@@ -235,7 +235,7 @@ pub struct MatsuriGame {
     /// 演目资源账本（gauge / Lv）
     pub acts: ActLedger,
     /// 教诲槽位账本（5 槽 / 転成 / 待分配）
-    pub advice: AdviceLedger,
+    advice: AdviceLedger,
     /// 合宿进度（回合边界状态）
     pub camp: CampState,
     /// 本回合结构（`Begin` 阶段派生；回合类型的分支来源）
@@ -265,7 +265,7 @@ pub struct MatsuriGame {
     /// 是否记录事件明细（搜索 rollout 置 `false`：局面跑完即弃，明细无人消费）
     pub record_events: bool,
     /// 当前 stage 待结算事件队列（事件搜索从下一事件继续用；正常推进逐项消费）
-    pub event_queue: Vec<EventData>,
+    event_queue: Vec<EventData>,
     /// 当前事件队列游标（下标 = 正在决策的事件）
     pub event_cursor: usize,
     /// 助力支撑剩余次数（0 = 无；演目稽古获得「助力の支え」时重置为规则上限）
@@ -293,6 +293,73 @@ impl DerefMut for MatsuriGame {
 }
 
 impl MatsuriGame {
+    /// 教诲基础槽位（101–501；0 = 未分配）
+    pub fn advice_slots(&self) -> Array5 {
+        self.advice.slots
+    }
+
+    /// 教诲転成槽位（601–1001；0 = 未転成）
+    pub fn advice_fused(&self) -> Array5 {
+        self.advice.fused
+    }
+
+    /// 本局是否已获得教诲
+    pub fn advice_acquired(&self) -> bool {
+        self.advice.acquired
+    }
+
+    /// 教诲账本快照 `(acquired, slots, fused)`（整体比较用）
+    pub fn advice_state(&self) -> (bool, Array5, Array5) {
+        (self.advice.acquired, self.advice.slots, self.advice.fused)
+    }
+
+    /// 设置整份教诲账本（结算 / 还原 / 测试注入）
+    pub fn set_advice(&mut self, acquired: bool, slots: Array5, fused: Array5) {
+        self.advice.acquired = acquired;
+        self.advice.slots = slots;
+        self.advice.fused = fused;
+    }
+
+    /// 只改転成槽（保留 acquired 与基础槽）
+    pub fn set_advice_fused(&mut self, fused: Array5) {
+        self.advice.fused = fused;
+    }
+
+    /// 尚未获得教诲（或基础槽全空）时授予 101–501 五槽基础教诲
+    ///
+    /// 在线融合与复盘还原共用：实机帧可能停在教诲授予之前的回合。
+    pub fn ensure_base_advice(&mut self) {
+        if !self.advice.acquired || self.advice.slots == [0; 5] {
+            self.advice.acquired = true;
+            self.advice.slots = [101, 201, 301, 401, 501];
+            self.advice.fused = [0; 5];
+        }
+    }
+
+    /// 游标处是否有待处理事件
+    pub fn has_pending_event(&self) -> bool {
+        self.event_queue.get(self.event_cursor).is_some()
+    }
+
+    /// 取走游标处事件（消费后留空占位，避免每事件一次深拷贝）
+    pub fn take_event_at_cursor(&mut self) -> Option<EventData> {
+        self.event_queue
+            .get_mut(self.event_cursor)
+            .map(std::mem::take)
+    }
+
+    /// 注入本回合事件队列并归零游标（在线帧 / 回放）
+    pub fn set_pending_events(&mut self, events: Vec<EventData>) {
+        self.event_queue = events;
+        self.event_cursor = 0;
+    }
+
+    /// 清空事件队列并归零游标
+    pub fn reset_event_queue(&mut self) {
+        self.event_queue.clear();
+        self.event_cursor = 0;
+    }
+
     /// 建一局（要求宿主已初始化静态数据：`umaai_core::Data::init`）
     ///
     /// `data` 是剧本自持资产（宿主载入后注入）：训练基础值表等数值都取自它。
