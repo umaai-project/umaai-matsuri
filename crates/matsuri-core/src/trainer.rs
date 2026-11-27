@@ -30,8 +30,8 @@ pub struct MatsuriTrainer {
 impl MatsuriTrainer {
     /// 用剧本配置构造训练员（纯手写，不含任何搜索）
     ///
-    /// 配置带 `[distilled]` 时自动启用蒸馏打分；搜索档的 fallback / rollout 教师
-    /// 走同一构造，因此全链路一致。
+    /// 配置同目录带 `distilled.toml` 时自动启用蒸馏打分；搜索档的 fallback / rollout
+    /// 教师走同一构造，因此全链路一致。
     pub fn new(config: MatsuriConfig) -> Self {
         let policy = config.distilled.clone().map(Box::new);
         Self { policy, config }

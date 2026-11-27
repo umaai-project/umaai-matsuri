@@ -14,7 +14,7 @@
 
 ## 2. 剧本估值、随机流与引擎接缝
 
-- [ ] **搜索蒸馏收尾**：拟合脚本入库 + 权重元信息（当前只有冻结 JSON）；搜索档教师带蒸馏后的 10 局配对验收（vs `--no-distilled`）；训练 / 评估种子块隔离复核。
+- [ ] **搜索蒸馏收尾**：拟合脚本入库 + 权重元信息（当前只有冻结 JSON 与 `data/distilled.toml`）；搜索档教师带蒸馏后的 10 局配对验收（vs `--no-distilled`）；训练 / 评估种子块隔离复核。
 
 - [ ] **教诲估值窗口级 horizon**：`value.rs` 改用 9–12 回合窗口级 horizon 与合宿感知 `slot_value`，先做全 120 vs Top-16 召回率/遗漏收益对照。
 - [ ] **`advice.route` 先验与终局边际重扫**：下调过强先验并评估 `pt_favor_rate` 退火，重录基线。
@@ -30,6 +30,7 @@
 ## 3. 在线、插件与启动器
 
 - [ ] **启动器边缘扩展（待议）**（原 `release_launcher.md`）：离线模拟菜单与进阶参数透传（`--explain` / `--deck-profile`）、图标与快捷方式、`matsuri-tools` 是否进 `bin/`。
+- [ ] **deslop 扫描接入 CI（待定）**：仓根 `.deslop.toml` 已配置（只扫 Rust，`scripts/`、`benchmark/` 抑制）；`rust_clone_heavy_state_in_loop` / `rust_hashmap_default_hasher` 临时启用待评估；是否进 CI 门禁待拍板。
 
 ## 4. 复盘工具链（原 `review_tool_plan_2026-11-13.md`）
 

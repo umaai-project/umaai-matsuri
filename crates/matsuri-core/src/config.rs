@@ -20,6 +20,9 @@ use crate::deck_config::{DeckParams, DeckTable};
 /// 剧本配置文件名（放在宿主注入的剧本配置根下）
 pub const MATSURI_CONFIG_FILE: &str = "matsuri_config.toml";
 
+/// 搜索蒸馏权重文件名（与剧本配置同目录；存在才加载）
+pub const DISTILLED_FILE: &str = "distilled.toml";
+
 /// 剧本专属配置段
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -30,8 +33,10 @@ pub struct MatsuriConfig {
     /// 搜索档作用面（`search_n > 0` 时生效）
     #[serde(default)]
     pub search: SearchScopeConfig,
-    /// 搜索蒸馏权重（`[distilled]`；`None` = 纯手写打分）
-    #[serde(default)]
+    /// 搜索蒸馏权重（独立 `distilled.toml`；`None` = 纯手写打分）
+    ///
+    /// 不写进 `matsuri_config.toml`：加载时由 `Self::load` 从同目录读取。
+    #[serde(skip)]
     pub distilled: Option<DistilledPolicy>,
     /// 按卡组的参数表（`[decks.*]`；载入时解析完成）
     ///
@@ -83,7 +88,7 @@ impl Default for SearchScopeConfig {
     }
 }
 
-/// 搜索蒸馏权重（`[distilled]`）：离线搜索终局样本拟合的线性残差
+/// 搜索蒸馏权重（独立 `distilled.toml`）：离线搜索终局样本拟合的线性残差
 ///
 /// 与 `[decks.*.trainer.weights]` **不是同一层参数**：weights 是手写 base 的内部换算
 /// （属性分 / PT / 羁绊 / 演目），本段是叠加在 base 之上的动作级偏置
@@ -197,8 +202,6 @@ pub struct MatsuriConfigOverlay {
     pre: Option<PreConfig>,
     /// 搜索作用面：给了就**整段替换**
     search: Option<SearchScopeConfig>,
-    /// 蒸馏权重：给了就**整段替换**（不写 = 沿用默认层）
-    distilled: Option<DistilledPolicy>,
 }
 
 impl OverlayConfig for MatsuriConfig {
@@ -210,9 +213,6 @@ impl OverlayConfig for MatsuriConfig {
         }
         if let Some(search) = overlay.search {
             self.search = search;
-        }
-        if let Some(distilled) = overlay.distilled {
-            self.distilled = Some(distilled);
         }
     }
 
@@ -243,8 +243,25 @@ impl MatsuriConfig {
             ),
             None => None,
         };
-        Self::parse(&base_text, overlay_text.as_deref())
-            .with_context(|| format!("剧本配置来源: {}", base.display()))
+        let mut config = Self::parse(&base_text, overlay_text.as_deref())
+            .with_context(|| format!("剧本配置来源: {}", base.display()))?;
+        if let Some(dir) = base.parent() {
+            let policy = dir.join(DISTILLED_FILE);
+            if policy.exists() {
+                config.distilled = Some(Self::read_distilled(&policy)?);
+            }
+        }
+        Ok(config)
+    }
+
+    /// 读取并校验独立的蒸馏权重文件
+    fn read_distilled(path: &Path) -> Result<DistilledPolicy> {
+        let text = std::fs::read_to_string(path)
+            .with_context(|| format!("读取蒸馏权重失败: {}", path.display()))?;
+        let policy: DistilledPolicy = toml::from_str(&text)
+            .with_context(|| format!("解析蒸馏权重失败: {}", path.display()))?;
+        policy.validate()?;
+        Ok(policy)
     }
 
     /// 载入：默认层 + **约定覆盖层**（`<dir>/matsuri_config.toml`，存在才合并）
@@ -256,10 +273,15 @@ impl MatsuriConfig {
     ) -> Result<Self> {
         let overlay = dir.as_ref().join(MATSURI_CONFIG_FILE);
         let overlay = overlay.exists().then_some(overlay);
-        Self::load(
+        let mut config = Self::load(
             base_dir.as_ref().join(MATSURI_CONFIG_FILE),
             overlay.as_deref(),
-        )
+        )?;
+        let overlay_policy = dir.as_ref().join(DISTILLED_FILE);
+        if overlay_policy.exists() {
+            config.distilled = Some(Self::read_distilled(&overlay_policy)?);
+        }
+        Ok(config)
     }
 
     /// 按卡组构成解析出生效参数（找不到 → default 档）
@@ -447,29 +469,25 @@ mod tests {
         );
     }
 
-    /// 蒸馏权重：默认层带 `[distilled]`、覆盖层整段替换、非有限数拒绝
+    /// 蒸馏权重：只认同目录 distilled.toml，配置文本不出现该段
     #[test]
-    fn distilled_policy_parses_and_overlays() {
-        let cfg = MatsuriConfig::parse(&repo_text(), None).expect("默认层应可解析");
-        let policy = cfg.distilled.as_ref().expect("默认层应带 [distilled]");
+    fn distilled_policy_loads_from_sibling_file() {
+        let cfg = MatsuriConfig::load_with_overlay_file(crate::testing::data_dir(), ".")
+            .expect("默认层 + 蒸馏文件应可载入");
+        let policy = cfg
+            .distilled
+            .as_ref()
+            .expect("data/distilled.toml 应被读取");
         assert_eq!(policy.groups.len(), 15);
         assert_eq!(policy.board.len(), 2);
         assert_eq!(policy.groups[0][0], 5.180464184710154);
         assert_eq!(policy.board[1][8], 51.23739191561617);
 
-        let zeros = "0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0";
-        let row = "[1.0, 0.0, 0.0]";
-        let overlay = format!(
-            "[distilled]\ngroups = [{}]\nboard = [[{zeros}], [{zeros}]]\n",
-            vec![row; 15].join(", ")
-        );
-        let cfg = MatsuriConfig::parse(&repo_text(), Some(&overlay)).expect("覆盖层应可合并");
-        assert_eq!(cfg.distilled.as_ref().unwrap().groups[0], [1.0, 0.0, 0.0]);
-
-        let bad = repo_text().replace("5.180464184710154", "inf");
+        // 权重不再写进 matsuri_config.toml：覆盖层写 [distilled] 应严格报错
+        let bad = "[distilled]\ngroups = []\n";
         assert!(
-            MatsuriConfig::parse(&bad, None).is_err(),
-            "非有限权重应拒绝"
+            MatsuriConfig::parse(&repo_text(), Some(bad)).is_err(),
+            "蒸馏权重只认独立文件，配置段应被拒绝"
         );
     }
 

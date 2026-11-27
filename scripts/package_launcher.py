@@ -45,6 +45,7 @@ REPO = Path(__file__).resolve().parents[1]
 DATA_FILES = (
     "ai_config.toml",
     "matsuri_config.toml",
+    "distilled.toml",
     "scenario_matsuri.json",
     "manifest.json",
     "umaDB.json",
@@ -65,6 +66,7 @@ PROGRAM_FILES = (
     "data/events.json",
     "data/manifest.json",
     "data/matsuri_config.toml",
+    "data/distilled.toml",
     "data/scenario_matsuri.json",
     "matsuri-ai.exe",
 )

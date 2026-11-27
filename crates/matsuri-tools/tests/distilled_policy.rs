@@ -1,6 +1,6 @@
 //! 搜索蒸馏档经 bench game 加载的回归覆盖。
 //!
-//! 断言只锁「关系」（配置内联 == 文件加载、关闭 == 纯手写、零权重 == 纯手写），
+//! 断言只锁「关系」（同目录 `distilled.toml` == 文件加载、关闭 == 纯手写、零权重 == 纯手写），
 //! 不锁具体分数，避免数据 / 版本漂移导致门禁误红。
 use std::process::{Command, Output};
 
@@ -47,7 +47,11 @@ fn policy_sources_agree_and_switch_off_returns_to_plain() {
             "逐局 CSV 头必须保持不变"
         );
     }
-    assert_eq!(score(&inline), score(&file), "配置内联与文件加载必须同分");
+    assert_eq!(
+        score(&inline),
+        score(&file),
+        "同目录 distilled.toml 与文件加载必须同分"
+    );
     assert_ne!(
         score(&inline),
         score(&plain),

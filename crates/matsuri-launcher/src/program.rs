@@ -27,10 +27,11 @@ const WORK_ROOT: &str = ".umaai-update";
 /// 程序频道在临时根下的子目录
 const TEMP_DIR: &str = "program";
 /// 包内文件白名单（字典序；清单必须与它严格相等）
-const PROGRAM_FILES: [&str; 8] = [
+const PROGRAM_FILES: [&str; 9] = [
     "bin/matsuri.exe",
     "data/ai_config.toml",
     "data/constants.json",
+    "data/distilled.toml",
     "data/events.json",
     "data/manifest.json",
     "data/matsuri_config.toml",

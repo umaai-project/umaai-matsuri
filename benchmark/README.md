@@ -35,7 +35,7 @@
 
 ## 搜索蒸馏权重
 
-`data/matsuri_config.toml` 顶层 `[distilled]` 是手写档的默认蒸馏权重（2026-11-24 冻结，源副本 [`policies/distilled-v1.json`](policies/distilled-v1.json)）。它在守门链之后对普通动作打分叠加动作组残差，训练 / 稽古再叠加预览特征残差；教诲、事件与守门分支不叠加。
+`data/distilled.toml` 是手写档的默认蒸馏权重（与 `matsuri_config.toml` 同目录，加载时自动读取；2026-11-24 冻结，源副本 [`policies/distilled-v1.json`](policies/distilled-v1.json)）。权重**不写进** `matsuri_config.toml`，配置里出现 `[distilled]` 段会严格报错。它在守门链之后对普通动作打分叠加动作组残差，训练 / 稽古再叠加预览特征残差；教诲、事件与守门分支不叠加。
 
 配置带权重时，离线（`bench` / `cardtest` / `sweep`）与在线（`matsuri-cli` 手写档）自动启用；**搜索档的 fallback 与 rollout 教师同样带权重**（全链路）。
 
@@ -51,6 +51,6 @@ cargo build --locked --release -p matsuri-tools --bin bench
 
 - `groups` 15 行 = 普通训练五轴、稽古五轴、比赛、休息、普通出行、友人出行、治病；每行 = 常数 + 回合 / 72 + 体力 / 100。`board` 两行 = 训练预览 9 特征的常数系数与回合交互系数；前六个特征是按成功概率加权的五维增量与技能点增量（÷50），后三个是体力增量 / 25、失败率、闪彩人数。
 - 与 `[decks.*.trainer.weights]` **不是同一层参数**：weights 是手写 base 的内部换算，本段是叠加在 base 之上的动作级残差，两者联合校准、不可互相折算。
-- 覆盖层写 `[distilled]` 可整段替换权重（不必改默认层）。
+- 覆盖目录放同名 `distilled.toml` 可整段替换权重（不必改默认层）；未放则沿用默认层。
 - 训练来源：目白多伯默认卡组 4693 个决策局面拟合；搜索教师以官方终局评分为目标，用手写策略完成后续回合，按配对终局分差拟合相对价值。验收见 [冻结策略配对验收](_local/distillation/benchmark.md)。
 - 验收种子块：`500,000–541,999`（14 组 × 2048）与 `3,100,000–3,141,999`（独立复核），不得与定卡 / 扫参 / 基线块复用。

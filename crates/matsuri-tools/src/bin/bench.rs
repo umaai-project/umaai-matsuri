@@ -2,7 +2,7 @@
 //!
 //! 用法（仓根执行，先 cargo build --release --offline -p matsuri-tools）：
 //! - bench game --games 20 --seed 61444 --search-n 0  整局耗时 + 终局 CSV（手写档；缺省走配置 search_n=8192）
-//! - 手写档默认带配置 `[distilled]` 蒸馏；`--no-distilled` 回到纯手写，`--distilled-policy <json>` 覆盖权重
+//! - 手写档默认带 `distilled.toml` 蒸馏；`--no-distilled` 回到纯手写，`--distilled-policy <json>` 覆盖权重
 //! - bench luck --games 20 --seed 73200 --search-n 2048  MCTS 自博弈逐决策 expected_score，
 //!   输出每局首末回合估分差与 `luck_turn_bonus` 补偿斜率
 //! - bench micro --turn 32 --iters 2000            决策链分段 ns/op
